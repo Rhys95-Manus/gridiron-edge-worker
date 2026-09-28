@@ -1,0 +1,232 @@
+# Every numeric constant in docs/MODEL_SPEC.md (sections 0-9).
+# Each entry: spec_id, value, status (initial | fitted), source = verbatim quote from the spec.
+# Units: *_cc = integer centicents (1/10,000 of a dollar); percentages as fractions;
+# *_seconds / *_minutes / *_hours / *_games / *_plays etc. as named.
+# status: initial everywhere until BT-02 writes a fitted, versioned file.
+
+conventions:
+  g3_usage_half_life_games: {spec_id: G3, value: 3, status: initial, source: 'usage metrics h = 3 games'}
+  g3_efficiency_half_life_games: {spec_id: G3, value: 6, status: initial, source: 'efficiency metrics h = 6 games'}
+  g4_prior_carryover_last_week: {spec_id: G4, value: 4, status: initial, source: 'Weeks 1–4 use last season'}
+  g4_new_caller_or_qb_extra_regression: {spec_id: G4, value: 0.3333333333333333, status: initial, source: 'regressed a further 1/3 toward league average'}
+  g5_neutral_wp_min: {spec_id: G5, value: 0.20, status: initial, source: 'is between 0.20 and 0.80'}
+  g5_neutral_wp_max: {spec_id: G5, value: 0.80, status: initial, source: 'is between 0.20 and 0.80'}
+  g5_end_of_half_excluded_seconds: {spec_id: G5, value: 120, status: initial, source: 'it is not inside the final 2:00 of either half'}
+  g7_garbage_wp_low: {spec_id: G7, value: 0.05, status: initial, source: 'plays with wp \< 0.05 or \> 0.95 in the 4th quarter'}
+  g7_garbage_wp_high: {spec_id: G7, value: 0.95, status: initial, source: 'plays with wp \< 0.05 or \> 0.95 in the 4th quarter'}
+
+offense:
+  off_01_min_plays: {spec_id: OFF-01, value: 150, status: initial, source: '150 plays (100 pass, 80 run)'}
+  off_01_min_pass_plays: {spec_id: OFF-01, value: 100, status: initial, source: '150 plays (100 pass, 80 run)'}
+  off_01_min_run_plays: {spec_id: OFF-01, value: 80, status: initial, source: '150 plays (100 pass, 80 run)'}
+  off_01_k_overall: {spec_id: OFF-01, value: 250, status: initial, source: 'k = 250 overall, 200 pass, 300 run'}
+  off_01_k_pass: {spec_id: OFF-01, value: 200, status: initial, source: 'k = 250 overall, 200 pass, 300 run'}
+  off_01_k_run: {spec_id: OFF-01, value: 300, status: initial, source: 'k = 250 overall, 200 pass, 300 run'}
+  off_02_min_plays: {spec_id: OFF-02, value: 150, status: initial, source: '150 plays'}
+  off_02_k: {spec_id: OFF-02, value: 150, status: initial, source: 'k = 150; prior league mean'}
+  off_03_min_plays_per_cell: {spec_id: OFF-03, value: 30, status: initial, source: '30 plays per cell'}
+  off_03_k: {spec_id: OFF-03, value: 100, status: initial, source: 'k = 100; prior = team'}
+  off_03_own_zone_min_yardline_100: {spec_id: OFF-03, value: 80, status: initial, source: 'yardline_100 ≥ 80'}
+  off_03_red_zone_max_yardline_100: {spec_id: OFF-03, value: 20, status: initial, source: 'red zone ≤ 20'}
+  off_04_min_plays: {spec_id: OFF-04, value: 80, status: initial, source: '80 plays'}
+  off_04_k: {spec_id: OFF-04, value: 60, status: initial, source: 'k = 60; prior league mean'}
+  off_05_min_plays: {spec_id: OFF-05, value: 100, status: initial, source: '100 plays'}
+  off_05_k: {spec_id: OFF-05, value: 100, status: initial, source: 'k = 100; prior 0'}
+  off_06_min_dropbacks: {spec_id: OFF-06, value: 60, status: initial, source: '60 dropbacks'}
+  off_06_k: {spec_id: OFF-06, value: 80, status: initial, source: 'k = 80; prior league mean'}
+  off_07_min_plays: {spec_id: OFF-07, value: 80, status: initial, source: '80 plays'}
+  off_07_k: {spec_id: OFF-07, value: 80, status: initial, source: 'k = 80'}
+  off_08_min_plays: {spec_id: OFF-08, value: 80, status: initial, source: '80 plays'}
+  off_08_k: {spec_id: OFF-08, value: 80, status: initial, source: 'k = 80'}
+  off_09_min_plays: {spec_id: OFF-09, value: 80, status: initial, source: '80 plays'}
+  off_09_k: {spec_id: OFF-09, value: 60, status: initial, source: 'k = 60'}
+  off_10_min_pairs: {spec_id: OFF-10, value: 60, status: initial, source: '60 pairs'}
+  off_10_k_pairs: {spec_id: OFF-10, value: 80, status: initial, source: 'k = 80 pairs; prior league mean'}
+  off_10_max_snap_gap_seconds: {spec_id: OFF-10, value: 45, status: initial, source: 'cap Δ at 45 s'}
+  off_11_min_games: {spec_id: OFF-11, value: 3, status: initial, source: '3 games'}
+  off_11_k_games: {spec_id: OFF-11, value: 4, status: initial, source: 'k = 4 games; prior league mean'}
+  off_12_min_carries_per_cell: {spec_id: OFF-12, value: 25, status: initial, source: '25 carries per cell'}
+  off_12_k_success: {spec_id: OFF-12, value: 60, status: initial, source: 'k = 60 (success), 100 (EPA, YPC), 150 (explosive)'}
+  off_12_k_epa_ypc: {spec_id: OFF-12, value: 100, status: initial, source: 'k = 60 (success), 100 (EPA, YPC), 150 (explosive)'}
+  off_12_k_explosive: {spec_id: OFF-12, value: 150, status: initial, source: 'k = 60 (success), 100 (EPA, YPC), 150 (explosive)'}
+  off_12_explosive_run_min_yards: {spec_id: OFF-12, value: 10, status: initial, source: 'explosive rate (10+ yds)'}
+  off_13_min_targets_per_cell: {spec_id: OFF-13, value: 20, status: initial, source: '20 targets per cell'}
+  off_13_k_targets: {spec_id: OFF-13, value: 60, status: initial, source: 'k = 60 targets; prior = team'}
+  off_13_short_min_air_yards: {spec_id: OFF-13, value: 0, status: initial, source: 'behind line: air_yards \< 0; short 0–9; intermediate 10–19; deep 20+'}
+  off_13_intermediate_min_air_yards: {spec_id: OFF-13, value: 10, status: initial, source: 'behind line: air_yards \< 0; short 0–9; intermediate 10–19; deep 20+'}
+  off_13_deep_min_air_yards: {spec_id: OFF-13, value: 20, status: initial, source: 'behind line: air_yards \< 0; short 0–9; intermediate 10–19; deep 20+'}
+  off_14_min_plays: {spec_id: OFF-14, value: 20, status: initial, source: '20 plays; 10 trips'}
+  off_14_min_trips: {spec_id: OFF-14, value: 10, status: initial, source: '20 plays; 10 trips'}
+  off_14_k_plays: {spec_id: OFF-14, value: 25, status: initial, source: 'k = 25 plays; k = 20 trips'}
+  off_14_k_trips: {spec_id: OFF-14, value: 20, status: initial, source: 'k = 25 plays; k = 20 trips'}
+  off_14_zone_20_yardline_100: {spec_id: OFF-14, value: 20, status: initial, source: 'inside the 20, 10 and 5'}
+  off_14_zone_10_yardline_100: {spec_id: OFF-14, value: 10, status: initial, source: 'inside the 20, 10 and 5'}
+  off_14_zone_5_yardline_100: {spec_id: OFF-14, value: 5, status: initial, source: 'inside the 20, 10 and 5'}
+  off_15_min_dropbacks: {spec_id: OFF-15, value: 100, status: initial, source: '100 dropbacks'}
+  off_15_k: {spec_id: OFF-15, value: 200, status: initial, source: 'k = 200; prior league'}
+  off_16_min_carries_per_side: {spec_id: OFF-16, value: 40, status: initial, source: '40 carries per side'}
+  off_16_k: {spec_id: OFF-16, value: 80, status: initial, source: 'k = 80; prior team'}
+  off_16_stuff_max_yards: {spec_id: OFF-16, value: 0, status: initial, source: 'stuff rate (gain ≤ 0)'}
+  off_17_starting_ol_count: {spec_id: OFF-17, value: 5, status: initial, source: 'Starters = 5 OL with most offensive snaps in the last 3 games'}
+  off_17_starter_lookback_games: {spec_id: OFF-17, value: 3, status: initial, source: 'Starters = 5 OL with most offensive snaps in the last 3 games'}
+  off_17_continuity_min_snap_share: {spec_id: OFF-17, value: 0.50, status: initial, source: 'all 5 played ≥ 50%'}
+
+defense:
+  def_01_min_plays: {spec_id: DEF-01, value: 150, status: initial, source: '150 plays'}
+  def_01_k_overall: {spec_id: DEF-01, value: 250, status: initial, source: 'k = 250 / 200 / 300'}
+  def_01_k_pass: {spec_id: DEF-01, value: 200, status: initial, source: 'k = 250 / 200 / 300'}
+  def_01_k_run: {spec_id: DEF-01, value: 300, status: initial, source: 'k = 250 / 200 / 300'}
+  def_02_min_plays: {spec_id: DEF-02, value: 150, status: initial, source: '150 plays'}
+  def_02_k: {spec_id: DEF-02, value: 150, status: initial, source: 'k = 150'}
+  def_03_min_carries_per_cell: {spec_id: DEF-03, value: 25, status: initial, source: '25 carries per cell'}
+  def_03_k_success: {spec_id: DEF-03, value: 60, status: initial, source: 'k = 60 / 100 / 150'}
+  def_03_k_epa_ypc: {spec_id: DEF-03, value: 100, status: initial, source: 'k = 60 / 100 / 150'}
+  def_03_k_explosive: {spec_id: DEF-03, value: 150, status: initial, source: 'k = 60 / 100 / 150'}
+  def_04_min_games: {spec_id: DEF-04, value: 4, status: initial, source: '4 games and 40 targets to the position'}
+  def_04_min_targets: {spec_id: DEF-04, value: 40, status: initial, source: '4 games and 40 targets to the position'}
+  def_04_k_targets: {spec_id: DEF-04, value: 60, status: initial, source: 'k = 60 targets; prior ratio 1.00'}
+  def_04_prior_ratio: {spec_id: DEF-04, value: 1.00, status: initial, source: 'k = 60 targets; prior ratio 1.00'}
+  def_05_min_dropbacks: {spec_id: DEF-05, value: 100, status: initial, source: '100 dropbacks'}
+  def_05_k: {spec_id: DEF-05, value: 150, status: initial, source: 'k = 150; prior league'}
+  def_05_blitz_min_blitzers: {spec_id: DEF-05, value: 1, status: initial, source: 'share of dropbacks with n_blitzers ≥ 1'}
+  def_06_min_plays: {spec_id: DEF-06, value: 150, status: initial, source: '150 plays'}
+  def_06_k: {spec_id: DEF-06, value: 300, status: initial, source: 'k = 300; prior league'}
+  def_06_explosive_run_min_yards: {spec_id: DEF-06, value: 10, status: initial, source: 'share of runs 10+ yds and completions 20+ yds against'}
+  def_06_explosive_pass_min_yards: {spec_id: DEF-06, value: 20, status: initial, source: 'share of runs 10+ yds and completions 20+ yds against'}
+  def_07_min_trips: {spec_id: DEF-07, value: 10, status: initial, source: '10 trips'}
+  def_07_k_trips: {spec_id: DEF-07, value: 20, status: initial, source: 'k = 20 trips; prior league'}
+  def_07_red_zone_yardline_100: {spec_id: DEF-07, value: 20, status: initial, source: 'TDs ÷ opponent drives reaching the 20'}
+  def_08_min_plays_each_way: {spec_id: DEF-08, value: 200, status: initial, source: '200 plays each way'}
+  def_08_k: {spec_id: DEF-08, value: 400, status: initial, source: 'k = 400; prior 0 effect'}
+  def_08_starter_min_snap_share: {spec_id: DEF-08, value: 0.60, status: initial, source: '≥ 60% defensive snaps over the last 3 games'}
+  def_08_starter_lookback_games: {spec_id: DEF-08, value: 3, status: initial, source: '≥ 60% defensive snaps over the last 3 games'}
+
+player:
+  ply_01_min_games: {spec_id: PLY-01, value: 2, status: initial, source: '2 games'}
+  ply_01_k_games: {spec_id: PLY-01, value: 2, status: initial, source: 'k = 2 games; role prior'}
+  ply_03_min_games: {spec_id: PLY-03, value: 3, status: initial, source: '3 games'}
+  ply_03_k_team_targets: {spec_id: PLY-03, value: 60, status: initial, source: 'k = 60 team targets; role prior'}
+  ply_04_min_games: {spec_id: PLY-04, value: 3, status: initial, source: '3 games'}
+  ply_04_k_team_targets: {spec_id: PLY-04, value: 60, status: initial, source: 'k = 60 team targets'}
+  ply_04_wopr_target_weight: {spec_id: PLY-04, value: 1.5, status: initial, source: 'WOPR = 1.5 × target share + 0.7 × air share'}
+  ply_04_wopr_air_weight: {spec_id: PLY-04, value: 0.7, status: initial, source: 'WOPR = 1.5 × target share + 0.7 × air share'}
+  ply_05_min_games: {spec_id: PLY-05, value: 3, status: initial, source: '3 games'}
+  ply_05_k_team_carries: {spec_id: PLY-05, value: 40, status: initial, source: 'k = 40 team carries; role prior'}
+  ply_06_min_team_opportunities: {spec_id: PLY-06, value: 8, status: initial, source: '8 team opportunities in zone'}
+  ply_06_k_team_opportunities: {spec_id: PLY-06, value: 20, status: initial, source: 'k = 20 team opportunities'}
+  ply_06_zone_20_yardline_100: {spec_id: PLY-06, value: 20, status: initial, source: 'inside the 20, 10 and 5'}
+  ply_06_zone_10_yardline_100: {spec_id: PLY-06, value: 10, status: initial, source: 'inside the 20, 10 and 5'}
+  ply_06_zone_5_yardline_100: {spec_id: PLY-06, value: 5, status: initial, source: 'inside the 20, 10 and 5'}
+  ply_07_min_team_opportunities: {spec_id: PLY-07, value: 15, status: initial, source: '15 team opportunities'}
+  ply_07_k: {spec_id: PLY-07, value: 30, status: initial, source: 'k = 30; prior = his overall share'}
+  ply_07_two_minute_seconds: {spec_id: PLY-07, value: 120, status: initial, source: 'in the last 2:00 of each half'}
+  ply_08_min_games: {spec_id: PLY-08, value: 3, status: initial, source: '3 games'}
+  ply_08_k_team_dropbacks: {spec_id: PLY-08, value: 150, status: initial, source: 'k = 150 team dropbacks; role prior'}
+  ply_09_min_receptions: {spec_id: PLY-09, value: 30, status: initial, source: '30 receptions'}
+  ply_09_k_receptions: {spec_id: PLY-09, value: 60, status: initial, source: 'k = 60 receptions; prior 0'}
+  ply_10_min_targets: {spec_id: PLY-10, value: 40, status: initial, source: '40 targets'}
+  ply_10_k_targets: {spec_id: PLY-10, value: 80, status: initial, source: 'k = 80 targets; prior 0'}
+  ply_11_min_carries: {spec_id: PLY-11, value: 50, status: initial, source: '50 carries'}
+  ply_11_k_carries: {spec_id: PLY-11, value: 100, status: initial, source: 'k = 100 carries; prior 0'}
+  ply_13_min_games: {spec_id: PLY-13, value: 3, status: initial, source: '3 games'}
+  ply_13_short_window_games: {spec_id: PLY-13, value: 3, status: initial, source: 'L3 and L5 values'}
+  ply_13_long_window_games: {spec_id: PLY-13, value: 5, status: initial, source: 'L3 and L5 values'}
+  ply_13_role_change_sigmas: {spec_id: PLY-13, value: 2, status: initial, source: '\> 2 × √'}
+  ply_13_opportunity_lookback_games: {spec_id: PLY-13, value: 3, status: initial, source: 'n = team opportunities in the last 3 games'}
+  ply_13_flagged_half_life_games: {spec_id: PLY-13, value: 1.5, status: initial, source: 'shortens h to 1.5 games when flagged'}
+  ply_14_return_min_missed_games: {spec_id: PLY-14, value: 2, status: initial, source: 'First game back after missing 2+ games'}
+  ply_14_return_factor: {spec_id: PLY-14, value: 0.85, status: initial, source: 'return factor (**initial 0.85**'}
+  ply_15_min_games_without: {spec_id: PLY-15, value: 2, status: initial, source: '2 games without X'}
+  ply_15_k_games: {spec_id: PLY-15, value: 2, status: initial, source: 'k = 2 games toward default rule'}
+  ply_15_same_position_weight: {spec_id: PLY-15, value: 2, status: initial, source: 'position weighted 2×'}
+  ply_15_low_confidence_max_career_snaps: {spec_id: PLY-15, value: 50, status: initial, source: 'someone with under 50 career snaps'}
+  ply_15_low_confidence_stake_cap: {spec_id: PLY-15, value: 0.005, status: initial, source: 'caps the stake at 0.5%'}
+
+coaching:
+  coa_02_min_fourth_downs: {spec_id: COA-02, value: 20, status: initial, source: '20 fourth downs'}
+  coa_02_k: {spec_id: COA-02, value: 30, status: initial, source: 'k = 30; prior 0'}
+  coa_03_min_tds: {spec_id: COA-03, value: 10, status: initial, source: '10 TDs'}
+  coa_03_k: {spec_id: COA-03, value: 30, status: initial, source: 'k = 30; prior league'}
+  coa_04_min_plays_per_bucket: {spec_id: COA-04, value: 40, status: initial, source: '40 plays per bucket'}
+  coa_04_k: {spec_id: COA-04, value: 80, status: initial, source: 'k = 80; prior league value for that bucket'}
+  coa_04_leading_min_wp: {spec_id: COA-04, value: 0.80, status: initial, source: 'wp \> 0.80 (leading) and \< 0.20 (trailing)'}
+  coa_04_trailing_max_wp: {spec_id: COA-04, value: 0.20, status: initial, source: 'wp \> 0.80 (leading) and \< 0.20 (trailing)'}
+  coa_06_min_games: {spec_id: COA-06, value: 2, status: initial, source: '2 games'}
+
+matchup:
+  mtc_01_lambda: {spec_id: MTC-01, value: 0.5, status: initial, source: 'damped by λ (initial 0.5)'}
+  mtc_02_lambda: {spec_id: MTC-02, value: 0.5, status: initial, source: 'damped by λ (initial 0.5)'}
+  mtc_03_lambda: {spec_id: MTC-03, value: 0.5, status: initial, source: 'damped by λ (initial 0.5)'}
+  mtc_player_mean_adjustment_cap: {spec_id: [MTC-01, MTC-02, MTC-03], value: 0.15, status: initial, source: 'capped at ±15% in v1'}
+  mtc_01_min_carries_per_cell: {spec_id: MTC-01, value: 25, status: initial, source: 'both sides have 25 carries there'}
+  mtc_02_beta: {spec_id: MTC-02, value: 0.5, status: initial, source: 'β initial 0.5'}
+  mtc_03_ol_absence_factor: {spec_id: MTC-03, value: 1.10, status: initial, source: 'OL-absence factor (initial 1.10'}
+
+projection:
+  prj_01_model_half_life_games: {spec_id: PRJ-01, value: 6, status: initial, source: 'recency-weighted with h = 6 games'}
+  prj_01_anchor_tolerance_points: {spec_id: PRJ-01, value: 0.25, status: initial, source: 'within 0.25 points'}
+  prj_02_runs_per_game: {spec_id: PRJ-02, value: 20000, status: initial, source: 'N = 20,000 runs per game'}
+  prj_02_tol_points_per_team_game: {spec_id: PRJ-02, value: 0.7, status: initial, source: 'points per team-game ± 0.7'}
+  prj_02_tol_plays_per_team_game: {spec_id: PRJ-02, value: 2, status: initial, source: 'plays per team-game ± 2'}
+  prj_02_tol_pass_rate: {spec_id: PRJ-02, value: 0.015, status: initial, source: 'pass rate ± 1.5 points'}
+  prj_02_tol_yards_per_pass_attempt: {spec_id: PRJ-02, value: 0.2, status: initial, source: 'yards per pass attempt ± 0.2'}
+  prj_03_first_td_crosscheck_max_gap: {spec_id: PRJ-03, value: 0.03, status: initial, source: 'differ by more than 3 percentage points'}
+  prj_06_season_runs: {spec_id: PRJ-06, value: 20000, status: initial, source: '20,000 season simulations'}
+  prj_07_bins: {spec_id: PRJ-07, value: 10, status: initial, source: '10 probability bins'}
+  prj_07_min_forecasts_per_market_type: {spec_id: PRJ-07, value: 1000, status: initial, source: 'Minimum 1,000 forecasts per market type and 50 per bin'}
+  prj_07_min_forecasts_per_bin: {spec_id: PRJ-07, value: 50, status: initial, source: 'Minimum 1,000 forecasts per market type and 50 per bin'}
+
+edge:
+  edg_03_game_lines_min_edge_cc: {spec_id: EDG-03, value: 400, status: initial, source: '| Game winner, spread, total                 | 4¢                      | Model mode 01a only; flag "efficient market" on every one |'}
+  edg_03_anytime_td_min_edge_cc: {spec_id: EDG-03, value: 400, status: initial, source: '| Anytime TD                                 | 4¢                      | ROI ≥ 10%                                                 |'}
+  edg_03_anytime_td_min_roi: {spec_id: EDG-03, value: 0.10, status: initial, source: '| Anytime TD                                 | 4¢                      | ROI ≥ 10%                                                 |'}
+  edg_03_yardage_min_edge_cc: {spec_id: EDG-03, value: 500, status: initial, source: '| Yardage and stat props                     | 5¢                      | ROI ≥ 10%; bid/ask spread ≤ 6¢                            |'}
+  edg_03_yardage_min_roi: {spec_id: EDG-03, value: 0.10, status: initial, source: '| Yardage and stat props                     | 5¢                      | ROI ≥ 10%; bid/ask spread ≤ 6¢                            |'}
+  edg_03_yardage_max_spread_cc: {spec_id: EDG-03, value: 600, status: initial, source: '| Yardage and stat props                     | 5¢                      | ROI ≥ 10%; bid/ask spread ≤ 6¢                            |'}
+  edg_03_first_or_2plus_td_min_edge_cc: {spec_id: EDG-03, value: 200, status: initial, source: '| First TD, 2+ TD (usually priced under 25¢) | 2¢                      | ROI ≥ 20%                                                 |'}
+  edg_03_first_or_2plus_td_min_roi: {spec_id: EDG-03, value: 0.20, status: initial, source: '| First TD, 2+ TD (usually priced under 25¢) | 2¢                      | ROI ≥ 20%                                                 |'}
+  edg_03_combos_min_edge_cc: {spec_id: EDG-03, value: 300, status: initial, source: '| Combos                                     | 3¢                      | ROI ≥ 20%; all legs from one PRJ-02 run                   |'}
+  edg_03_combos_min_roi: {spec_id: EDG-03, value: 0.20, status: initial, source: '| Combos                                     | 3¢                      | ROI ≥ 20%; all legs from one PRJ-02 run                   |'}
+  edg_03_futures_min_edge_cc: {spec_id: EDG-03, value: 500, status: initial, source: '| Futures                                    | 5¢                      | ROI ≥ 15% (money is tied up for months)                   |'}
+  edg_03_futures_min_roi: {spec_id: EDG-03, value: 0.15, status: initial, source: '| Futures                                    | 5¢                      | ROI ≥ 15% (money is tied up for months)                   |'}
+  edg_03_proxy_threshold_add_cc: {spec_id: EDG-03, value: 200, status: initial, source: 'Add 2¢ to the threshold'}
+  edg_04_max_depth_share: {spec_id: EDG-04, value: 0.25, status: initial, source: '25% of visible depth within 2¢ of our price'}
+  edg_04_depth_window_cc: {spec_id: EDG-04, value: 200, status: initial, source: '25% of visible depth within 2¢ of our price'}
+  edg_04_recent_volume_window_hours: {spec_id: EDG-04, value: 24, status: initial, source: '24-hour volume'}
+  edg_04_thin_total_volume_cc: {spec_id: EDG-04, value: 50000000, status: initial, source: 'under \$5,000 total volume'}
+  edg_04_ignore_book_spread_over_cc: {spec_id: EDG-04, value: 2000, status: initial, source: 'the app must ignore books with a spread over 20¢'}
+  edg_06_kelly_fraction: {spec_id: EDG-06, value: 0.25, status: initial, source: '\tfrac{1}{4} f^{\*}'}
+  edg_06_stake_cap_before_go_live: {spec_id: EDG-06, value: 0.01, status: initial, source: 'Cap = 1% for every market type'}
+  edg_06_stake_cap_after_go_live: {spec_id: EDG-06, value: 0.02, status: initial, source: 'after that, 2%'}
+  edg_06_go_live_min_live_positions: {spec_id: EDG-06, value: 300, status: initial, source: 'positive CLV over 300+ live positions'}
+  edg_06_min_stake: {spec_id: EDG-06, value: 0.0025, status: initial, source: 'Stakes under 0.25% are skipped'}
+  edg_06_combo_stake_cap: {spec_id: EDG-06, value: 0.005, status: initial, source: 'Combos: cap 0.5%'}
+  edg_07_max_stake_per_game: {spec_id: EDG-07, value: 0.06, status: initial, source: '≤ 6% of bankroll'}
+  edg_07_weekly_stop: {spec_id: EDG-07, value: -0.10, status: initial, source: 'reaches −10% of start-of-week bankroll'}
+
+backtest:
+  bt_01_decision_hours_before_kickoff: {spec_id: BT-01, value: 24, status: initial, source: 'default: 24 hours before kickoff'}
+  bt_01_second_pass_minutes_before_kickoff: {spec_id: BT-01, value: 90, status: initial, source: 'a second pass at 90 minutes before'}
+  bt_01_first_training_season: {spec_id: BT-01, value: 2016, status: initial, source: 'Walk-forward test seasons are 2021–2024, each fit only on seasons from 2016 through the year before; 2025 is a locked holdout'}
+  bt_01_first_test_season: {spec_id: BT-01, value: 2021, status: initial, source: 'Walk-forward test seasons are 2021–2024, each fit only on seasons from 2016 through the year before; 2025 is a locked holdout'}
+  bt_01_last_test_season: {spec_id: BT-01, value: 2024, status: initial, source: 'Walk-forward test seasons are 2021–2024, each fit only on seasons from 2016 through the year before; 2025 is a locked holdout'}
+  bt_01_holdout_season: {spec_id: BT-01, value: 2025, status: initial, source: 'Walk-forward test seasons are 2021–2024, each fit only on seasons from 2016 through the year before; 2025 is a locked holdout'}
+  bt_01_ftn_first_season: {spec_id: BT-01, value: 2022, status: initial, source: 'FTN charting starts in 2022'}
+  bt_05_min_calibration_slope: {spec_id: BT-05, value: 0.90, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
+  bt_05_max_calibration_slope: {spec_id: BT-05, value: 1.10, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
+  bt_05_min_calibration_forecasts: {spec_id: BT-05, value: 1000, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
+  bt_05_blend_max_p_value: {spec_id: BT-05, value: 0.05, status: initial, source: 'Blend weight b \> 0 with p \< 0.05'}
+  bt_05_min_simulated_clv_cc: {spec_id: BT-05, value: 150, status: initial, source: 'Simulated mean CLV ≥ +1.5¢ per position after fees over 500+ simulated positions, with the 95% confidence interval'}
+  bt_05_min_simulated_positions: {spec_id: BT-05, value: 500, status: initial, source: 'Simulated mean CLV ≥ +1.5¢ per position after fees over 500+ simulated positions, with the 95% confidence interval'}
+  bt_05_simulated_clv_confidence: {spec_id: BT-05, value: 0.95, status: initial, source: 'Simulated mean CLV ≥ +1.5¢ per position after fees over 500+ simulated positions, with the 95% confidence interval'}
+  bt_05_paper_weeks: {spec_id: BT-05, value: 4, status: initial, source: 'Four consecutive weeks of real-time paper recommendations'}
+  bt_05_min_paper_positions: {spec_id: BT-05, value: 100, status: initial, source: 'with mean CLV \> 0 over 100+ positions'}
+  bt_06_market_type_min_live_positions: {spec_id: BT-06, value: 300, status: initial, source: 'After 300 live positions in a market type'}
+  bt_06_overall_min_live_positions: {spec_id: BT-06, value: 1000, status: initial, source: 'After 1,000 live positions overall: if the 95% interval on mean CLV includes 0'}
+  bt_06_overall_confidence: {spec_id: BT-06, value: 0.95, status: initial, source: 'After 1,000 live positions overall: if the 95% interval on mean CLV includes 0'}
+  bt_07c_assumed_half_spread_cc: {spec_id: BT-07c, value: 100, status: initial, source: '(params: initial 1¢)'}
+  bt_07d_min_positions_per_cell: {spec_id: BT-07d, value: 50, status: initial, source: 'A cell with fewer than 50 positions'}
+  bt_07d_calibration_gap_max_abs_z: {spec_id: BT-07d, value: 2, status: initial, source: '\|z\| \> 2 means our probabilities were off'}
+  bt_07d_roi_bootstrap_confidence: {spec_id: BT-07d, value: 0.95, status: initial, source: '95% bootstrap interval resampled by game'}
+  bt_07e_start_units: {spec_id: BT-07e, value: 100, status: initial, source: 'Start at 100 units'}
+  bt_07e_max_share_of_hourly_volume: {spec_id: BT-07e, value: 0.25, status: initial, source: 'capped at 25% of contracts traded in the hour before decision time'}

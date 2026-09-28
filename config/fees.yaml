@@ -1,0 +1,22 @@
+# EDG-02 Kalshi fees, from the table in docs/MODEL_SPEC.md.
+# taker fee = ceil(M_t * taker_rate * C * P * (1 - P)); maker fee = ceil(M_m * maker_rate * C * P * (1 - P))
+# Phase 1's `ge ingest fees-check` compares schedule_effective_date with the live PDF.
+spec_id: EDG-02
+status: initial
+source_url: https://kalshi.com/docs/kalshi-fee-schedule.pdf  # MODEL_SPEC.md Sources section
+schedule_effective_date: 2026-07-07
+taker_rate: 0.07
+maker_rate: 0.0175
+# Decisions log 2026-09-27: round fees up to the cent until a real fill confirms the
+# PDF's centicent formula text. Allowed: up_to_cent | up_to_centicent.
+rounding: up_to_cent
+series:
+  # Props and any series not listed below.
+  default: {taker_multiplier: 1, maker_multiplier: 0, tickers: []}
+  KXNFLGAME: {taker_multiplier: 1, maker_multiplier: 1, tickers: [KXNFLGAME]}
+  # Combos, excluding uncorrelated NFL combos. The spec does not say which multipliers
+  # uncorrelated NFL combos use: open question for Phase 7.
+  KXMVE: {taker_multiplier: 1, maker_multiplier: 2, tickers: [KXMVE]}
+  # Division, conference, Super Bowl and awards series. Tickers are not in the spec;
+  # Phase 1 discovers them from the Kalshi public API.
+  futures_and_awards: {taker_multiplier: 1, maker_multiplier: 1, tickers: []}
