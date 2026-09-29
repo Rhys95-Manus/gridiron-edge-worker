@@ -146,6 +146,8 @@ Usage drives props far more than efficiency, so usage metrics get short half-liv
 | PLY-13 | Trend and role-change flag | L3 and L5 values of PLY-01/03/05/06 vs season. Flag a role change when \|L3 − season\| > 2 × √(p(1 − p) ÷ n), with p = season share and n = team opportunities in the last 3 games | derived | 3 games | none (it is a test) | Every prop; shortens h to 1.5 games when flagged |
 | PLY-14 | Injury and practice status, return-from-injury limit | Game status (Out / Doubtful / Questionable) and Wed–Fri practice (DNP / Limited / Full). First game back after missing 2+ games: projected snap share × return factor (**initial 0.85**, estimated in BT-02) | Injuries (DATA-04) | none | none | Every prop; PRJ-02 |
 | PLY-15 | Opportunity redistribution when a teammate is out | If the team has ≥ 2 games this season without player X under the same QB and play-caller: observed shares in those games, shrunk (k = 2 games) toward the default rule. Default rule: X's vacated share goes to remaining players in proportion to their current shares, with players at X's position weighted 2× | pbp, injuries | 2 games without X | k = 2 games toward default rule | All props on that team |
+| PLY-16 | Running back directional profile. Where this back runs and how well he does it, in the same 7 lanes as OFF-12. The cutback skill itself needs tracking data; PLY-11 is the closest free signal | Per back: share of his designed carries in each cell; success rate and EPA/carry in each cell | rusher\_player\_id, run\_location, run\_gap, success, epa | 15 carries per cell | k = 40 carries; prior = his team's shrunk OFF-12 value for that cell | Rushing yards, RB TD; MTC-01 uses his shares and values instead of the team's when he is the projected ball carrier |
+| PLY-17 | Quarterback vs the blitz. How much better or worse this QB is when the defense sends extra rushers | Blitz gap = EPA per dropback with n\_blitzers ≥ 1 minus EPA per dropback with n\_blitzers = 0; same for sack rate | FTN n\_blitzers; pbp epa, sack, passer\_player\_id | 60 blitzed dropbacks | k = 120 blitzed dropbacks; prior = league-average blitz gap | Passing props; MTC-03 applies his shrunk blitz gap in proportion to the opponent's blitz rate (DEF-05) |
 
 **What PLY-15 cannot do.** It cannot tell you how a backup who has never played will be used. When a vacated role goes to someone with under 50 career snaps, the app shows the projection but marks it "low confidence" and caps the stake at 0.5%.
 
@@ -193,6 +195,103 @@ Each missing starting lineman (OFF-17) multiplies odds\_off by an OL-absence fac
 **MTC-05 Context.** Roof `dome` or `closed`: weather ignored. Outdoors: sustained wind and precipitation enter as league-wide coefficients on pass EPA, completion rate and field-goal make rate, fit on 2016–2025 games with historical weather in BT-02. The spec does not assume a size for the 15 mph wind effect; it is measured. Rest, travel, time zone and divisional games use COA-07.
 
 **MTC-06 Matchup story (the only LLM step).** Code assembles a JSON of every metric value, its sample size and its adjustment. The LLM writes the story from that JSON only. A validator function then extracts every number from the text and rejects the story if any number is not in the JSON, or any sentence lacks a metric ID. A sample line: "Offense runs 38% of carries to the left end and tackle (OFF-12, n = 61); this defense allows +0.09 EPA/carry there vs league (DEF-03, n = 44) → run adjustment +0.02 EPA/carry after damping."
+
+## 6b. Skill-vs-skill matchup catalog
+
+Every player skill here is paired with the opposing defense's matching weakness or strength, and a learned model (MTC-07) measures from 2016–2024 data how much each pairing actually moves a player's output. **A skill matchup is allowed to change a projection only after it proves, on seasons the model never saw, that it predicts better than leaving it out.** That rule is what makes a large catalog safe: splitting the same plays into more slices makes every slice smaller and noisier, and without the proof step detail becomes confident nonsense.
+
+Four rules apply to every row below:
+
+1. **Same conventions.** Shrinkage (G1), recency (G3), garbage-time removal (G7) and the minimum-sample greying (G2) apply exactly as in sections 2–5. Player skills shrink toward the player's own overall value, which is itself shrunk toward his role prior.
+2. **Pairs, not singles.** A skill enters the matchup model only as a pair: the player's deviation from average times the opponent's deviation allowed in the same dimension, weighted by how often the player uses that dimension.
+3. **Proof or deletion.** BT-03 ablation tests each dimension. Any that doesn't improve out-of-sample accuracy gets weight zero and is removed from v1.
+4. **Stated limits.** FTN-based dimensions have training data only from 2022, so they train on fewer seasons and are penalized harder.
+
+**What free data cannot show.** Which cornerback covered which receiver, route types, coverage shell, and blocking assignments all need a paid charting feed (DATA-11). So v1 matches players against *team* defensive tendencies, not against individual defenders. The one exception is DEF-17, which uses individual defenders' production to size how much a team weakens when one of them is out.
+
+### Offensive player skills
+
+Depth bands everywhere are the OFF-13 bands: behind the line (`air_yards` < 0), short 0–9, intermediate 10–19, deep 20+. "Dev" means the shrunk value minus league average for that position.
+
+**Quarterback**
+
+| ID | Skill and plain meaning | Formula | Data fields | Min n | Shrink (k, prior) | Paired with | Feeds |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PLY-18 | Depth profile. Where he throws and how well at each depth | Share of attempts and EPA per attempt in each depth band; aDOT | `passer_player_id`, `air_yards`, `epa` | 30 attempts per band | k = 80 attempts; prior = his overall EPA per attempt | DEF-09 | Passing yards, passing TDs, receiving props |
+| PLY-19 | Play-action split. How much better he is off a run fake | EPA per dropback with play action minus without; his play-action rate | FTN `is_play_action`, `epa` | 40 play-action dropbacks | k = 100; prior = league play-action gap | DEF-10 | Passing yards |
+| PLY-20 | Accuracy and ball security | Completion over expected: mean(`complete_pass` − `cp`); catchable-ball rate; interception-worthy rate; throwaway rate | pbp `cp`; FTN `is_catchable_ball`, `is_interception_worthy`, `is_throw_away` | 100 attempts | k = 200; prior league QB | DEF-09 (completion over expected allowed) | Completions, interceptions, passing yards |
+| PLY-21 | Time to throw and sack avoidance. Does he get rid of it or hold it | NGS average time to throw; sacks ÷ dropbacks charged to him | NGS weekly; pbp `sack` | 100 dropbacks | k = 150; prior league QB | DEF-05 (pass rush) | Passing props, MTC-03 |
+| PLY-22 | Rushing threat | Scrambles ÷ dropbacks; designed runs per game; yards per rush | `qb_scramble`, `rusher_player_id`, `yards_gained` | 20 rushes | k = 40; prior = league QB of his rushing type | DEF-14 | QB rushing yards, QB anytime TD |
+| PLY-23 | Direction. Left, middle or right of the field | Share of attempts and EPA per attempt by `pass_location` | `pass_location`, `epa` | 40 attempts per side | k = 100; prior = his overall | DEF-09 (by location) | Receiving props by receiver location |
+
+**Running back** (in addition to PLY-16, the directional lane profile)
+
+| ID | Skill and plain meaning | Formula | Data fields | Min n | Shrink (k, prior) | Paired with | Feeds |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PLY-24 | Box-count splits. How he does against light vs stacked fronts | Success rate and yards per carry vs light (≤ 6 in box), standard (7) and stacked (≥ 8) boxes | FTN `n_defense_box` | 20 carries per band | k = 50; prior = his overall | DEF-12 | Rushing yards |
+| PLY-25 | Formation split. Shotgun vs under center | Success and yards per carry by `shotgun` | `shotgun` | 25 carries each | k = 60; prior = his overall | DEF-15 | Rushing yards |
+| PLY-26 | Explosiveness and stuff avoidance | Share of carries 10+ yards; share at ≤ 0 yards; rushing yards over expected (PLY-11) | `yards_gained`; NGS | 60 carries | k = 150 explosive, 100 stuff; prior league RB | DEF-06, DEF-03 | Rushing yards (the ladder's upper rungs) |
+| PLY-27 | Receiving role | Target share; share of team screen targets; yards after catch over expected | FTN `is_screen_pass`; pbp `xyac_mean_yardage` | 15 targets | k = 40; role prior | DEF-11 | RB receiving yards, receptions |
+
+**Receivers and tight ends**
+
+| ID | Skill and plain meaning | Formula | Data fields | Min n | Shrink (k, prior) | Paired with | Feeds |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PLY-28 | Depth profile | Share of his targets and EPA per target in each depth band; aDOT | `air_yards`, `epa` | 15 targets per band | k = 40; prior = his overall | DEF-09 | Receiving yards |
+| PLY-29 | Field location. `middle` share is a rough stand-in for slot usage, labelled as a proxy | Share of targets and EPA per target by `pass_location` | `pass_location` | 20 targets per side | k = 50; prior = his overall | DEF-09 (by location) | Receiving yards |
+| PLY-30 | Hands and ball skills | Drops ÷ catchable targets; catches ÷ contested targets; created-reception rate | FTN `is_drop`, `is_catchable_ball`, `is_contested_ball`, `is_created_reception` | 20 catchable, 10 contested | k = 60 catchable, 30 contested; prior league at position | Context; enters MTC-07 only through PLY-10 | Receptions |
+| PLY-31 | Separation and yards after catch | NGS average separation and cushion; YAC over expected (PLY-09) | NGS weekly; pbp | 30 targets | k = 80; prior league at position | DEF-11 | Receiving yards |
+| PLY-32 | End-zone targets | Targets where `air_yards` ≥ `yardline_100`, as a share of team end-zone targets | `air_yards`, `yardline_100` | 5 team end-zone targets | k = 15; prior = his PLY-06 red-zone share | DEF-16 | Anytime, first and 2+ TD |
+| PLY-33 | Play-action and motion usage | His share of team targets on play-action and on motion plays | FTN `is_play_action`, `is_motion` | 15 targets each | k = 40; prior = his overall target share | DEF-10 | Receiving yards |
+
+**All positions**
+
+| ID | Skill and plain meaning | Formula | Data fields | Min n | Shrink (k, prior) | Paired with | Feeds |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PLY-34 | Athletic profile. Size and speed, as percentiles within his position | Height, weight, 40-yard dash, vertical, broad jump, 3-cone, shuttle | nflverse combine data | none | none | Not paired; a prior only | Role priors for rookies and low-sample players (PLY-15) |
+
+### Defensive counterparts
+
+Same conventions as section 3: team-level, computed on plays against, directions in the offense's frame.
+
+| ID | Tendency and plain meaning | Formula | Data fields | Min n | Shrink (k, prior) | Paired with |
+| --- | --- | --- | --- | --- | --- | --- |
+| DEF-09 | Pass map allowed. Where this defense gets beaten, by field location and depth | EPA per target and completion over expected allowed in OFF-13's 12 location × depth cells | `pass_location`, `air_yards`, `epa`, `cp` | 20 targets per cell | k = 60; prior = the defense's shrunk pass value | PLY-18, 20, 23, 28, 29 |
+| DEF-10 | Play-action defense. Do run fakes fool them | EPA per dropback allowed with play action minus without | FTN `is_play_action` | 40 play-action dropbacks | k = 100; prior = league gap | PLY-19, PLY-33 |
+| DEF-11 | Tackling after the catch | mean(`yards_after_catch` − `xyac_mean_yardage`) allowed per reception | pbp | 60 receptions | k = 150; prior 0 | PLY-27, PLY-31 |
+| DEF-12 | Box tendency and box-split run defense | Share of snaps with ≥ 8 in the box; success and yards per carry allowed by box band | FTN `n_defense_box` | 20 carries per band | k = 50; prior = its overall run defense | PLY-24 |
+| DEF-13 | Blitz results. Does blitzing help or hurt this defense | EPA per dropback allowed when blitzing minus when not | FTN `n_blitzers` | 60 blitzed dropbacks | k = 120; prior = league gap | PLY-17 |
+| DEF-14 | Quarterback runs allowed | Scrambles and QB rushing yards allowed per opponent dropback | `qb_scramble`, `rusher_player_id` joined to roster position | 150 dropbacks | k = 300; prior league | PLY-22 |
+| DEF-15 | Formation run defense | Success and yards per carry allowed on shotgun vs under-center runs | `shotgun` | 25 carries each | k = 60; prior = its overall run defense | PLY-25 |
+| DEF-16 | End-zone pass defense | TDs allowed ÷ end-zone targets faced | `air_yards`, `yardline_100`, `touchdown` | 10 end-zone targets | k = 30; prior league | PLY-32 |
+| DEF-17 | Defender contribution shares. How much of the defense's pass rush and playmaking each defender supplies | Each defender's share of team sacks, QB hits, passes defensed, interceptions and tackles for loss | pbp `sack_player_id`, `qb_hit_1_player_id`, `pass_defense_1_player_id`, `interception_player_id`, `tackle_for_loss_1_player_id` | 200 team defensive snaps | k = 20 events per share; prior = snap share | Sizes DEF-08: when a defender with share s is out, the team's pass-rush rate moves by s × (his rate − replacement rate), replacement = league backups at his position (BT-02) |
+
+### Environment interactions
+
+League-wide coefficients fit on 2016–2024 games, each reported with its standard error and each tested in BT-03 like any skill pair. No sizes are assumed; they are measured.
+
+| ID | Factor | Formula | Data | Tested effect on |
+| --- | --- | --- | --- | --- |
+| ENV-01 | Field surface, grass vs artificial turf | Surface indicator, plus an interaction with the offense's explosive-play rate (a speed proxy) | Schedules `surface` | Explosive-play rates, pace, rushing and receiving yards |
+| ENV-02 | Altitude | Stadium elevation, added to the DATA-13 stadium pull (Wikidata elevation above sea level) | Wikidata | Field-goal make rate by distance; visiting-team fourth-quarter efficiency |
+| ENV-03 | Temperature | Continuous game-time temperature, plus an interaction for a dome-home team playing outdoors | NWS forecast; schedules `temp` history | Pass EPA, completion rate, field goals |
+| ENV-04 | Wind, gusts and precipitation | As MTC-05, with gusts added | NWS forecast; schedules `wind` history | Pass EPA, deep-attempt rate, field goals, total points |
+
+### MTC-07 Learned matchup model
+
+Instead of fixed guesses for how much each matchup matters, a regression learns the weights from ten seasons of player-games. For player i in game g and stat family s (rushing yards, receiving yards, receptions, passing yards, passing TDs, touchdowns scored), the target is how far the actual result landed from the no-matchup baseline, and each feature is one skill pair:
+
+```latex
+y = \ln\frac{\text{actual} + 1}{\text{baseline} + 1}, \qquad x_d = u_{i,d}\,\big(p_{i,d} + o_{g,d}\big)
+```
+
+The baseline is the PRJ-02 projection with the matchup layer switched off. u is how often the player uses dimension d (for example his share of carries into a given lane), p is his shrunk deviation in that dimension, and o is the opponent's shrunk deviation allowed; as in MTC-01, the part already counted by overall ratings is subtracted out.
+
+1. **Model:** ridge regression per stat family on standardized features, penalty chosen by walk-forward cross-validation (fit on seasons before S only). FTN-based features train on 2022 onward.
+2. **Output:** a multiplier on the player's projected mean, m = e^ŷ, capped at 0.85–1.15. Once fitted, it replaces the fixed λ damping in MTC-01 to MTC-03; until then the λ = 0.5 rules stand.
+3. **Challenger:** a gradient-boosted tree model may replace ridge only if it beats ridge on every walk-forward test season, scored by log loss on ladder probabilities and CRPS (continuous ranked probability score: how close the whole predicted distribution was to what happened).
+4. **Explainability:** every matchup story (MTC-06) lists the three skill pairs that moved each player most, with the learned weight, its standard error and the sample sizes behind both sides.
+5. **Deletion:** any dimension whose weight isn't significantly different from zero on held-out seasons is dropped, and the decisions log records which survived.
 
 ## 7. Projection and pricing models
 
@@ -244,12 +343,12 @@ A position is recommended only when our probability beats the **all-in cost** (p
 
 | Series (NFL) | Taker M | Maker M | Meaning |
 | --- | --- | --- | --- |
-| Default (props and any series not listed) | 1 | 0 | Resting limit orders pay no fee |
+| Default (props and any series not listed) | 1 | 0 | Resting orders pay no fee, unless Kalshi's API reports maker fees for the series; Phase 1 found KXNFLSPREAD, KXNFLTOTAL, KXNFLANYTD, KXNFLFIRSTTD and KXNFL2TD do |
 | KXNFLGAME (game winner) | 1 | 1 | Resting orders pay the maker fee when filled |
-| KXMVE (combos, excluding uncorrelated NFL combos) | 1 | 2 | Makers pay double the maker rate |
+| Combos (NFL combos are the KXMVENFL\* series) | 1 | 2 | Makers pay double the maker rate |
 | Division, conference, Super Bowl, awards series | 1 | 1 | Maker fee applies |
 
-The app stores multipliers per series ticker and re-reads the schedule weekly. There is no settlement fee, but exiting a position before settlement is a second trade with a second fee. At 50¢ the taker fee is 1.75¢ per contract, so a taker round trip costs 3.5¢ before the spread.
+The app stores multipliers per series ticker and checks them weekly against the fee fields Kalshi's API reports for each series (fee\_type, fee\_multiplier); the PDF sits behind a bot check, so you re-download it by hand whenever those fields change. Phase 1 found that NFL combos are the series KXMVENFLSINGLEGAME, KXMVENFLMULTIGAME and KXMVENFLMULTIGAMEEXTENDED, which the API lists with fee\_type quadratic; whether the doubled maker rate applies to them is settled in Phase 7 from the API fields and a real fill. There is no settlement fee, but exiting a position before settlement is a second trade with a second fee. At 50¢ the taker fee is 1.75¢ per contract, so a taker round trip costs 3.5¢ before the spread.
 
 **EDG-03 Edge after fees.** For a YES buy at price P with fee f per contract, cost c = P + f. Edge = p\_model − c. ROI = (p\_model − c) ÷ c.
 
@@ -424,6 +523,13 @@ Backtesting follows BT-07 with its own tiers: college game lines are **Full** on
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-09-29 | Added section 6b: 17 player skills (PLY-18 to PLY-34), 9 defensive counterparts (DEF-09 to DEF-17), 4 environment factors (ENV-01 to ENV-04) and a learned matchup model (MTC-07) that fits each skill pair's weight from 2016–2024 data | Maximum matchup detail the free data supports, with every dimension required to prove out-of-sample value in BT-03 or be deleted |
+| 2026-09-29 | Kalshi's API fee fields are the fee source of truth; where they and the PDF disagree, the model uses whichever costs more and flags it | The API reports maker fees on spreads, totals and TD props that the PDF doesn't list; understating cost is the dangerous error |
+| 2026-09-29 | Added PLY-16 (running back directional profile) and PLY-17 (quarterback vs the blitz) | Brings the directional and pressure matchups down to the individual player, using free data with enough sample |
+| 2026-09-29 | Quarterback handedness is not modeled | Not in free data, and a defense faces only a few left-handed starters a year, far too few to measure |
+| 2026-09-29 | Weekly fee monitoring compares fees.yaml against Kalshi's API series fee fields; the fee PDF is saved by hand | kalshi.com serves the PDF behind a bot check, which we never bypass |
+| 2026-09-29 | nflverse injury data has no report-date column; live runs use our own pulled\_at, and backtests assume a week's reports are known by the day before kickoff (to be confirmed in Phase 2) | Found in Phase 1; point-in-time rules need a stated assumption for past seasons |
+| 2026-09-29 | Kalshi candles pulled at 60-minute periods; NWS weather kept in native units (°C, km/h, mm) | Matches BT-07e's one-hour liquidity window; unit conversion happens explicitly in the metrics layer, never silently at ingest |
 | 2026-09-28 | config/stadiums.yaml is generated by code: roof from nflverse schedules, coordinates from Wikidata (new DATA-13), time zone computed from coordinates | Sourced and reproducible without hand entry; the rule against filling values from memory still holds |
 | 2026-09-27 | BT-07: replay 2021–2025 walk-forward through production code; 2025 is a locked holdout opened once, only for a frozen model tag | Keeps one untouched season to confirm the model; replaces BT-01's original 2016–2021 / 2022–2025 split |
 | 2026-09-27 | Full-tier game-line history is priced at the closing line, with CLV reported as n/a | nflverse carries closing lines only, so decision-time prices don't exist for those seasons |

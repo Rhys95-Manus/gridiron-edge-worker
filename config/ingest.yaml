@@ -1,0 +1,32 @@
+# Operational settings for `ge ingest` (Phase 1). These are not model constants, so they are
+# not in MODEL_SPEC.md. Each entry says where its value comes from: a provider's documentation,
+# BUILD_PLAN.md, or a value the user approved. Loaded strictly by ge.config.load_ingest.
+
+http:
+  timeout_seconds: {spec_id: [DATA-06, DATA-08, DATA-13], value: 30, status: initial, source: 'approved by user 2026-09-29'}
+  max_attempts: {spec_id: [DATA-06, DATA-08, DATA-13], value: 5, status: initial, source: 'approved by user 2026-09-29'}
+  backoff_initial_seconds: {spec_id: [DATA-06, DATA-08, DATA-13], value: 1, status: initial, source: 'approved by user 2026-09-29'}
+  backoff_max_seconds: {spec_id: [DATA-06, DATA-08, DATA-13], value: 60, status: initial, source: 'approved by user 2026-09-29; Retry-After is always honoured, per Wikidata:Data_access'}
+
+nflverse:
+  first_season: {spec_id: [DATA-01, DATA-04, DATA-05], value: 2016, status: initial, source: 'BUILD_PLAN Phase 1: "for 2016 to the current season"'}
+  ftn_first_season: {spec_id: DATA-02, value: 2022, status: initial, source: 'MODEL_SPEC DATA-02: "2022 onward"'}
+
+kalshi:
+  base_url: {spec_id: DATA-08, value: 'https://external-api.kalshi.com/trade-api/v2', status: initial, source: 'https://docs.kalshi.com/getting_started/quick_start_market_data'}
+  markets_page_limit: {spec_id: DATA-08, value: 1000, status: initial, source: 'https://docs.kalshi.com/api-reference/market/get-markets.md: limit "max 1000"'}
+  events_page_limit: {spec_id: DATA-08, value: 200, status: initial, source: 'https://docs.kalshi.com/api-reference/events/get-events.md: limit "1-200"'}
+  trades_page_limit: {spec_id: DATA-08, value: 1000, status: initial, source: 'https://docs.kalshi.com/api-reference/market/get-trades.md: limit "1-1000"'}
+  candle_period_minutes: {spec_id: DATA-08, value: 60, status: initial, source: 'docs allow 1, 60, 1440; 60 for BT-07e "contracts traded in the hour before decision time"; approved by user 2026-09-29'}
+
+nws:
+  base_url: {spec_id: DATA-06, value: 'https://api.weather.gov', status: initial, source: 'https://www.weather.gov/documentation/services-web-api: "The API is located at: https://api.weather.gov"'}
+  forecast_window_days: {spec_id: DATA-06, value: 7, status: initial, source: 'BUILD_PLAN Phase 1: "for each outdoor game within 7 days of kickoff"'}
+
+wikidata:
+  api_url: {spec_id: DATA-13, value: 'https://www.wikidata.org/w/api.php', status: initial, source: 'Wikidata:Data_access documents https://wikidata.org/w/api.php, which 301-redirects to this URL (seen 2026-09-29)'}
+  search_limit: {spec_id: DATA-13, value: 50, status: initial, source: 'https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities: limit "Maximum: 50" (documented maximum, as approved for Kalshi page size)'}
+  entities_batch_size: {spec_id: DATA-13, value: 50, status: initial, source: 'https://www.wikidata.org/w/api.php?action=help&modules=wbgetentities: ids "Maximum number of values is 50"'}
+  coordinate_property: {spec_id: DATA-13, value: 'P625', status: initial, source: 'confirmed by wbsearchentities type=property "coordinate location" (tests/phase1/fixtures/wikidata_coordinate_property.json)'}
+  elevation_property: {spec_id: ENV-02, value: 'P2044', status: initial, source: 'ENV-02 "Wikidata elevation above sea level"; ID confirmed by wbsearchentities type=property (tests/phase1/fixtures/wikidata_elevation_property.json)'}
+  item_url_prefix: {spec_id: DATA-13, value: 'https://www.wikidata.org/wiki/', status: initial, source: 'DATA-13: "each row keeps its Wikidata item URL as source_url"; host from the redirect above'}

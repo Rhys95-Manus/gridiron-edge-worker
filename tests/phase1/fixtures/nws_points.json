@@ -1,0 +1,116 @@
+{
+ "source": "https://api.weather.gov/points/40.4467,-80.0158",
+ "pulled_at": "2026-09-29T18:46:39+00:00",
+ "response": {
+  "@context": [
+   "https://geojson.org/geojson-ld/geojson-context.jsonld",
+   {
+    "@version": "1.1",
+    "wx": "https://api.weather.gov/ontology#",
+    "s": "https://schema.org/",
+    "geo": "http://www.opengis.net/ont/geosparql#",
+    "unit": "http://codes.wmo.int/common/unit/",
+    "@vocab": "https://api.weather.gov/ontology#",
+    "geometry": {
+     "@id": "s:GeoCoordinates",
+     "@type": "geo:wktLiteral"
+    },
+    "city": "s:addressLocality",
+    "state": "s:addressRegion",
+    "distance": {
+     "@id": "s:Distance",
+     "@type": "s:QuantitativeValue"
+    },
+    "bearing": {
+     "@type": "s:QuantitativeValue"
+    },
+    "value": {
+     "@id": "s:value"
+    },
+    "unitCode": {
+     "@id": "s:unitCode",
+     "@type": "@id"
+    },
+    "forecastOffice": {
+     "@type": "@id"
+    },
+    "forecastGridData": {
+     "@type": "@id"
+    },
+    "publicZone": {
+     "@type": "@id"
+    },
+    "county": {
+     "@type": "@id"
+    }
+   }
+  ],
+  "id": "https://api.weather.gov/points/40.4467,-80.0158",
+  "type": "Feature",
+  "geometry": {
+   "type": "Point",
+   "coordinates": [
+    -80.0158,
+    40.4467
+   ]
+  },
+  "properties": {
+   "@id": "https://api.weather.gov/points/40.4467,-80.0158",
+   "@type": "wx:Point",
+   "cwa": "PBZ",
+   "type": "land",
+   "forecastOffice": "https://api.weather.gov/offices/PBZ",
+   "gridId": "PBZ",
+   "gridX": 77,
+   "gridY": 66,
+   "forecast": "https://api.weather.gov/gridpoints/PBZ/77,66/forecast",
+   "forecastHourly": "https://api.weather.gov/gridpoints/PBZ/77,66/forecast/hourly",
+   "forecastGridData": "https://api.weather.gov/gridpoints/PBZ/77,66",
+   "observationStations": "https://api.weather.gov/gridpoints/PBZ/77,66/stations",
+   "relativeLocation": {
+    "type": "Feature",
+    "geometry": {
+     "type": "Point",
+     "coordinates": [
+      -79.9756758,
+      40.4399359
+     ]
+    },
+    "properties": {
+     "city": "Pittsburgh",
+     "state": "PA",
+     "distance": {
+      "unitCode": "wmoUnit:m",
+      "value": 0
+     },
+     "bearing": {
+      "unitCode": "wmoUnit:degree_(angle)",
+      "value": 0
+     }
+    }
+   },
+   "forecastZone": "https://api.weather.gov/zones/forecast/PAZ021",
+   "county": "https://api.weather.gov/zones/county/PAC003",
+   "fireWeatherZone": "https://api.weather.gov/zones/fire/PAZ021",
+   "timeZone": "America/New_York",
+   "radarStation": "KPBZ",
+   "astronomicalData": {
+    "sunrise": "2026-09-29T07:14:44-04:00",
+    "sunset": "2026-09-29T19:05:50-04:00",
+    "transit": "2026-09-29T13:10:17-04:00",
+    "civilTwilightBegin": "2026-09-29T06:47:40-04:00",
+    "civilTwilightEnd": "2026-09-29T19:32:55-04:00",
+    "nauticalTwilightBegin": "2026-09-29T06:16:01-04:00",
+    "nauticalTwilightEnd": "2026-09-29T20:04:33-04:00",
+    "astronomicalTwilightBegin": "2026-09-29T05:44:02-04:00",
+    "astronomicalTwilightEnd": "2026-09-29T20:36:33-04:00"
+   },
+   "nwr": {
+    "transmitter": "KIH35",
+    "sameCode": "042003",
+    "areaBroadcast": "https://api.weather.gov/radio/KIH35/broadcast",
+    "pointBroadcast": "https://api.weather.gov/points/40.4467,-80.0158/radio"
+   }
+  }
+ }
+}

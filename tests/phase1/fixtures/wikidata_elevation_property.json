@@ -1,0 +1,38 @@
+{
+ "source": "https://www.wikidata.org/w/api.php?type=property",
+ "pulled_at": "2026-09-29T21:10:18+00:00",
+ "response": {
+  "searchinfo": {
+   "search": "elevation above sea level"
+  },
+  "search": [
+   {
+    "id": "P2044",
+    "title": "Property:P2044",
+    "pageid": 23014228,
+    "concepturi": "http://www.wikidata.org/entity/P2044",
+    "datatype": "quantity",
+    "repository": "wikidata",
+    "url": "//www.wikidata.org/wiki/Property:P2044",
+    "display": {
+     "label": {
+      "value": "elevation above sea level",
+      "language": "en"
+     },
+     "description": {
+      "value": "height of the item (geographical object) as measured relative to sea level",
+      "language": "en"
+     }
+    },
+    "label": "elevation above sea level",
+    "description": "height of the item (geographical object) as measured relative to sea level",
+    "match": {
+     "type": "label",
+     "language": "en",
+     "text": "elevation above sea level"
+    }
+   }
+  ],
+  "success": 1
+ }
+}

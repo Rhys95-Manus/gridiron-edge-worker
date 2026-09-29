@@ -1,0 +1,112 @@
+{
+ "source": "https://www.wikidata.org/w/api.php?action=wbsearchentities",
+ "pulled_at": "2026-09-29T18:46:37+00:00",
+ "response": {
+  "AT&T Stadium": {
+   "searchinfo": {
+    "search": "AT&T Stadium"
+   },
+   "search": [
+    {
+     "id": "Q838284",
+     "title": "Q838284",
+     "pageid": 790644,
+     "concepturi": "http://www.wikidata.org/entity/Q838284",
+     "repository": "wikidata",
+     "url": "//www.wikidata.org/wiki/Q838284",
+     "display": {
+      "label": {
+       "value": "AT&T Stadium",
+       "language": "en"
+      },
+      "description": {
+       "value": "stadium in Arlington, Texas, U.S.",
+       "language": "en"
+      }
+     },
+     "label": "AT&T Stadium",
+     "description": "stadium in Arlington, Texas, U.S.",
+     "match": {
+      "type": "label",
+      "language": "en",
+      "text": "AT&T Stadium"
+     }
+    }
+   ],
+   "success": 1
+  },
+  "Acrisure Stadium": {
+   "searchinfo": {
+    "search": "Acrisure Stadium"
+   },
+   "search": [
+    {
+     "id": "Q1067148",
+     "title": "Q1067148",
+     "pageid": 1015741,
+     "concepturi": "http://www.wikidata.org/entity/Q1067148",
+     "repository": "wikidata",
+     "url": "//www.wikidata.org/wiki/Q1067148",
+     "display": {
+      "label": {
+       "value": "Acrisure Stadium",
+       "language": "en"
+      },
+      "description": {
+       "value": "American football stadium that is home to the Pittsburgh Steelers and Pittsburgh Panthers",
+       "language": "en"
+      }
+     },
+     "label": "Acrisure Stadium",
+     "description": "American football stadium that is home to the Pittsburgh Steelers and Pittsburgh Panthers",
+     "match": {
+      "type": "label",
+      "language": "en",
+      "text": "Acrisure Stadium"
+     }
+    }
+   ],
+   "success": 1
+  },
+  "Allegiant Stadium": {
+   "searchinfo": {
+    "search": "Allegiant Stadium"
+   },
+   "search": [
+    {
+     "id": "Q27768421",
+     "title": "Q27768421",
+     "pageid": 29484386,
+     "concepturi": "http://www.wikidata.org/entity/Q27768421",
+     "repository": "wikidata",
+     "url": "//www.wikidata.org/wiki/Q27768421",
+     "display": {
+      "label": {
+       "value": "Allegiant Stadium",
+       "language": "en"
+      },
+      "description": {
+       "value": "domed football stadium in Paradise, Nevada, USA",
+       "language": "en"
+      }
+     },
+     "label": "Allegiant Stadium",
+     "description": "domed football stadium in Paradise, Nevada, USA",
+     "match": {
+      "type": "label",
+      "language": "en",
+      "text": "Allegiant Stadium"
+     }
+    }
+   ],
+   "success": 1
+  },
+  "Zzqx Nonexistent Stadium Name": {
+   "searchinfo": {
+    "search": "Zzqx Nonexistent Stadium Name"
+   },
+   "search": [],
+   "success": 1
+  }
+ }
+}

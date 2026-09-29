@@ -24,10 +24,107 @@ def _not_built(job: str, phase: str) -> None:
     raise NotImplementedError(f"ge {job}: not built yet ({phase} in docs/BUILD_PLAN.md)")
 
 
-@app.command()
-def ingest(season: Season = None, week: Week = None, as_of: AsOf = None) -> None:
-    """Pull nflverse, NWS and Kalshi public data (DATA-01 to DATA-09)."""
-    _not_built("ingest", "Phase 1")
+ingest = typer.Typer(
+    help="Pull nflverse, NWS, Kalshi and Wikidata public data (DATA-01 to DATA-09, DATA-13).",
+    no_args_is_help=True,
+)
+app.add_typer(ingest, name="ingest")
+
+
+def _seasons(spec: str | None) -> list[int]:
+    from ge.config import load_ingest
+    from ge.ingest.nflverse import current_season
+
+    if not spec:
+        return list(range(load_ingest().nflverse.first_season.value, current_season() + 1))
+    if "-" in spec:
+        a, b = spec.split("-", 1)
+        return list(range(int(a), int(b) + 1))
+    return [int(x) for x in spec.split(",")]
+
+
+def _user_agent() -> str:
+    from ge.settings import Settings
+
+    return Settings().nws_user_agent.get_secret_value()
+
+
+@ingest.command("nflverse")
+def ingest_nflverse_cmd(
+    seasons: Annotated[str | None, typer.Option(help="e.g. 2016-2026 or 2024,2025")] = None,
+    datasets: Annotated[str | None, typer.Option(help="comma-separated; default all")] = None,
+) -> None:
+    """DATA-01 to DATA-05: nflverse datasets into data/raw (idempotent)."""
+    from ge.ingest.nflverse import ingest_nflverse
+
+    results = ingest_nflverse(_seasons(seasons), datasets.split(",") if datasets else None)
+    for r in results:
+        print(f"{r.dataset:<18} {r.season}  {r.status:<13} {r.rows:>9}  {r.detail}")
+    errors = [r for r in results if r.status == "error"]
+    print(
+        f"\n{len(results)} pulls: "
+        + ", ".join(
+            f"{s} {sum(r.status == s for r in results)}"
+            for s in ("written", "unchanged", "not_published", "error")
+        )
+    )
+    print("Data: nflverse; charting: FTN Data via nflverse")
+    raise typer.Exit(1 if errors else 0)
+
+
+@ingest.command("stadiums")
+def ingest_stadiums_cmd() -> None:
+    """DATA-13: generate config/stadiums.yaml from schedules + Wikidata and print it."""
+    from ge.config import load_ingest
+    from ge.ingest.jobs import run_stadiums
+
+    raise typer.Exit(run_stadiums(load_ingest(), _user_agent()))
+
+
+@ingest.command("weather")
+def ingest_weather_cmd(
+    days: Annotated[int | None, typer.Option(help="default: nws.forecast_window_days")] = None,
+) -> None:
+    """DATA-06: NWS hourly forecast for outdoor games in the next N days."""
+    from ge.config import load_ingest
+    from ge.ingest.jobs import run_weather
+
+    cfg = load_ingest()
+    raise typer.Exit(run_weather(cfg, _user_agent(), days or cfg.nws.forecast_window_days.value))
+
+
+@ingest.command("kalshi")
+def ingest_kalshi_cmd(
+    season: Annotated[int, typer.Option(help="Season year")],
+    week: Annotated[int, typer.Option(help="Week number")],
+    history: Annotated[bool, typer.Option(help="also pull trades and hourly candles")] = False,
+) -> None:
+    """DATA-08: discover NFL series, then pull the week's markets, rules and order books."""
+    from ge.config import load_ingest
+    from ge.ingest.jobs import run_kalshi
+
+    raise typer.Exit(run_kalshi(load_ingest(), season, week, history))
+
+
+@ingest.command("fees-check")
+def ingest_fees_check_cmd(
+    pdf: Annotated[str | None, typer.Option(help="path to a saved fee schedule PDF")] = None,
+) -> None:
+    """EDG-02: alert if Kalshi's API fees for included series differ from fees.yaml, or
+    (with --pdf) if the fee PDF's effective date differs."""
+    from ge.config import load_ingest
+    from ge.ingest.jobs import run_fees_check
+
+    raise typer.Exit(run_fees_check(load_ingest(), pdf))
+
+
+@ingest.command("report")
+def ingest_report_cmd() -> None:
+    """Weather-history coverage, latest injury report week and FTN join rates."""
+    from ge.config import load_ingest
+    from ge.ingest.jobs import run_report
+
+    raise typer.Exit(run_report(load_ingest()))
 
 
 @app.command()

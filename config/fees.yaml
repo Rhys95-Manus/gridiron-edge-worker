@@ -10,13 +10,35 @@ maker_rate: 0.0175
 # Decisions log 2026-09-27: round fees up to the cent until a real fill confirms the
 # PDF's centicent formula text. Allowed: up_to_cent | up_to_centicent.
 rounding: up_to_cent
+# How Kalshi's API fee_type maps to the maker multiplier above, per
+# https://docs.kalshi.com/api-reference/market/get-series.md: quadratic = the General Trading
+# Fees Table (no maker fee); quadratic_with_maker_fees = maker fees apply (0.0175 = 0.25 x 0.07);
+# quadratic_with_combo_maker_fees = "a 0.5 maker multiplier instead of 0.25". fee_multiplier is
+# the taker multiplier. `flat` uses a different table and always alerts.
+api_fee_types:
+  quadratic: {maker_multiplier: 0}
+  quadratic_with_maker_fees: {maker_multiplier: 1}
+  quadratic_with_combo_maker_fees: {maker_multiplier: 2}
+# Where these rows and Kalshi's API fee fields disagree, the costlier value is used and
+# `ge ingest fees-check` alerts (EDG-02 and decisions log, 2026-09-29).
 series:
-  # Props and any series not listed below.
+  # Props and any series not listed below. Kalshi's API reports maker fees for KXNFLSPREAD,
+  # KXNFLTOTAL, KXNFLANYTD, KXNFLFIRSTTD and KXNFL2TD; the API's costlier value applies.
   default: {taker_multiplier: 1, maker_multiplier: 0, tickers: []}
-  KXNFLGAME: {taker_multiplier: 1, maker_multiplier: 1, tickers: [KXNFLGAME]}
-  # Combos, excluding uncorrelated NFL combos. The spec does not say which multipliers
-  # uncorrelated NFL combos use: open question for Phase 7.
-  KXMVE: {taker_multiplier: 1, maker_multiplier: 2, tickers: [KXMVE]}
-  # Division, conference, Super Bowl and awards series. Tickers are not in the spec;
-  # Phase 1 discovers them from the Kalshi public API.
-  futures_and_awards: {taker_multiplier: 1, maker_multiplier: 1, tickers: []}
+  # Game winner plus its sub-series (user approval 2026-09-29).
+  KXNFLGAME:
+    taker_multiplier: 1
+    maker_multiplier: 1
+    tickers: [KXNFLGAME, KXNFLGAMEFG, KXNFLGAMELOCATION, KXNFLGAMESACK, KXNFLGAMESPECIALS, KXNFLGAMETD, KXNFLGAMETO]
+  # Combos, excluding uncorrelated NFL combos; the NFL combo series (user approval
+  # 2026-09-29). EDG-02: whether the doubled maker rate applies is settled in Phase 7.
+  KXMVE:
+    taker_multiplier: 1
+    maker_multiplier: 2
+    tickers: [KXMVE, KXMVENFLSINGLEGAME, KXMVENFLMULTIGAME, KXMVENFLMULTIGAMEEXTENDED]
+  # Division, conference, Super Bowl and awards series: the fee schedule PDF's NFL tickers
+  # except KXNFLGAME, which has its own row (user approval 2026-09-29).
+  futures_and_awards:
+    taker_multiplier: 1
+    maker_multiplier: 1
+    tickers: [KXNFLAFCCHAMP, KXNFLAFCEAST, KXNFLAFCNORTH, KXNFLAFCSOUTH, KXNFLAFCWEST, KXNFLNFCCHAMP, KXNFLNFCEAST, KXNFLNFCNORTH, KXNFLNFCSOUTH, KXNFLNFCWEST, KXNFLMVP, KXNFLOPOTY, KXNFLDPOTY, KXNFLOROTY, KXNFLDROTY, KXNFLCOTY, KXNFLCPOTY, KXSB]

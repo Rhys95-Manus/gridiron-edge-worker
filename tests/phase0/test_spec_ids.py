@@ -109,8 +109,11 @@ def test_fees_match_edg02_table() -> None:
     for key, (label, taker, maker) in zip(keys, rows, strict=True):
         series = fees["series"][key]
         assert (series["taker_multiplier"], series["maker_multiplier"]) == (taker, maker), label
-    assert fees["series"]["KXNFLGAME"]["tickers"] == ["KXNFLGAME"]
-    assert fees["series"]["KXMVE"]["tickers"] == ["KXMVE"]
+    # Rows hold their series and its sub-series (approved by the user 2026-09-29).
+    for row in ("KXNFLGAME", "KXMVE"):
+        tickers = fees["series"][row]["tickers"]
+        assert row in tickers, row
+        assert all(t.startswith(row) for t in tickers), (row, tickers)
 
 
 def test_fee_rates_match_edg02_formula() -> None:

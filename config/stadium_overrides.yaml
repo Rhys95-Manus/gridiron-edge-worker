@@ -1,0 +1,19 @@
+# DATA-13 stadium overrides: Wikidata items chosen by hand for venues with no single exact
+# match. Proposed by Claude Code, every entry approved by the user on 2026-09-29.
+# Only the item is chosen here; coordinates and elevation are always read from Wikidata.
+overrides:
+  - {stadium_id: BUF00, name: Highmark Stadium, qid: Q16251517, approved_by: user, approved_on: '2026-09-29', reason: 'new stadium in Orchard Park, NY (2026-only name); Q1475645 is the old Ralph Wilson Stadium, Q5759571 a Pittsburgh soccer stadium'}
+  - {stadium_id: CHI98, name: Soldier Field, qid: Q1132413, approved_by: user, approved_on: '2026-09-29', reason: 'football stadium in Chicago, home team CHI; Q86750507 is a baseball park in Dover, Delaware'}
+  - {stadium_id: CLE00, name: FirstEnergy Stadium, qid: Q1100756, approved_by: user, approved_on: '2026-09-29', reason: 'home venue of the Cleveland Browns, same item as the 2026 name; others are in Akron and Pennsylvania'}
+  - {stadium_id: DEN00, name: Empower Field at Mile High, qid: Q1046135, approved_by: user, approved_on: '2026-09-29', reason: 'home venue of the Denver Broncos; Q7579687 is a light-rail station'}
+  - {stadium_id: LAX97, name: StubHub Center, qid: Q200684, approved_by: user, approved_on: '2026-09-29', reason: 'sports complex in Carson, CA, home team LAC; Q7740065 is its tennis centre'}
+  - {stadium_id: LON00, name: Wembley Stadium, qid: Q128468, approved_by: user, approved_on: '2026-09-29', reason: 'current stadium in London; Q43279 is the former Wembley'}
+  - {stadium_id: MAD01, name: Bernabeu, qid: Q164027, approved_by: user, approved_on: '2026-09-29', reason: 'stadium in Madrid (MAD code); other hits are family names and a person'}
+  - {stadium_id: MEX00, name: Azteca Stadium, qid: Q320454, approved_by: user, approved_on: '2026-09-29', reason: 'football stadium in Mexico City; no search hit for this name, same building as Estadio Banorte'}
+  - {stadium_id: MEX00, name: Estadio Banorte, qid: Q320454, approved_by: user, approved_on: '2026-09-29', reason: 'football stadium in Mexico City (MEX code); others are in Monterrey and Culiacan'}
+  - {stadium_id: MUN01, name: FC Bayern Munich Stadium, qid: Q127429, approved_by: user, approved_on: '2026-09-29', reason: 'Allianz Arena, stadium in Munich; no search hit for this name'}
+  - {stadium_id: NAS00, name: Nissan Stadium, qid: Q1142992, approved_by: user, approved_on: '2026-09-29', reason: 'home venue of the Tennessee Titans; Q116601 is in Yokohama, Japan'}
+  - {stadium_id: OAK00, name: Ring Central Coliseum, qid: Q1147732, approved_by: user, approved_on: '2026-09-29', reason: 'Oakland Coliseum, same item as OAK00s other names; no hit for this spelling'}
+  - {stadium_id: PAR00, name: Stade de France, qid: Q13205, approved_by: user, approved_on: '2026-09-29', reason: 'national stadium of France; others are stations, an undescribed item and a stadium in Gabon'}
+  - {stadium_id: PHI00, name: Lincoln Financial Field, qid: Q1052370, approved_by: user, approved_on: '2026-09-29', reason: 'football stadium in Philadelphia; Q116718467 is a power station'}
+  - {stadium_id: RIO00, name: Maracana Stadium, qid: Q155174, approved_by: user, approved_on: '2026-09-29', reason: 'stadium in Rio de Janeiro (Wikidata spells it Maracana with a tilde)'}

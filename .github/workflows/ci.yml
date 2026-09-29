@@ -22,4 +22,5 @@ jobs:
       - name: Mypy
         run: uv run mypy src
       - name: Pytest
-        run: uv run pytest
+        # realdata tests need the local data/ store (approved 2026-09-29); run them locally.
+        run: uv run pytest -m "not realdata"

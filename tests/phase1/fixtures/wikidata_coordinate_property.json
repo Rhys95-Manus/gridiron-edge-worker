@@ -1,0 +1,38 @@
+{
+ "source": "https://www.wikidata.org/w/api.php?type=property",
+ "pulled_at": "2026-09-29T18:46:38+00:00",
+ "response": {
+  "searchinfo": {
+   "search": "coordinate location"
+  },
+  "search": [
+   {
+    "id": "P625",
+    "title": "Property:P625",
+    "pageid": 15105922,
+    "concepturi": "http://www.wikidata.org/entity/P625",
+    "datatype": "globe-coordinate",
+    "repository": "wikidata",
+    "url": "//www.wikidata.org/wiki/Property:P625",
+    "display": {
+     "label": {
+      "value": "coordinate location",
+      "language": "en"
+     },
+     "description": {
+      "value": "geocoordinates of the subject. For Earth, please note that only the WGS84 geodetic datum is currently supported",
+      "language": "en"
+     }
+    },
+    "label": "coordinate location",
+    "description": "geocoordinates of the subject. For Earth, please note that only the WGS84 geodetic datum is currently supported",
+    "match": {
+     "type": "label",
+     "language": "en",
+     "text": "coordinate location"
+    }
+   }
+  ],
+  "success": 1
+ }
+}

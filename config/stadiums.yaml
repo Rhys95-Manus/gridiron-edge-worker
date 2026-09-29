@@ -1,0 +1,1423 @@
+generated_by: ge ingest stadiums
+generated_at: '2026-09-29T21:11:44+00:00'
+sources: 'stadiums and roof: nflverse schedules (DATA-04); coordinates: Wikidata (DATA-13,
+  CC0), exact match or user-approved override; timezone: timezonefinder'
+current_season: 2026
+stadiums:
+- stadium_id: ATL00
+  name: Georgia Dome
+  seasons:
+  - 2016
+  has_current_season_game: false
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Georgia Dome
+  lat: 33.7575
+  lon: -84.400833333333
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1058931
+- stadium_id: ATL97
+  name: Mercedes-Benz Stadium
+  seasons:
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - closed
+  - open
+  - null
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Mercedes-Benz Stadium
+  lat: 33.75527777777778
+  lon: -84.40083333333334
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q7007552
+- stadium_id: BAL00
+  name: M&T Bank Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: M&T Bank Stadium
+  lat: 39.278055555556
+  lon: -76.622777777778
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1141336
+- stadium_id: BOS00
+  name: Gillette Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Gillette Stadium
+  lat: 42.090944444444
+  lon: -71.264344444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q373355
+- stadium_id: BUF00
+  name: Highmark Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: new stadium in Orchard Park, NY (2026-only
+    name); Q1475645 is the old Ralph Wilson Stadium, Q5759571 a Pittsburgh soccer
+    stadium'
+  wikidata_label: Highmark Stadium
+  lat: 42.77297222222222
+  lon: -78.79219444444445
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q16251517
+- stadium_id: BUF00
+  name: New Era Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Ralph Wilson Stadium
+  lat: 42.773611111111
+  lon: -78.786944444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1475645
+- stadium_id: CAR00
+  name: Bank of America Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Bank of America Stadium
+  lat: 35.225833333333
+  lon: -80.852777777778
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q806673
+- stadium_id: CHI98
+  name: Soldier Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: football stadium in Chicago, home
+    team CHI; Q86750507 is a baseball park in Dover, Delaware'
+  wikidata_label: Soldier Field
+  lat: 41.8625
+  lon: -87.616666666667
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1132413
+- stadium_id: CIN00
+  name: Paul Brown Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Paycor Stadium
+  lat: 39.095444444444
+  lon: -84.516038888889
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1632294
+- stadium_id: CIN00
+  name: Paycor Stadium
+  seasons:
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Paycor Stadium
+  lat: 39.095444444444
+  lon: -84.516038888889
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1632294
+- stadium_id: CLE00
+  name: FirstEnergy Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: home venue of the Cleveland Browns,
+    same item as the 2026 name; others are in Akron and Pennsylvania'
+  wikidata_label: Huntington Bank Field
+  lat: 41.506111111111
+  lon: -81.699444444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1100756
+- stadium_id: CLE00
+  name: Huntington Bank Field
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Huntington Bank Field
+  lat: 41.506111111111
+  lon: -81.699444444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1100756
+- stadium_id: DAL00
+  name: AT&T Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - closed
+  - open
+  - null
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: AT&T Stadium
+  lat: 32.74769
+  lon: -97.09288
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q838284
+- stadium_id: DEN00
+  name: Empower Field at Mile High
+  seasons:
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: home venue of the Denver Broncos;
+    Q7579687 is a light-rail station'
+  wikidata_label: Empower Field at Mile High
+  lat: 39.743888888889
+  lon: -105.02
+  timezone: America/Denver
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1046135
+- stadium_id: DEN00
+  name: Sports Authority Field at Mile High
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Empower Field at Mile High
+  lat: 39.743888888889
+  lon: -105.02
+  timezone: America/Denver
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1046135
+- stadium_id: DET00
+  name: Ford Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Ford Field
+  lat: 42.34
+  lon: -83.045555555556
+  timezone: America/Detroit
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1142586
+- stadium_id: FRA00
+  name: Deutsche Bank Park
+  seasons:
+  - 2023
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Waldstadion
+  lat: 50.068611
+  lon: 8.645278
+  timezone: Europe/Berlin
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q157273
+- stadium_id: GER00
+  name: Allianz Arena
+  seasons:
+  - 2022
+  - 2024
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Allianz Arena
+  lat: 48.218775
+  lon: 11.624752777778
+  timezone: Europe/Berlin
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q127429
+- stadium_id: GNB00
+  name: Lambeau Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Lambeau Field
+  lat: 44.501388888889
+  lon: -88.062222222222
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q860790
+- stadium_id: HOU00
+  name: NRG Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  has_current_season_game: false
+  roof_values_seen:
+  - closed
+  - open
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Reliant Stadium
+  lat: 29.684722222222
+  lon: -95.410833333333
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1058864
+- stadium_id: HOU00
+  name: Reliant Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - closed
+  - null
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Reliant Stadium
+  lat: 29.684722222222
+  lon: -95.410833333333
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1058864
+- stadium_id: IND00
+  name: Lucas Oil Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - closed
+  - open
+  - null
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Lucas Oil Stadium
+  lat: 39.760056
+  lon: -86.163806
+  timezone: America/Indiana/Indianapolis
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q867160
+- stadium_id: JAX00
+  name: EverBank Field
+  seasons:
+  - 2016
+  - 2017
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: EverBank Field
+  lat: 30.323889
+  lon: -81.6375
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q635117
+- stadium_id: JAX00
+  name: EverBank Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: EverBank Field
+  lat: 30.323889
+  lon: -81.6375
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q635117
+- stadium_id: JAX00
+  name: TIAA Bank Stadium
+  seasons:
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: EverBank Field
+  lat: 30.323889
+  lon: -81.6375
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q635117
+- stadium_id: JAX00
+  name: Tottenham Hotspur Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Tottenham Hotspur Stadium
+  lat: 51.604444444444
+  lon: -0.066388888888889
+  timezone: Europe/London
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q55074091
+- stadium_id: KAN00
+  name: Arrowhead Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Arrowhead Stadium
+  lat: 39.048888888889
+  lon: -94.483888888889
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q544553
+- stadium_id: KAN00
+  name: GEHA Field at Arrowhead Stadium
+  seasons:
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Arrowhead Stadium
+  lat: 39.048888888889
+  lon: -94.483888888889
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q544553
+- stadium_id: LAX01
+  name: SoFi Stadium
+  seasons:
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: SoFi Stadium
+  lat: 33.9504
+  lon: -118.338
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q19520501
+- stadium_id: LAX97
+  name: StubHub Center
+  seasons:
+  - 2017
+  - 2018
+  - 2019
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: sports complex in Carson, CA, home
+    team LAC; Q7740065 is its tennis centre'
+  wikidata_label: Dignity Health Sports Park
+  lat: 33.864444444444
+  lon: -118.26111111111
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q200684
+- stadium_id: LAX99
+  name: Los Angeles Memorial Coliseum
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Los Angeles Memorial Coliseum
+  lat: 34.014167
+  lon: -118.287778
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q849784
+- stadium_id: LON00
+  name: Wembley Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2022
+  - 2023
+  - 2024
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: current stadium in London; Q43279
+    is the former Wembley'
+  wikidata_label: Wembley Stadium
+  lat: 51.55555555555556
+  lon: -0.27944444444444444
+  timezone: Europe/London
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q128468
+- stadium_id: LON01
+  name: Twickenham Stadium
+  seasons:
+  - 2016
+  - 2017
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Twickenham Stadium
+  lat: 51.456111111111
+  lon: -0.34166666666667
+  timezone: Europe/London
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q209725
+- stadium_id: LON02
+  name: Tottenham Hotspur Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Tottenham Hotspur Stadium
+  lat: 51.604444444444
+  lon: -0.066388888888889
+  timezone: Europe/London
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q55074091
+- stadium_id: LON02
+  name: Tottenham Stadium
+  seasons:
+  - 2019
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Tottenham Hotspur Stadium
+  lat: 51.604444444444
+  lon: -0.066388888888889
+  timezone: Europe/London
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q55074091
+- stadium_id: MAD01
+  name: Bernabeu
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - null
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: stadium in Madrid (MAD code); other
+    hits are family names and a person'
+  wikidata_label: Bernabéu
+  lat: 40.45306
+  lon: -3.68835
+  timezone: Europe/Madrid
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q164027
+- stadium_id: MEL00
+  name: Melbourne Cricket Ground
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Melbourne Cricket Ground
+  lat: -37.819943
+  lon: 144.983447
+  timezone: Australia/Melbourne
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q330136
+- stadium_id: MEX00
+  name: Azteca Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2019
+  - 2022
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: football stadium in Mexico City;
+    no search hit for this name, same building as Estadio Banorte'
+  wikidata_label: Estadio Azteca
+  lat: 19.303055555555556
+  lon: -99.15055555555556
+  timezone: America/Mexico_City
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q320454
+- stadium_id: MEX00
+  name: Estadio Banorte
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: football stadium in Mexico City (MEX
+    code); others are in Monterrey and Culiacan'
+  wikidata_label: Estadio Azteca
+  lat: 19.303055555555556
+  lon: -99.15055555555556
+  timezone: America/Mexico_City
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q320454
+- stadium_id: MIA00
+  name: Hard Rock Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Hard Rock Stadium
+  lat: 25.958055555556
+  lon: -80.238888888889
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q864339
+- stadium_id: MIN01
+  name: U.S. Bank Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: U.S. Bank Stadium
+  lat: 44.973889
+  lon: -93.258056
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q7929512
+- stadium_id: MUN01
+  name: FC Bayern Munich Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: Allianz Arena, stadium in Munich;
+    no search hit for this name'
+  wikidata_label: Allianz Arena
+  lat: 48.218775
+  lon: 11.624752777778
+  timezone: Europe/Berlin
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q127429
+- stadium_id: NAS00
+  name: Nissan Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: home venue of the Tennessee Titans;
+    Q116601 is in Yokohama, Japan'
+  wikidata_label: Nissan Stadium
+  lat: 36.166388888889
+  lon: -86.771388888889
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1142992
+- stadium_id: NOR00
+  name: Caesars Superdome
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Caesars Superdome
+  lat: 29.950833333333
+  lon: -90.081111111111
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q756452
+- stadium_id: NOR00
+  name: Mercedes-Benz Superdome
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  has_current_season_game: false
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Caesars Superdome
+  lat: 29.950833333333
+  lon: -90.081111111111
+  timezone: America/Chicago
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q756452
+- stadium_id: NYC01
+  name: MetLife Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: MetLife Stadium
+  lat: 40.81361111111111
+  lon: -74.07444444444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q10862290
+- stadium_id: OAK00
+  name: Oakland-Alameda County Coliseum
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Oakland Coliseum
+  lat: 37.751666666667
+  lon: -122.20055555556
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1147732
+- stadium_id: OAK00
+  name: Ring Central Coliseum
+  seasons:
+  - 2019
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: Oakland Coliseum, same item as OAK00s
+    other names; no hit for this spelling'
+  wikidata_label: Oakland Coliseum
+  lat: 37.751666666667
+  lon: -122.20055555556
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1147732
+- stadium_id: PAR00
+  name: Stade de France
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: national stadium of France; others
+    are stations, an undescribed item and a stadium in Gabon'
+  wikidata_label: Stade de France
+  lat: 48.92444444444445
+  lon: 2.36
+  timezone: Europe/Paris
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q13205
+- stadium_id: PHI00
+  name: Lincoln Financial Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: football stadium in Philadelphia;
+    Q116718467 is a power station'
+  wikidata_label: Lincoln Financial Field
+  lat: 39.90089
+  lon: -75.16776
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1052370
+- stadium_id: PHO00
+  name: State Farm Stadium
+  seasons:
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - closed
+  - open
+  - null
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: State Farm Stadium
+  lat: 33.5275
+  lon: -112.2625
+  timezone: America/Phoenix
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q756433
+- stadium_id: PHO00
+  name: University of Phoenix Stadium
+  seasons:
+  - 2016
+  - 2017
+  has_current_season_game: false
+  roof_values_seen:
+  - closed
+  - open
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: State Farm Stadium
+  lat: 33.5275
+  lon: -112.2625
+  timezone: America/Phoenix
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q756433
+- stadium_id: PIT00
+  name: Acrisure Stadium
+  seasons:
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Acrisure Stadium
+  lat: 40.446666666667
+  lon: -80.015833333333
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1067148
+- stadium_id: PIT00
+  name: Heinz Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Acrisure Stadium
+  lat: 40.446666666667
+  lon: -80.015833333333
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1067148
+- stadium_id: RIO00
+  name: Maracana Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - open
+  match_status: override
+  match_reason: 'approved by user on 2026-09-29: stadium in Rio de Janeiro (Wikidata
+    spells it Maracana with a tilde)'
+  wikidata_label: Maracanã Stadium
+  lat: -22.912222222222223
+  lon: -43.23027777777778
+  timezone: America/Sao_Paulo
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q155174
+- stadium_id: SAO00
+  name: Arena Corinthians
+  seasons:
+  - 2024
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Neo Química Arena
+  lat: -23.545555555556
+  lon: -46.474
+  timezone: America/Sao_Paulo
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1362236
+- stadium_id: SDG00
+  name: Qualcomm Stadium
+  seasons:
+  - 2016
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: San Diego Stadium
+  lat: 32.783055555556
+  lon: -117.11944444444
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q956072
+- stadium_id: SEA00
+  name: CenturyLink Field
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Lumen Field
+  lat: 47.595277777778
+  lon: -122.33166666667
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q612736
+- stadium_id: SEA00
+  name: Lumen Field
+  seasons:
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Lumen Field
+  lat: 47.595277777778
+  lon: -122.33166666667
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q612736
+- stadium_id: SFO01
+  name: Levi's Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Levi's Stadium
+  lat: 37.4034
+  lon: -121.97
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q7419343
+- stadium_id: TAM00
+  name: Raymond James Stadium
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Raymond James Stadium
+  lat: 27.975833333333
+  lon: -82.503333333333
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q1141343
+- stadium_id: VEG00
+  name: Allegiant Stadium
+  seasons:
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - dome
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Allegiant Stadium
+  lat: 36.090777777778
+  lon: -115.183
+  timezone: America/Los_Angeles
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q27768421
+- stadium_id: WAS00
+  name: FedExField
+  seasons:
+  - 2016
+  - 2017
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
+  - 2025
+  has_current_season_game: false
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Northwest Stadium
+  lat: 38.907777777778
+  lon: -76.864444444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q583085
+- stadium_id: WAS00
+  name: Northwest Stadium
+  seasons:
+  - 2026
+  has_current_season_game: true
+  roof_values_seen:
+  - outdoors
+  match_status: matched
+  match_reason: exact match
+  wikidata_label: Northwest Stadium
+  lat: 38.907777777778
+  lon: -76.864444444444
+  timezone: America/New_York
+  elevation: null
+  elevation_unit: null
+  elevation_reason: item has no P2044 (elevation above sea level) claim
+  source_url: https://www.wikidata.org/wiki/Q583085

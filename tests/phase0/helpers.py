@@ -13,7 +13,8 @@ SPEC_PATH = REPO_ROOT / "docs" / "MODEL_SPEC.md"
 PARAMS_PATH = REPO_ROOT / "config" / "params.yaml"
 FEES_PATH = REPO_ROOT / "config" / "fees.yaml"
 
-SPEC_ID_RE = re.compile(r"\b(?:(?:DATA|OFF|DEF|PLY|COA|MTC|PRJ|EDG|BT)-\d{2}[a-z]?|G[1-7])\b")
+# ENV- added 2026-09-29 with spec section 6b (ENV-01 to ENV-04).
+SPEC_ID_RE = re.compile(r"\b(?:(?:DATA|OFF|DEF|PLY|COA|MTC|ENV|PRJ|EDG|BT)-\d{2}[a-z]?|G[1-7])\b")
 
 # Order matters: m:ss before plain numbers, \tfrac{a}{b} and a/b before plain numbers.
 _TOKEN_RE = re.compile(

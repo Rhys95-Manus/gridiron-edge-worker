@@ -16,8 +16,9 @@ from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, Strin
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PARAMS_PATH = REPO_ROOT / "config" / "params.yaml"
 FEES_PATH = REPO_ROOT / "config" / "fees.yaml"
+INGEST_PATH = REPO_ROOT / "config" / "ingest.yaml"
 
-SPEC_ID_PATTERN = r"^(?:(?:DATA|OFF|DEF|PLY|COA|MTC|PRJ|EDG|BT)-\d{2}[a-z]?|G[1-7])$"
+SPEC_ID_PATTERN = r"^(?:(?:DATA|OFF|DEF|PLY|COA|MTC|ENV|PRJ|EDG|BT)-\d{2}[a-z]?|G[1-7])$"
 
 SpecId = Annotated[str, StringConstraints(pattern=SPEC_ID_PATTERN)]
 Status = Literal["initial", "fitted"]
@@ -145,6 +146,24 @@ class Defense(_Group):
     def_08_k: Param
     def_08_starter_min_snap_share: Param
     def_08_starter_lookback_games: Param
+    def_09_min_targets_per_cell: Param
+    def_09_k: Param
+    def_10_min_play_action_dropbacks: Param
+    def_10_k: Param
+    def_11_min_receptions: Param
+    def_11_k: Param
+    def_12_min_carries_per_band: Param
+    def_12_k: Param
+    def_13_min_blitzed_dropbacks: Param
+    def_13_k: Param
+    def_14_min_dropbacks: Param
+    def_14_k: Param
+    def_15_min_carries_each: Param
+    def_15_k: Param
+    def_16_min_end_zone_targets: Param
+    def_16_k: Param
+    def_17_min_team_defensive_snaps: Param
+    def_17_k_events_per_share: Param
 
 
 class Player(_Group):
@@ -187,6 +206,45 @@ class Player(_Group):
     ply_15_same_position_weight: Param
     ply_15_low_confidence_max_career_snaps: Param
     ply_15_low_confidence_stake_cap: Param
+    ply_16_min_carries_per_cell: Param
+    ply_16_k_carries: Param
+    ply_17_min_blitzed_dropbacks: Param
+    ply_17_k_blitzed_dropbacks: Param
+    ply_18_min_attempts_per_band: Param
+    ply_18_k_attempts: Param
+    ply_19_min_play_action_dropbacks: Param
+    ply_19_k: Param
+    ply_20_min_attempts: Param
+    ply_20_k: Param
+    ply_21_min_dropbacks: Param
+    ply_21_k: Param
+    ply_22_min_rushes: Param
+    ply_22_k: Param
+    ply_23_min_attempts_per_side: Param
+    ply_23_k: Param
+    ply_24_min_carries_per_band: Param
+    ply_24_k: Param
+    ply_25_min_carries_each: Param
+    ply_25_k: Param
+    ply_26_min_carries: Param
+    ply_26_k_explosive: Param
+    ply_26_k_stuff: Param
+    ply_27_min_targets: Param
+    ply_27_k: Param
+    ply_28_min_targets_per_band: Param
+    ply_28_k: Param
+    ply_29_min_targets_per_side: Param
+    ply_29_k: Param
+    ply_30_min_catchable: Param
+    ply_30_min_contested: Param
+    ply_30_k_catchable: Param
+    ply_30_k_contested: Param
+    ply_31_min_targets: Param
+    ply_31_k: Param
+    ply_32_min_team_end_zone_targets: Param
+    ply_32_k: Param
+    ply_33_min_targets_each: Param
+    ply_33_k: Param
 
 
 class Coaching(_Group):
@@ -308,6 +366,16 @@ class FeeSeries(_Strict):
     futures_and_awards: SeriesFees
 
 
+class ApiFeeType(_Strict):
+    maker_multiplier: StrictInt
+
+
+class ApiFeeTypes(_Strict):
+    quadratic: ApiFeeType
+    quadratic_with_maker_fees: ApiFeeType
+    quadratic_with_combo_maker_fees: ApiFeeType
+
+
 class Fees(_Strict):
     spec_id: SpecId
     status: Status
@@ -316,7 +384,58 @@ class Fees(_Strict):
     taker_rate: StrictFloat
     maker_rate: StrictFloat
     rounding: Literal["up_to_cent", "up_to_centicent"]
+    api_fee_types: ApiFeeTypes
     series: FeeSeries
+
+
+class IntSetting(_Entry):
+    value: StrictInt
+
+
+class StrSetting(_Entry):
+    value: Annotated[str, StringConstraints(min_length=1)]
+
+
+class HttpSettings(_Group):
+    timeout_seconds: IntSetting
+    max_attempts: IntSetting
+    backoff_initial_seconds: IntSetting
+    backoff_max_seconds: IntSetting
+
+
+class NflverseSettings(_Group):
+    first_season: IntSetting
+    ftn_first_season: IntSetting
+
+
+class KalshiSettings(_Group):
+    base_url: StrSetting
+    markets_page_limit: IntSetting
+    events_page_limit: IntSetting
+    trades_page_limit: IntSetting
+    candle_period_minutes: IntSetting
+
+
+class NwsSettings(_Group):
+    base_url: StrSetting
+    forecast_window_days: IntSetting
+
+
+class WikidataSettings(_Group):
+    api_url: StrSetting
+    search_limit: IntSetting
+    entities_batch_size: IntSetting
+    coordinate_property: StrSetting
+    elevation_property: StrSetting
+    item_url_prefix: StrSetting
+
+
+class IngestConfig(_Strict):
+    http: HttpSettings
+    nflverse: NflverseSettings
+    kalshi: KalshiSettings
+    nws: NwsSettings
+    wikidata: WikidataSettings
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -334,3 +453,8 @@ def load_params(path: Path = PARAMS_PATH) -> Params:
 def load_fees(path: Path = FEES_PATH) -> Fees:
     """EDG-02 Kalshi fee multipliers. Raises pydantic.ValidationError on any bad key."""
     return Fees.model_validate(_read_yaml(path))
+
+
+def load_ingest(path: Path = INGEST_PATH) -> IngestConfig:
+    """Operational settings for `ge ingest`. Raises pydantic.ValidationError on any bad key."""
+    return IngestConfig.model_validate(_read_yaml(path))

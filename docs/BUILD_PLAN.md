@@ -218,7 +218,7 @@ assert the snapshot is byte-identical. Tests first.
 
 ### Phase 3 — Metric engine
 
-**Spec IDs:** G1–G7, OFF-01 to OFF-17, DEF-01 to DEF-08, PLY-01 to PLY-15, COA-01 to COA-07. **Done when:** every free-data metric computes from a snapshot, matches independent checks, and paid-only metrics refuse cleanly.
+**Spec IDs:** G1–G7, OFF-01 to OFF-17, DEF-01 to DEF-17, PLY-01 to PLY-34, COA-01 to COA-07. **Done when:** every free-data metric computes from a snapshot, matches independent checks, and paid-only metrics refuse cleanly.
 
 ```text
 Phase 3. Implement src/ge/metrics/. First conventions.py for G1-G7 exactly
@@ -271,7 +271,7 @@ the simulator.
 
 ### Phase 5 — Game simulation
 
-**Spec IDs:** PRJ-02, PRJ-01b, MTC-01 to MTC-05. **Done when:** the simulator reproduces a real season's league averages within the spec's tolerances, is fully reproducible, and the market-anchor solver works.
+**Spec IDs:** PRJ-02, PRJ-01b, MTC-01 to MTC-05, MTC-07 (applied with every weight at zero until Phase 8 fits them), ENV-01 to ENV-04. **Done when:** the simulator reproduces a real season's league averages within the spec's tolerances, is fully reproducible, and the market-anchor solver works.
 
 ```text
 Phase 5. Implement PRJ-02 in src/ge/models/sim/ exactly as MODEL_SPEC.md
@@ -360,7 +360,7 @@ including hypothesis property tests.
 
 ### Phase 8 — Backtest harness
 
-**Spec IDs:** BT-02 to BT-06, PRJ-07. **Done when:** one command produces a reproducible go-live report with pass or fail for every market type against BT-05.
+**Spec IDs:** BT-02 to BT-06, PRJ-07, MTC-07 fitting. **Done when:** one command produces a reproducible go-live report with pass or fail for every market type against BT-05.
 
 ```text
 Phase 8. Implement src/ge/backtest/. walkforward.py replays phases 3-7 for
