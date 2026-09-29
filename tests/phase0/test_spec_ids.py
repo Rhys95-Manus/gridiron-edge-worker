@@ -11,6 +11,7 @@ from tests.phase0.helpers import (
     FEES_PATH,
     PARAMS_PATH,
     iter_leaves,
+    normalize_md,
     numbers_in,
     spec_ids,
     spec_table_rows,
@@ -51,8 +52,14 @@ def test_fees_spec_id_is_in_spec() -> None:
 
 
 def test_every_params_source_is_verbatim_spec_text() -> None:
-    text = spec_text()
-    missing = [f"{g}.{n}" for g, n, e in iter_leaves(_load(PARAMS_PATH)) if e["source"] not in text]
+    """Verbatim after normalize_md on both sides, so a re-export's Markdown styling doesn't
+    break provenance while any change to words, numbers or symbols still does."""
+    text = normalize_md(spec_text())
+    missing = [
+        f"{g}.{n}"
+        for g, n, e in iter_leaves(_load(PARAMS_PATH))
+        if normalize_md(e["source"]) not in text
+    ]
     assert not missing, f"source is not a verbatim quote from MODEL_SPEC.md: {missing}"
 
 
@@ -69,14 +76,15 @@ def test_param_source_sits_on_a_line_naming_its_spec_id() -> None:
     """A table-row ID (OFF-/DEF-/PLY-/COA-) must be quoted from its own row, or from prose
     that names it (e.g. "What PLY-15 cannot do")."""
     row_ids = {row_id for row_id, _, _ in spec_table_rows(("OFF-", "DEF-", "PLY-", "COA-"))}
-    lines = spec_text().splitlines()
+    lines = normalize_md(spec_text()).splitlines()
     bad = []
     for g, n, e in iter_leaves(_load(PARAMS_PATH)):
+        source = normalize_md(e["source"])
         for sid in _entry_ids(e):
             if sid not in row_ids:
                 continue
             naming = [ln for ln in lines if re.search(rf"\b{re.escape(sid)}\b", ln)]
-            if not any(e["source"] in ln for ln in naming):
+            if not any(source in ln for ln in naming):
                 bad.append(f"{g}.{n}: source not on any line naming {sid}")
     assert not bad, bad
 

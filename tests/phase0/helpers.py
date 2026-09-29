@@ -28,6 +28,20 @@ _WORD_LIST = ["one", "two", "three", "four", "five", "six", "seven", "eight", "n
 _WORDS = {w: i + 1 for i, w in enumerate(_WORD_LIST)}
 
 
+_MD_ESCAPE_RE = re.compile(r"\\([!-/:-@\[-`{-~])")
+_SPACES_RE = re.compile(r"[ \t]+")
+
+
+def normalize_md(text: str) -> str:
+    """Undo Markdown export formatting only: drop backslash escapes before ASCII punctuation
+    (\\< \\$ \\* \\|, not LaTeX like \\tfrac), drop backticks, collapse runs of spaces and tabs
+    (including table-cell padding) to one space. Words, numbers, symbols and line breaks
+    are untouched, so they must still match exactly."""
+    text = _MD_ESCAPE_RE.sub(r"\1", text)
+    text = text.replace("`", "")
+    return _SPACES_RE.sub(" ", text)
+
+
 def spec_text() -> str:
     return SPEC_PATH.read_text(encoding="utf-8")
 
