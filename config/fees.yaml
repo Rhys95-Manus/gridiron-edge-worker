@@ -41,4 +41,25 @@ series:
   futures_and_awards:
     taker_multiplier: 1
     maker_multiplier: 1
-    tickers: [KXNFLAFCCHAMP, KXNFLAFCEAST, KXNFLAFCNORTH, KXNFLAFCSOUTH, KXNFLAFCWEST, KXNFLNFCCHAMP, KXNFLNFCEAST, KXNFLNFCNORTH, KXNFLNFCSOUTH, KXNFLNFCWEST, KXNFLMVP, KXNFLOPOTY, KXNFLDPOTY, KXNFLOROTY, KXNFLDROTY, KXNFLCOTY, KXNFLCPOTY, KXSB]
+    # KXNFLMVPSPECIALS added by user decision 2026-09-29 (not in the PDF).
+    tickers: [KXNFLAFCCHAMP, KXNFLAFCEAST, KXNFLAFCNORTH, KXNFLAFCSOUTH, KXNFLAFCWEST, KXNFLNFCCHAMP, KXNFLNFCEAST, KXNFLNFCNORTH, KXNFLNFCSOUTH, KXNFLNFCWEST, KXNFLMVP, KXNFLMVPSPECIALS, KXNFLOPOTY, KXNFLDPOTY, KXNFLOROTY, KXNFLDROTY, KXNFLCOTY, KXNFLCPOTY, KXSB]
+
+# Known disagreements between the rows above and Kalshi's API fee fields, reviewed by the
+# user. fees-check passes only when every disagreement matches one of these exactly; any new,
+# changed or resolved one fails. The costlier value (value_in_use) applies regardless.
+acknowledged:
+  - {ticker: KXMVENFLSINGLEGAME, field: maker, fees_yaml_value: 2, api_value: 0, api_fee_type: quadratic, value_in_use: 2, reason: 'EDG-02 combos row doubles the maker rate; API lists no maker fee; settled in Phase 7 from a real fill', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXMVENFLMULTIGAME, field: maker, fees_yaml_value: 2, api_value: 0, api_fee_type: quadratic, value_in_use: 2, reason: 'EDG-02 combos row doubles the maker rate; API lists no maker fee; settled in Phase 7 from a real fill', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXMVENFLMULTIGAMEEXTENDED, field: maker, fees_yaml_value: 2, api_value: 0, api_fee_type: quadratic, value_in_use: 2, reason: 'EDG-02 combos row doubles the maker rate; API lists no maker fee; settled in Phase 7 from a real fill', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLSPREAD, field: maker, fees_yaml_value: 0, api_value: 1, api_fee_type: quadratic_with_maker_fees, value_in_use: 1, reason: 'API reports maker fees the PDF does not list (EDG-02 default row note)', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLTOTAL, field: maker, fees_yaml_value: 0, api_value: 1, api_fee_type: quadratic_with_maker_fees, value_in_use: 1, reason: 'API reports maker fees the PDF does not list (EDG-02 default row note)', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLANYTD, field: maker, fees_yaml_value: 0, api_value: 1, api_fee_type: quadratic_with_maker_fees, value_in_use: 1, reason: 'API reports maker fees the PDF does not list (EDG-02 default row note)', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLFIRSTTD, field: maker, fees_yaml_value: 0, api_value: 1, api_fee_type: quadratic_with_maker_fees, value_in_use: 1, reason: 'API reports maker fees the PDF does not list (EDG-02 default row note)', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFL2TD, field: maker, fees_yaml_value: 0, api_value: 1, api_fee_type: quadratic_with_maker_fees, value_in_use: 1, reason: 'API reports maker fees the PDF does not list (EDG-02 default row note)', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLGAMEFG, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'sub-series placed in the game row by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLGAMELOCATION, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'sub-series placed in the game row by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLGAMESACK, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'sub-series placed in the game row by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLGAMESPECIALS, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'sub-series placed in the game row by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLGAMETD, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'sub-series placed in the game row by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLGAMETO, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'sub-series placed in the game row by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-29'}
+  - {ticker: KXNFLMVPSPECIALS, field: maker, fees_yaml_value: 1, api_value: 0, api_fee_type: quadratic, value_in_use: 1, reason: 'placed in futures_and_awards by user decision; API lists no maker fee', acknowledged_by: user, acknowledged_on: '2026-09-30'}

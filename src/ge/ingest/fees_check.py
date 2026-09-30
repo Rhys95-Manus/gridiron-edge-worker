@@ -12,7 +12,7 @@ from typing import Any
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from ge.config import Fees
+from ge.config import AcknowledgedFee, Fees
 
 _PHRASE = re.compile(
     r"Last\s+updated\s+and\s+effective\W*([A-Z][a-z]+)\s+(\d{1,2}),\s*(\d{4})", re.IGNORECASE
@@ -71,6 +71,17 @@ def _fees_row(fees: Fees, ticker: str) -> tuple[str, int, int, str | None]:
 
 
 @dataclass(frozen=True)
+class Disagreement:
+    ticker: str
+    field: str  # taker | maker
+    fees_yaml_value: float
+    api_value: float
+    api_fee_type: str
+    value_in_use: float
+    message: str
+
+
+@dataclass(frozen=True)
 class EffectiveFees:
     ticker: str
     row: str
@@ -78,6 +89,7 @@ class EffectiveFees:
     maker: float
     known: bool  # False when Kalshi's fee_type isn't modelled: no fee can be trusted
     alerts: list[str]
+    disagreements: tuple[Disagreement, ...] = ()
 
 
 def effective_multipliers(fees: Fees, series: dict[str, Any]) -> EffectiveFees:
@@ -103,17 +115,72 @@ def effective_multipliers(fees: Fees, series: dict[str, Any]) -> EffectiveFees:
         )
         return EffectiveFees(ticker, row, taker, maker, False, alerts)
     api_maker = by_type[fee_type]
+    diffs = []
     if mult != taker:
-        alerts.append(
+        msg = (
             f"{ticker}: Kalshi taker multiplier {mult} != fees.yaml {row} {taker}; "
             f"using {max(mult, taker)}"
         )
+        diffs.append(Disagreement(ticker, "taker", taker, mult, fee_type, max(mult, taker), msg))
     if api_maker != maker:
-        alerts.append(
+        msg = (
             f"{ticker}: Kalshi fee_type {fee_type} means maker {api_maker}, fees.yaml {row} "
             f"row says maker {maker}; using {max(api_maker, maker)}"
         )
-    return EffectiveFees(ticker, row, max(mult, taker), max(api_maker, maker), True, alerts)
+        diffs.append(
+            Disagreement(ticker, "maker", maker, api_maker, fee_type, max(api_maker, maker), msg)
+        )
+    alerts += [d.message for d in diffs]
+    return EffectiveFees(
+        ticker, row, max(mult, taker), max(api_maker, maker), True, alerts, tuple(diffs)
+    )
+
+
+@dataclass(frozen=True)
+class FeeCheck:
+    effective: list[EffectiveFees]
+    acknowledged: list[str]  # disagreements matching an acknowledgement exactly
+    new: list[str]  # anything else that alerts: new or changed disagreements, unknown fees
+    stale: list[str]  # acknowledgements for disagreements no longer seen
+
+    @property
+    def ok(self) -> bool:
+        return not self.new and not self.stale
+
+
+def fee_check(fees: Fees, series: list[dict[str, Any]]) -> FeeCheck:
+    """EDG-02: split every alert into acknowledged (exact match on ticker, field, both values,
+    fee_type and value in use) and new. The costlier value is used either way."""
+    acks: dict[tuple[str, str], AcknowledgedFee] = {
+        (a.ticker, a.field): a for a in fees.acknowledged
+    }
+    effective = [effective_multipliers(fees, s) for s in series]
+    acknowledged, new, seen = [], [], set()
+    for e in effective:
+        diff_msgs = {d.message for d in e.disagreements}
+        new += [a for a in e.alerts if a not in diff_msgs]  # prefix / unknown fee_type
+        for d in e.disagreements:
+            a = acks.get((d.ticker, d.field))
+            match = a is not None and (
+                a.fees_yaml_value,
+                a.api_value,
+                a.api_fee_type,
+                a.value_in_use,
+            ) == (d.fees_yaml_value, d.api_value, d.api_fee_type, d.value_in_use)
+            if match:
+                seen.add((d.ticker, d.field))
+                acknowledged.append(d.message)
+            else:
+                new.append(d.message + ("" if a is None else " (differs from acknowledgement)"))
+    checked = {s["ticker"] for s in series}
+    stale = [
+        f"{t} {f}: acknowledged disagreement no longer seen (fee fields changed?)"
+        for (t, f) in sorted(acks)
+        if t in checked
+        and (t, f) not in seen
+        and not any(d.ticker == t and d.field == f for e in effective for d in e.disagreements)
+    ]
+    return FeeCheck(effective, acknowledged, new, stale)
 
 
 def api_fee_alerts(fees: Fees, series: list[dict[str, Any]]) -> list[str]:

@@ -4,11 +4,11 @@ coordinate location. Otherwise it is left blank with a reason. Coordinates are n
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from ge.config import WikidataSettings
+from ge.config import ElevationUnits, WikidataSettings
 from ge.ingest.http import PublicClient
 
 Status = Literal["matched", "no_match", "ambiguous"]
@@ -27,6 +27,17 @@ class StadiumMatch:
 
 def _norm(text: str) -> str:
     return " ".join(text.split()).casefold()
+
+
+def label(entity: Mapping[str, Any]) -> str | None:
+    """English label, else Wikidata's multilingual ("mul") default label, which some items
+    use instead of an English one (e.g. several US cities, seen 2026-09-29)."""
+    labels = entity.get("labels") or {}
+    for lang in ("en", "mul"):
+        value = (labels.get(lang) or {}).get("value")
+        if value:
+            return str(value)
+    return None
 
 
 @dataclass(frozen=True)
@@ -53,6 +64,99 @@ def elevation(entity: Mapping[str, Any], prop: str) -> Elevation:
     amount, unit = next(iter(values))
     rank = "preferred" if preferred else "normal"
     return Elevation(float(amount), unit, f"{prop} ({rank} rank)")
+
+
+@dataclass(frozen=True)
+class CityElevation:
+    value: float | None
+    unit: str | None
+    place_qid: str | None
+    place_label: str | None
+    reason: str
+    chain: list[str] = field(default_factory=list)  # places visited, most specific first
+    method: str = "city_elevation_proxy"
+
+
+def to_metres(value: float, unit_uri: str, units: ElevationUnits) -> float:
+    """ENV-02: convert a Wikidata elevation to metres using the configured unit factors."""
+    qid = unit_uri.rsplit("/", 1)[-1]
+    for u in (units.metre, units.foot):
+        if u.unit_qid == qid:
+            return float(value) * u.value
+    raise ValueError(f"elevation unit {unit_uri} is not in config/ingest.yaml wikidata_units")
+
+
+def located_in(entity: Mapping[str, Any], prop: str) -> list[str]:
+    """Item ids from the entity's non-deprecated `prop` (located-in) claims."""
+    out = []
+    for c in (entity.get("claims") or {}).get(prop, []):
+        v = (c.get("mainsnak") or {}).get("datavalue", {}).get("value")
+        if c.get("rank") != "deprecated" and isinstance(v, dict) and v.get("id"):
+            out.append(v["id"])
+    return out
+
+
+Fetch = Callable[[list[str]], Mapping[str, Any]]
+
+
+def _most_specific(listed: list[str], places: Mapping[str, Any], prop: str) -> list[str]:
+    """Drop any listed place that another listed place is itself located in."""
+    ancestors = {a for q in listed for a in located_in(places[q], prop)}
+    return [q for q in dict.fromkeys(listed) if q not in ancestors]
+
+
+def city_elevation(
+    stadium: Mapping[str, Any],
+    fetch: Fetch,
+    located_prop: str,
+    elevation_prop: str,
+) -> CityElevation:
+    """ENV-02 city_elevation_proxy: elevation of the most specific place the stadium item is
+    located in; if that place has none, the first place up its own located-in chain that
+    does. The item actually used is cited."""
+    listed = located_in(stadium, located_prop)
+    if not listed:
+        return CityElevation(None, None, None, None, f"stadium item has no {located_prop} claim")
+    chain: list[str] = []
+    while True:
+        places = fetch(listed)
+        missing = [q for q in listed if q not in places]
+        if missing:
+            return CityElevation(
+                None, None, None, None, f"located-in items not fetched: {missing}", chain
+            )
+        specific = _most_specific(listed, places, located_prop)
+        if len(specific) != 1:
+            return CityElevation(
+                None,
+                None,
+                None,
+                None,
+                f"ambiguous located-in places {specific} (from {listed}) after {chain}",
+                chain,
+            )
+        qid = specific[0]
+        if qid in chain:
+            return CityElevation(
+                None, None, None, None, f"cycle in {located_prop} chain at {qid}: {chain}", chain
+            )
+        chain.append(qid)
+        e = elevation(places[qid], elevation_prop)
+        if e.value is not None:
+            name = label(places[qid])
+            via = f" (walked up from {chain[0]} via {' -> '.join(chain)})" if len(chain) > 1 else ""
+            reason = f"{elevation_prop} of {qid} ({name}), via {located_prop}{via}: {e.reason}"
+            return CityElevation(e.value, e.unit, qid, name, reason, chain)
+        listed = located_in(places[qid], located_prop)
+        if not listed:
+            return CityElevation(
+                None,
+                None,
+                None,
+                None,
+                f"no {elevation_prop} anywhere up the {located_prop} chain {chain}",
+                chain,
+            )
 
 
 def coordinates(entity: Mapping[str, Any], prop: str) -> tuple[float, float] | None:
@@ -108,8 +212,9 @@ def match_stadium(
     lat, lon = _coords(entities[qid], coord_prop) or (None, None)
     unmatched = [n for n in unique_names if n not in per_name]
     reason = "exact match" + (f"; no hit for other names {unmatched}" if unmatched else "")
-    label = ((entities[qid].get("labels") or {}).get("en") or {}).get("value")
-    return StadiumMatch("matched", reason, qid, label, lat, lon, item_url_prefix + qid)
+    return StadiumMatch(
+        "matched", reason, qid, label(entities[qid]), lat, lon, item_url_prefix + qid
+    )
 
 
 class WikidataClient:
@@ -142,7 +247,7 @@ class WikidataClient:
                     "action": "wbgetentities",
                     "ids": "|".join(qids[i : i + n]),
                     "props": "labels|aliases|claims",
-                    "languages": "en",
+                    "languages": "en|mul",
                     "format": "json",
                 },
             )

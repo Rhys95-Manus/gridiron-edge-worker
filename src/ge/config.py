@@ -148,12 +148,14 @@ class Defense(_Group):
     def_08_starter_lookback_games: Param
     def_09_min_targets_per_cell: Param
     def_09_k: Param
+    def_09_cells: Param
     def_10_min_play_action_dropbacks: Param
     def_10_k: Param
     def_11_min_receptions: Param
     def_11_k: Param
     def_12_min_carries_per_band: Param
     def_12_k: Param
+    def_12_stacked_box_min: Param
     def_13_min_blitzed_dropbacks: Param
     def_13_k: Param
     def_14_min_dropbacks: Param
@@ -210,6 +212,8 @@ class Player(_Group):
     ply_16_k_carries: Param
     ply_17_min_blitzed_dropbacks: Param
     ply_17_k_blitzed_dropbacks: Param
+    ply_17_blitz_min_blitzers: Param
+    ply_17_no_blitz_blitzers: Param
     ply_18_min_attempts_per_band: Param
     ply_18_k_attempts: Param
     ply_19_min_play_action_dropbacks: Param
@@ -224,11 +228,16 @@ class Player(_Group):
     ply_23_k: Param
     ply_24_min_carries_per_band: Param
     ply_24_k: Param
+    ply_24_light_box_max: Param
+    ply_24_standard_box: Param
+    ply_24_stacked_box_min: Param
     ply_25_min_carries_each: Param
     ply_25_k: Param
     ply_26_min_carries: Param
     ply_26_k_explosive: Param
     ply_26_k_stuff: Param
+    ply_26_explosive_min_yards: Param
+    ply_26_stuff_max_yards: Param
     ply_27_min_targets: Param
     ply_27_k: Param
     ply_28_min_targets_per_band: Param
@@ -267,6 +276,17 @@ class Matchup(_Group):
     mtc_01_min_carries_per_cell: Param
     mtc_02_beta: Param
     mtc_03_ol_absence_factor: Param
+    mtc_07_multiplier_min: Param
+    mtc_07_multiplier_max: Param
+    mtc_07_log_offset: Param
+    mtc_07_first_training_season: Param
+    mtc_07_last_training_season: Param
+    mtc_07_ftn_first_season: Param
+
+
+class Environment(_Group):
+    env_fit_first_season: Param
+    env_fit_last_season: Param
 
 
 class Projection(_Group):
@@ -348,6 +368,7 @@ class Params(_Strict):
     player: Player
     coaching: Coaching
     matchup: Matchup
+    environment: Environment
     projection: Projection
     edge: Edge
     backtest: Backtest
@@ -376,6 +397,20 @@ class ApiFeeTypes(_Strict):
     quadratic_with_combo_maker_fees: ApiFeeType
 
 
+class AcknowledgedFee(_Strict):
+    """A known fees.yaml-vs-API disagreement the user has reviewed (EDG-02)."""
+
+    ticker: str
+    field: Literal["taker", "maker"]
+    fees_yaml_value: StrictInt | StrictFloat
+    api_value: StrictInt | StrictFloat
+    api_fee_type: str
+    value_in_use: StrictInt | StrictFloat
+    reason: Annotated[str, StringConstraints(min_length=1)]
+    acknowledged_by: Annotated[str, StringConstraints(min_length=1)]
+    acknowledged_on: Annotated[str, StringConstraints(min_length=1)]
+
+
 class Fees(_Strict):
     spec_id: SpecId
     status: Status
@@ -386,6 +421,7 @@ class Fees(_Strict):
     rounding: Literal["up_to_cent", "up_to_centicent"]
     api_fee_types: ApiFeeTypes
     series: FeeSeries
+    acknowledged: list[AcknowledgedFee]
 
 
 class IntSetting(_Entry):
@@ -427,7 +463,18 @@ class WikidataSettings(_Group):
     entities_batch_size: IntSetting
     coordinate_property: StrSetting
     elevation_property: StrSetting
+    located_in_property: StrSetting
     item_url_prefix: StrSetting
+
+
+class UnitSetting(_Entry):
+    unit_qid: Annotated[str, StringConstraints(pattern=r"^Q\d+$")]
+    value: StrictInt | StrictFloat  # metres per unit
+
+
+class ElevationUnits(_Group):
+    metre: UnitSetting
+    foot: UnitSetting
 
 
 class IngestConfig(_Strict):
@@ -435,6 +482,7 @@ class IngestConfig(_Strict):
     nflverse: NflverseSettings
     kalshi: KalshiSettings
     nws: NwsSettings
+    wikidata_units: ElevationUnits
     wikidata: WikidataSettings
 
 

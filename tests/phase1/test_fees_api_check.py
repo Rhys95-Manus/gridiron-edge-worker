@@ -56,9 +56,13 @@ def test_series_only_prefix_matching_a_row_is_flagged() -> None:
 
 def test_futures_series_listed_from_the_pdf_match_the_api() -> None:
     """User approval 2026-09-29: futures_and_awards holds the PDF's futures and awards tickers."""
+    from ge.ingest.kalshi import fee_schedule_nfl_tickers
+    from tests.phase1.conftest import FIXTURES
+
     fees = load_fees()
-    futs = [t for t in fees.series.futures_and_awards.tickers if t in SERIES]
-    assert futs
+    pdf = fee_schedule_nfl_tickers((FIXTURES / "kalshi_fee_schedule.pdf").read_bytes())
+    futs = [t for t in fees.series.futures_and_awards.tickers if t in SERIES and t in pdf]
+    assert len(futs) == len(pdf - {"KXNFLGAME"})
     assert api_fee_alerts(fees, [SERIES[t] for t in futs]) == []
 
 

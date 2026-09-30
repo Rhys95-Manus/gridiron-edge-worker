@@ -1,0 +1,29 @@
+{
+ "source": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q11573|Q3710",
+ "pulled_at": "2026-09-30T13:10:28+00:00",
+ "response": {
+  "entities": {
+   "Q11573": {
+    "type": "item",
+    "id": "Q11573",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "metre"
+     }
+    }
+   },
+   "Q3710": {
+    "type": "item",
+    "id": "Q3710",
+    "labels": {
+     "en": {
+      "language": "en",
+      "value": "foot"
+     }
+    }
+   }
+  },
+  "success": 1
+ }
+}

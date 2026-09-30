@@ -8,7 +8,7 @@ The build order is docs/BUILD_PLAN.md. Work on ONE phase per session.
 
 ## Source of truth
 - Every metric, formula, threshold and rule has an ID in docs/MODEL_SPEC.md
-  (DATA-, G1-G7, OFF-, DEF-, PLY-, COA-, MTC-, PRJ-, EDG-, BT-).
+  (DATA-, G1-G7, OFF-, DEF-, PLY-, COA-, MTC-, ENV-, PRJ-, EDG-, BT-).
 - Every function that implements one starts its docstring with that ID.
 - If the spec does not define something you need, STOP and ask. Do not guess.
 

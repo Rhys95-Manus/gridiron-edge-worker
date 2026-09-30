@@ -224,6 +224,49 @@ def wikidata_elevation_property(client: httpx.Client) -> None:
     )
 
 
+def wikidata_located_in_property(client: httpx.Client) -> None:
+    """ENV-02 city proxy: confirm the 'located in' property's ID and label."""
+    r = get(
+        client,
+        WIKIDATA,
+        action="wbsearchentities",
+        search="located in the administrative territorial entity",
+        language="en",
+        type="property",
+        limit=5,
+        format="json",
+    )
+    r.raise_for_status()
+    save("wikidata_located_in_property.json", WIKIDATA + "?type=property", r.json())
+
+
+def wikidata_units(client: httpx.Client) -> None:
+    """ENV-02: labels of the two elevation units seen on 2026-09-29 (user: metre, foot)."""
+    r = get(
+        client,
+        WIKIDATA,
+        action="wbgetentities",
+        ids="Q11573|Q3710",
+        props="labels",
+        languages="en",
+        format="json",
+    )
+    r.raise_for_status()
+    save("wikidata_units.json", WIKIDATA + "?action=wbgetentities&ids=Q11573|Q3710", r.json())
+    # Parent of the Denver place, for the P131 chain-walk test.
+    r = get(
+        client,
+        WIKIDATA,
+        action="wbgetentities",
+        ids="Q13052701",
+        props="labels|claims",
+        languages="en|mul",
+        format="json",
+    )
+    r.raise_for_status()
+    save("wikidata_chain_parent.json", WIKIDATA + "?action=wbgetentities&ids=Q13052701", r.json())
+
+
 def nflverse_teams(client: httpx.Client) -> None:
     teams = nflreadpy.load_teams().select(["team_abbr", "team_name", "team_nick"])
     save("nflverse_teams.json", f"nflreadpy {nflreadpy.__version__} load_teams()", teams.to_dicts())
@@ -238,6 +281,8 @@ if __name__ == "__main__":
         "fee_pdf": fee_pdf,
         "nflverse_teams": nflverse_teams,
         "wikidata_elevation_property": wikidata_elevation_property,
+        "wikidata_located_in_property": wikidata_located_in_property,
+        "wikidata_units": wikidata_units,
     }
     headers = {"User-Agent": UA, "Accept-Encoding": "gzip, deflate"}
     with httpx.Client(headers=headers, timeout=60) as c:

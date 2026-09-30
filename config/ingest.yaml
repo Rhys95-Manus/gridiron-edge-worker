@@ -23,10 +23,17 @@ nws:
   base_url: {spec_id: DATA-06, value: 'https://api.weather.gov', status: initial, source: 'https://www.weather.gov/documentation/services-web-api: "The API is located at: https://api.weather.gov"'}
   forecast_window_days: {spec_id: DATA-06, value: 7, status: initial, source: 'BUILD_PLAN Phase 1: "for each outdoor game within 7 days of kickoff"'}
 
+# ENV-02: metres per Wikidata elevation unit. Unit items confirmed by their Wikidata labels
+# (tests/phase1/fixtures/wikidata_units.json); user decision 2026-09-30 to store metres.
+wikidata_units:
+  metre: {spec_id: ENV-02, unit_qid: Q11573, value: 1, status: initial, source: 'Q11573 is labelled "metre" on Wikidata; identity'}
+  foot: {spec_id: ENV-02, unit_qid: Q3710, value: 0.3048, status: initial, source: 'https://www.nist.gov/pml/us-surveyfoot: "1 foot = 0.304 8 meter exactly" (international foot); Q3710 is labelled "foot" on Wikidata'}
+
 wikidata:
   api_url: {spec_id: DATA-13, value: 'https://www.wikidata.org/w/api.php', status: initial, source: 'Wikidata:Data_access documents https://wikidata.org/w/api.php, which 301-redirects to this URL (seen 2026-09-29)'}
   search_limit: {spec_id: DATA-13, value: 50, status: initial, source: 'https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities: limit "Maximum: 50" (documented maximum, as approved for Kalshi page size)'}
   entities_batch_size: {spec_id: DATA-13, value: 50, status: initial, source: 'https://www.wikidata.org/w/api.php?action=help&modules=wbgetentities: ids "Maximum number of values is 50"'}
   coordinate_property: {spec_id: DATA-13, value: 'P625', status: initial, source: 'confirmed by wbsearchentities type=property "coordinate location" (tests/phase1/fixtures/wikidata_coordinate_property.json)'}
   elevation_property: {spec_id: ENV-02, value: 'P2044', status: initial, source: 'ENV-02 "Wikidata elevation above sea level"; ID confirmed by wbsearchentities type=property (tests/phase1/fixtures/wikidata_elevation_property.json)'}
+  located_in_property: {spec_id: ENV-02, value: 'P131', status: initial, source: 'city_elevation_proxy approved by user 2026-09-29 ("via Wikidata P131 then P2044"); ID confirmed by wbsearchentities type=property (tests/phase1/fixtures/wikidata_located_in_property.json)'}
   item_url_prefix: {spec_id: DATA-13, value: 'https://www.wikidata.org/wiki/', status: initial, source: 'DATA-13: "each row keeps its Wikidata item URL as source_url"; host from the redirect above'}

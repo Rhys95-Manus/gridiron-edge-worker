@@ -1,0 +1,38 @@
+{
+ "source": "https://www.wikidata.org/w/api.php?type=property",
+ "pulled_at": "2026-09-30T00:09:08+00:00",
+ "response": {
+  "searchinfo": {
+   "search": "located in the administrative territorial entity"
+  },
+  "search": [
+   {
+    "id": "P131",
+    "title": "Property:P131",
+    "pageid": 4808378,
+    "concepturi": "http://www.wikidata.org/entity/P131",
+    "datatype": "wikibase-item",
+    "repository": "wikidata",
+    "url": "//www.wikidata.org/wiki/Property:P131",
+    "display": {
+     "label": {
+      "value": "located in the administrative territorial entity",
+      "language": "en"
+     },
+     "description": {
+      "value": "the item is located on the territory of the following administrative entity. Use P276 for specifying locations that are non-administrative places and for items about events. Use P1382 if the item falls only partially into the administrative entity",
+      "language": "en"
+     }
+    },
+    "label": "located in the administrative territorial entity",
+    "description": "the item is located on the territory of the following administrative entity. Use P276 for specifying locations that are non-administrative places and for items about events. Use P1382 if the item falls only partially into the administrative entity",
+    "match": {
+     "type": "label",
+     "language": "en",
+     "text": "located in the administrative territorial entity"
+    }
+   }
+  ],
+  "success": 1
+ }
+}

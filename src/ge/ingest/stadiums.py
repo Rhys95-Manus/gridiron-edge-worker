@@ -18,8 +18,15 @@ import polars as pl
 import yaml
 from timezonefinder import TimezoneFinder
 
-from ge.config import REPO_ROOT, WikidataSettings
-from ge.ingest.wikidata import Elevation, coordinates, elevation, match_stadium
+from ge.config import REPO_ROOT, ElevationUnits, WikidataSettings, load_ingest
+from ge.ingest.wikidata import (
+    CityElevation,
+    city_elevation,
+    coordinates,
+    match_stadium,
+    to_metres,
+)
+from ge.ingest.wikidata import label as wd_label
 
 STADIUMS_PATH = REPO_ROOT / "config" / "stadiums.yaml"
 OVERRIDES_PATH = REPO_ROOT / "config" / "stadium_overrides.yaml"
@@ -57,6 +64,7 @@ def build_stadiums(
     cfg: WikidataSettings,
     current_season: int,
     overrides: list[dict[str, Any]],
+    units: ElevationUnits | None = None,
 ) -> list[dict[str, Any]]:
     """DATA-13: one row per (stadium_id, name), located only via Wikidata."""
     venues = (
@@ -86,17 +94,13 @@ def build_stadiums(
             xy = coordinates(entities.get(o["qid"]) or {}, prop)
             if xy is None:
                 raise ValueError(f"override {key} -> {o['qid']}: item has no coordinate location")
-            label = ((entities[o["qid"]].get("labels") or {}).get("en") or {}).get("value")
+            label = wd_label(entities[o["qid"]])
             status, qid, lat, lon = "override", o["qid"], xy[0], xy[1]
             reason = f"approved by {o['approved_by']} on {o['approved_on']}: {o['reason']}"
         else:
             m = match_stadium([rec["stadium"]], search, entities, prop, prefix)
             status, qid, label, lat, lon, reason = m.status, m.qid, m.label, m.lat, m.lon, m.reason
         tz = tf.timezone_at(lng=lon, lat=lat) if lat is not None and lon is not None else None
-        if qid:
-            elev = elevation(entities.get(qid) or {}, cfg.elevation_property.value)
-        else:
-            elev = Elevation(None, None, "no Wikidata item for this venue")
         rows.append(
             {
                 "stadium_id": rec["stadium_id"],
@@ -110,16 +114,56 @@ def build_stadiums(
                 "lat": lat,
                 "lon": lon,
                 "timezone": tz,
-                "elevation": elev.value,
-                "elevation_unit": elev.unit,
-                "elevation_reason": elev.reason,
                 "source_url": prefix + qid if qid else None,
+                "_qid": qid,
             }
         )
     unused = sorted(set(ov) - {(r["stadium_id"], r["name"]) for r in rows})
+    _add_city_elevation(rows, entities, wiki, cfg, units or load_ingest().wikidata_units)
     if unused:
         raise ValueError(f"overrides for venues not in the schedules: {unused}")
     return rows
+
+
+def _add_city_elevation(
+    rows: list[dict[str, Any]],
+    entities: dict[str, Any],
+    wiki: Wiki,
+    cfg: WikidataSettings,
+    units: ElevationUnits,
+) -> None:
+    """ENV-02 city_elevation_proxy (user decisions 2026-09-29/30): P131 place, walking up
+    its P131 chain to the first P2044; stored in metres with the original value and unit."""
+    loc, elev_prop, prefix = (
+        cfg.located_in_property.value,
+        cfg.elevation_property.value,
+        cfg.item_url_prefix.value,
+    )
+    cache: dict[str, Any] = {}
+
+    def fetch(qids: list[str]) -> dict[str, Any]:
+        todo = sorted(q for q in set(qids) if q not in cache)
+        if todo:
+            cache.update(wiki.entities(todo))
+        return {q: cache[q] for q in qids if q in cache}
+
+    for r in rows:
+        qid = r.pop("_qid")
+        if qid:
+            e = city_elevation(entities[qid], fetch, loc, elev_prop)
+        else:
+            e = CityElevation(None, None, None, None, "no Wikidata item for this venue")
+        metres = to_metres(e.value, e.unit, units) if e.value is not None and e.unit else None
+        r.update(
+            elevation_m=metres,
+            elevation_original_value=e.value,
+            elevation_original_unit=e.unit,
+            elevation_method=e.method,
+            elevation_place=e.place_label,
+            elevation_chain=e.chain,
+            elevation_source_url=prefix + e.place_qid if e.place_qid else None,
+            elevation_reason=e.reason,
+        )
 
 
 def write_stadiums(

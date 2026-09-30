@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import polars as pl
 
 from ge.config import IngestConfig, load_fees
-from ge.ingest.fees_check import check_fee_schedule, effective_multipliers, parse_effective_date
+from ge.ingest.fees_check import check_fee_schedule, fee_check, parse_effective_date
 from ge.ingest.http import PublicClient
 from ge.ingest.kalshi import (
     REVIEW_PATH,
@@ -329,9 +329,9 @@ def run_fees_check(cfg: IngestConfig, pdf_path: str | None) -> int:
     ok = True
     if pdf_path:
         with open(pdf_path, "rb") as fh:
-            result = check_fee_schedule(fees, parse_effective_date(fh.read()))
-        print(f"PDF {pdf_path}: {result.message}")
-        ok &= result.ok
+            pdf_result = check_fee_schedule(fees, parse_effective_date(fh.read()))
+        print(f"PDF {pdf_path}: {pdf_result.message}")
+        ok &= pdf_result.ok
     else:
         print("PDF check not run (pass --pdf <saved fee schedule PDF> to run it)")
 
@@ -342,19 +342,25 @@ def run_fees_check(cfg: IngestConfig, pdf_path: str | None) -> int:
     with PublicClient(cfg.http) as http:
         listed = {s["ticker"]: s for s in KalshiPublic(http, cfg.kalshi).series_list()}
     gone = sorted(included - set(listed))
-    effective = [effective_multipliers(fees, listed[t]) for t in sorted(included) if t in listed]
-    alerts = [a for e in effective for a in e.alerts]
-    alerts += [f"{t}: included series no longer listed by Kalshi" for t in gone]
-    print(f"API check: {len(included)} included series, {len(alerts)} alert(s)")
-    for a in alerts:
+    result = fee_check(fees, [listed[t] for t in sorted(included) if t in listed])
+    new = result.new + [f"{t}: included series no longer listed by Kalshi" for t in gone]
+    print(
+        f"API check: {len(included)} included series; {len(result.acknowledged)} acknowledged "
+        f"disagreement(s), {len(new)} new or changed, {len(result.stale)} stale acknowledgement(s)"
+    )
+    for a in new:
         print(f"  ALERT {a}")
-    flagged = [e for e in effective if e.alerts]
+    for s in result.stale:
+        print(f"  ALERT {s}")
+    for a in result.acknowledged:
+        print(f"  acknowledged: {a}")
+    flagged = [e for e in result.effective if e.alerts]
     if flagged:
         print("  multipliers used (costlier of fees.yaml and API, EDG-02):")
         for e in flagged:
             state = "" if e.known else "  UNTRUSTED"
             print(f"    {e.ticker:<28} row {e.row:<18} taker {e.taker} maker {e.maker}{state}")
-    return 0 if ok and not alerts else 1
+    return 0 if ok and not new and not result.stale else 1
 
 
 # --- report --------------------------------------------------------------------------------

@@ -44,14 +44,18 @@ def test_located_rows_are_complete_and_consistent() -> None:
 
 
 def test_elevation_fields_are_present_and_consistent() -> None:
-    """ENV-02: value and unit together or not at all; always a reason."""
+    """ENV-02 city_elevation_proxy: metres plus the original value and unit, all or nothing;
+    labelled, cited per row with the place item actually used, and always a reason."""
     for r in _rows():
         key = (r["stadium_id"], r["name"])
-        assert {"elevation", "elevation_unit", "elevation_reason"} <= set(r), key
-        assert (r["elevation"] is None) == (r["elevation_unit"] is None), key
+        assert r["elevation_method"] == "city_elevation_proxy", key
+        filled = [r["elevation_m"], r["elevation_original_value"], r["elevation_original_unit"]]
+        assert all(v is None for v in filled) or all(v is not None for v in filled), key
         assert r["elevation_reason"], key
-        if r["elevation"] is not None:
-            assert r["source_url"], key
+        if r["elevation_m"] is not None:
+            assert ITEM_URL.match(r["elevation_source_url"]), key
+            assert r["elevation_place"], key
+            assert r["elevation_chain"] and r["elevation_chain"][-1] in r["elevation_source_url"]
 
 
 def test_overrides_file_cites_approval() -> None:

@@ -102,12 +102,14 @@ defense:
   def_08_starter_lookback_games: {spec_id: DEF-08, value: 3, status: initial, source: '≥ 60% defensive snaps over the last 3 games'}
   def_09_min_targets_per_cell: {spec_id: DEF-09, value: 20, status: initial, source: '20 targets per cell'}
   def_09_k: {spec_id: DEF-09, value: 60, status: initial, source: 'k = 60; prior = the defense'}
+  def_09_cells: {spec_id: DEF-09, value: 12, status: initial, source: '12 location × depth cells'}
   def_10_min_play_action_dropbacks: {spec_id: DEF-10, value: 40, status: initial, source: '40 play-action dropbacks'}
   def_10_k: {spec_id: DEF-10, value: 100, status: initial, source: 'k = 100; prior = league gap'}
   def_11_min_receptions: {spec_id: DEF-11, value: 60, status: initial, source: '60 receptions'}
   def_11_k: {spec_id: DEF-11, value: 150, status: initial, source: 'k = 150; prior 0'}
   def_12_min_carries_per_band: {spec_id: DEF-12, value: 20, status: initial, source: '20 carries per band'}
   def_12_k: {spec_id: DEF-12, value: 50, status: initial, source: 'k = 50; prior = its overall run defense'}
+  def_12_stacked_box_min: {spec_id: DEF-12, value: 8, status: initial, source: 'Share of snaps with ≥ 8 in the box'}
   def_13_min_blitzed_dropbacks: {spec_id: DEF-13, value: 60, status: initial, source: '60 blitzed dropbacks'}
   def_13_k: {spec_id: DEF-13, value: 120, status: initial, source: 'k = 120; prior = league gap'}
   def_14_min_dropbacks: {spec_id: DEF-14, value: 150, status: initial, source: '150 dropbacks'}
@@ -163,6 +165,8 @@ player:
   ply_16_k_carries: {spec_id: PLY-16, value: 40, status: initial, source: 'k = 40 carries'}
   ply_17_min_blitzed_dropbacks: {spec_id: PLY-17, value: 60, status: initial, source: '60 blitzed dropbacks'}
   ply_17_k_blitzed_dropbacks: {spec_id: PLY-17, value: 120, status: initial, source: 'k = 120 blitzed dropbacks'}
+  ply_17_blitz_min_blitzers: {spec_id: PLY-17, value: 1, status: initial, source: 'n\_blitzers ≥ 1'}
+  ply_17_no_blitz_blitzers: {spec_id: PLY-17, value: 0, status: initial, source: 'n\_blitzers = 0'}
   ply_18_min_attempts_per_band: {spec_id: PLY-18, value: 30, status: initial, source: '30 attempts per band'}
   ply_18_k_attempts: {spec_id: PLY-18, value: 80, status: initial, source: 'k = 80 attempts'}
   ply_19_min_play_action_dropbacks: {spec_id: PLY-19, value: 40, status: initial, source: '40 play-action dropbacks'}
@@ -177,11 +181,16 @@ player:
   ply_23_k: {spec_id: PLY-23, value: 100, status: initial, source: 'k = 100; prior = his overall'}
   ply_24_min_carries_per_band: {spec_id: PLY-24, value: 20, status: initial, source: '20 carries per band'}
   ply_24_k: {spec_id: PLY-24, value: 50, status: initial, source: 'k = 50; prior = his overall'}
+  ply_24_light_box_max: {spec_id: PLY-24, value: 6, status: initial, source: 'light (≤ 6 in box), standard (7) and stacked (≥ 8)'}
+  ply_24_standard_box: {spec_id: PLY-24, value: 7, status: initial, source: 'light (≤ 6 in box), standard (7) and stacked (≥ 8)'}
+  ply_24_stacked_box_min: {spec_id: PLY-24, value: 8, status: initial, source: 'light (≤ 6 in box), standard (7) and stacked (≥ 8)'}
   ply_25_min_carries_each: {spec_id: PLY-25, value: 25, status: initial, source: '25 carries each'}
   ply_25_k: {spec_id: PLY-25, value: 60, status: initial, source: 'k = 60; prior = his overall'}
   ply_26_min_carries: {spec_id: PLY-26, value: 60, status: initial, source: '60 carries'}
   ply_26_k_explosive: {spec_id: PLY-26, value: 150, status: initial, source: 'k = 150 explosive, 100 stuff'}
   ply_26_k_stuff: {spec_id: PLY-26, value: 100, status: initial, source: 'k = 150 explosive, 100 stuff'}
+  ply_26_explosive_min_yards: {spec_id: PLY-26, value: 10, status: initial, source: 'Share of carries 10+ yards; share at ≤ 0 yards'}
+  ply_26_stuff_max_yards: {spec_id: PLY-26, value: 0, status: initial, source: 'Share of carries 10+ yards; share at ≤ 0 yards'}
   ply_27_min_targets: {spec_id: PLY-27, value: 15, status: initial, source: '15 targets'}
   ply_27_k: {spec_id: PLY-27, value: 40, status: initial, source: 'k = 40; role prior'}
   ply_28_min_targets_per_band: {spec_id: PLY-28, value: 15, status: initial, source: '15 targets per band'}
@@ -218,6 +227,15 @@ matchup:
   mtc_01_min_carries_per_cell: {spec_id: MTC-01, value: 25, status: initial, source: 'both sides have 25 carries there'}
   mtc_02_beta: {spec_id: MTC-02, value: 0.5, status: initial, source: 'β initial 0.5'}
   mtc_03_ol_absence_factor: {spec_id: MTC-03, value: 1.10, status: initial, source: 'OL-absence factor (initial 1.10'}
+  mtc_07_multiplier_min: {spec_id: MTC-07, value: 0.85, status: initial, source: 'capped at 0.85–1.15'}
+  mtc_07_multiplier_max: {spec_id: MTC-07, value: 1.15, status: initial, source: 'capped at 0.85–1.15'}
+  mtc_07_log_offset: {spec_id: MTC-07, value: 1, status: initial, source: 'y = \ln\frac{\text{actual} + 1}{\text{baseline} + 1}'}
+  mtc_07_first_training_season: {spec_id: MTC-07, value: 2016, status: initial, source: 'measures from 2016–2024 data'}
+  mtc_07_last_training_season: {spec_id: MTC-07, value: 2024, status: initial, source: 'measures from 2016–2024 data'}
+  mtc_07_ftn_first_season: {spec_id: MTC-07, value: 2022, status: initial, source: 'FTN-based features train on 2022 onward'}
+environment:
+  env_fit_first_season: {spec_id: [ENV-01, ENV-02, ENV-03, ENV-04], value: 2016, status: initial, source: 'League-wide coefficients fit on 2016–2024 games'}
+  env_fit_last_season: {spec_id: [ENV-01, ENV-02, ENV-03, ENV-04], value: 2024, status: initial, source: 'League-wide coefficients fit on 2016–2024 games'}
 
 projection:
   prj_01_model_half_life_games: {spec_id: PRJ-01, value: 6, status: initial, source: 'recency-weighted with h = 6 games'}
