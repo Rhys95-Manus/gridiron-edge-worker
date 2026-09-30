@@ -127,6 +127,91 @@ def ingest_report_cmd() -> None:
     raise typer.Exit(run_report(load_ingest()))
 
 
+store = typer.Typer(
+    help="Point-in-time store (BT-01): DuckDB views and per-game snapshots.",
+    no_args_is_help=True,
+)
+app.add_typer(store, name="store")
+
+
+@store.command("build")
+def store_build_cmd() -> None:
+    """BT-01: write data/store.duckdb (a view per dataset over every version, plus games)."""
+    from ge.store.db import DB_PATH, build
+
+    counts = build()
+    for name, n in counts.items():
+        print(f"{name:<22} {n:>10}")
+    print(f"\nwrote {DB_PATH}")
+    print("Data: nflverse; charting: FTN Data via nflverse")
+
+
+@store.command("snapshot")
+def store_snapshot_cmd(
+    game: Annotated[str, typer.Option("--game", help="nflverse game_id")],
+    as_of: AsOf = None,
+    pass_: Annotated[
+        str,
+        typer.Option("--pass", help="decision (kickoff - 24 h) or inactives (kickoff - 90 min)"),
+    ] = "decision",
+    closing_line_backtest: Annotated[
+        bool, typer.Option("--closing-line-backtest", help="show closing lines before kickoff")
+    ] = False,
+) -> None:
+    """BT-01: print a summary of one game's inputs as they stood at as_of."""
+    import datetime as dt
+
+    from ge.store.snapshot import ATTRIBUTION, snapshot
+
+    when = dt.datetime.fromisoformat(as_of.replace("Z", "+00:00")) if as_of else None
+    if when is not None and when.tzinfo is None:
+        raise typer.BadParameter("--as-of needs a time zone, e.g. 2026-10-03T17:00:00Z")
+    if pass_ not in ("decision", "inactives"):
+        raise typer.BadParameter("--pass must be decision or inactives")
+    snap = snapshot(game, when, pass_=pass_, closing_line_backtest=closing_line_backtest)  # type: ignore[arg-type]
+    print(f"{snap.game_id}  season {snap.season} week {snap.week}")
+    print(f"kickoff {snap.kickoff_utc.isoformat()}   as_of {snap.as_of.isoformat()} ({snap.pass_})")
+    print("\ntables")
+    for t in snap.tables:
+        df = snap.collect(t)
+        print(f"  {t:<20} {df.height:>8} rows {df.width:>4} cols")
+    tg = snap.collect("target_game")
+    if tg.height:
+        cols = [
+            c
+            for c in (
+                "away_team",
+                "home_team",
+                "stadium",
+                "roof",
+                "temp",
+                "wind",
+                "spread_line",
+                "total_line",
+            )
+            if c in tg.columns
+        ]
+        print("\ntarget game: " + ", ".join(f"{c}={tg[c][0]}" for c in cols))
+    inj = snap.collect("injuries")
+    if inj.height and "report_status" in inj.columns:
+        wk = inj.filter((inj["season"] == snap.season) & (inj["week"] == snap.week))
+        teams = [tg["away_team"][0], tg["home_team"][0]] if tg.height else []
+        mine = wk.filter(wk["team"].is_in(teams))
+        print(f"\ninjury report, week {snap.week}, these two teams: {mine.height} rows")
+        for status, n in sorted(
+            mine.group_by("report_status").len().iter_rows(), key=lambda r: str(r[0])
+        ):
+            print(f"  {status or '(no game status)'}: {n}")
+    print("\nlabels")
+    for lb in snap.labels:
+        print(f"  - {lb}")
+    print("\nversions read")
+    for v in snap.vintages:
+        print(f"  {v}")
+    print(f"\ndigest {snap.digest()}")
+    print(ATTRIBUTION)
+
+
 @app.command()
 def metrics(season: Season = None, week: Week = None, as_of: AsOf = None) -> None:
     """Compute team, player and coaching metrics (OFF-, DEF-, PLY-, COA-)."""

@@ -287,6 +287,8 @@ backtest:
   bt_01_last_test_season: {spec_id: BT-01, value: 2024, status: initial, source: 'Walk-forward test seasons are 2021–2024, each fit only on seasons from 2016 through the year before; 2025 is a locked holdout'}
   bt_01_holdout_season: {spec_id: BT-01, value: 2025, status: initial, source: 'Walk-forward test seasons are 2021–2024, each fit only on seasons from 2016 through the year before; 2025 is a locked holdout'}
   bt_01_ftn_first_season: {spec_id: BT-01, value: 2022, status: initial, source: 'FTN charting starts in 2022'}
+  bt_01_assumed_report_hour_et: {spec_id: BT-01, value: 12, status: initial, source: 'counts as known at 12 noon ET'}
+  bt_01_assumed_report_days_before_kickoff: {spec_id: BT-01, value: 1, status: initial, source: '1 day before kickoff'}
   bt_05_min_calibration_slope: {spec_id: BT-05, value: 0.90, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
   bt_05_max_calibration_slope: {spec_id: BT-05, value: 1.10, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
   bt_05_min_calibration_forecasts: {spec_id: BT-05, value: 1000, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}

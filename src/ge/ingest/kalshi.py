@@ -215,6 +215,38 @@ def pending_series(path: Path = REVIEW_PATH) -> set[str]:
     return {t for t, row in _read_review(path)["series"].items() if row["decision"] == "pending"}
 
 
+_EVENT_DATE = re.compile(r"-(\d{2}[A-Z]{3}\d{2})")
+
+
+def event_ticker_date(event_ticker: str) -> dt.date | None:
+    """DATA-08: the game date in an event ticker (KXNFLGAME-25NOV09PITLAC -> 2025-11-09), or
+    None when the ticker carries no date (season-long markets)."""
+    m = _EVENT_DATE.search(event_ticker)
+    if not m:
+        return None
+    try:
+        return dt.datetime.strptime(m.group(1).title(), "%y%b%d").date()
+    except ValueError:
+        return None
+
+
+def events_on_dates(events: list[dict[str, Any]], dates: set[dt.date]) -> list[dict[str, Any]]:
+    """DATA-08: events whose ticker date is one of `dates`, sorted by ticker."""
+    return sorted(
+        (e for e in events if event_ticker_date(e["event_ticker"]) in dates),
+        key=lambda e: e["event_ticker"],
+    )
+
+
+def markets_for_event(k: KalshiPublic, event_ticker: str) -> list[tuple[dict[str, Any], bool]]:
+    """DATA-08: an event's markets from GET /markets and GET /historical/markets (both take
+    one event_ticker, per docs.kalshi.com). Returns (market, historical); live wins a tie."""
+    live = list(k.markets(event_ticker=event_ticker))
+    seen = {m["ticker"] for m in live}
+    hist = [m for m in k.historical_markets(event_ticker=event_ticker) if m["ticker"] not in seen]
+    return [(m, False) for m in live] + [(m, True) for m in hist]
+
+
 class KalshiPublic:
     """DATA-08 read-only client for the documented public market-data endpoints."""
 

@@ -39,6 +39,9 @@ DATASETS: dict[str, Dataset] = {
     "participation": Dataset("DATA-03", nfl.load_participation, post_season_only=True),
     "snap_counts": Dataset("DATA-04", nfl.load_snap_counts),
     "rosters": Dataset("DATA-04", nfl.load_rosters),
+    # BT-01: weekly rosters, so a snapshot sees who was on a roster that week (decision
+    # 2026-09-30); the seasonal file is end-of-season state.
+    "rosters_weekly": Dataset("DATA-04", nfl.load_rosters_weekly),
     "depth_charts": Dataset("DATA-04", nfl.load_depth_charts),
     "schedules": Dataset("DATA-04", nfl.load_schedules),
     "injuries": Dataset("DATA-04", nfl.load_injuries),

@@ -21,6 +21,13 @@ from ge.ingest.kalshi import (
     pending_series,
     update_review_file,
 )
+from ge.ingest.kalshi_history import (
+    GAME_WINNER_SERIES,
+    completed_events,
+    game_winner_coverage,
+    market_row,
+    run_history,
+)
 from ge.ingest.nflverse import current_season
 from ge.ingest.prices import book_asks, dollars_to_cc
 from ge.ingest.raw import DATA_ROOT, read_latest, seasons_stored, write_raw
@@ -34,6 +41,7 @@ from ge.ingest.stadiums import (
 )
 from ge.ingest.weather_nws import NwsClient, classify_game, parse_gridpoint
 from ge.ingest.wikidata import WikidataClient
+from ge.store.known_at import week_window
 
 EASTERN = ZoneInfo("America/New_York")  # nflverse gametime is Eastern (schedules dictionary)
 ATTRIBUTION = "Data: nflverse; charting: FTN Data via nflverse"
@@ -177,21 +185,37 @@ def run_weather(cfg: IngestConfig, user_agent: str, days: int) -> int:
 
 def _week_window(season: int, week: int) -> tuple[dt.datetime, dt.datetime | None]:
     """Week W runs from its first game date (00:00 ET) to week W+1's first game date."""
+    try:
+        return week_window(_schedules([season]), week)
+    except KeyError:
+        raise SystemExit(f"no {season} week {week} games in schedules") from None
+
+
+def _run_kalshi_history(k: KalshiPublic, season: int, week: int, series: list[str]) -> int:
+    """DATA-08 --history: pull the week event by event (resumable), then check coverage."""
     sched = _schedules([season])
-
-    def first_day(w: int) -> dt.date | None:
-        days = sched.filter(pl.col("week") == w)["gameday"].str.to_date()
-        return days.min() if days.len() else None  # type: ignore[return-value]
-
-    start = first_day(week)
-    if start is None:
-        raise SystemExit(f"no {season} week {week} games in schedules")
-    nxt = first_day(week + 1)
-
-    def to_utc(d: dt.date) -> dt.datetime:
-        return dt.datetime.combine(d, dt.time(), EASTERN).astimezone(dt.UTC)
-
-    return to_utc(start), (to_utc(nxt) if nxt else None)
+    result = run_history(
+        k,
+        season=season,
+        week=week,
+        sched=sched,
+        series=series,
+        log=lambda s: print(s, flush=True),
+    )
+    print(f"\nevents skipped (already stored): {result.skipped_events}")
+    print("markets stored per series (series with events on the week's dates):")
+    for s, n_ev in sorted(result.events_by_series.items()):
+        if n_ev:
+            print(f"  {s:<32} {n_ev:>4} events {result.markets_by_series.get(s, 0):>6} markets")
+    no_events = sorted(s for s, n in result.events_by_series.items() if not n)
+    print(f"{len(no_events)} approved series had no events on the week's dates")
+    stored = completed_events(DATA_ROOT, season, week)
+    cov = game_winner_coverage(sched, week, sorted(stored))
+    print(f"\n{GAME_WINNER_SERIES} coverage by game date (scheduled games vs events stored):")
+    for r in cov:
+        status = "ok" if r["ok"] else "MISSING"
+        print(f"  {r['date']}  games {r['games']:>2}  events {r['events']:>2}  {status}")
+    return 0 if cov and all(r["ok"] for r in cov) else 1
 
 
 def _occurs(m: dict[str, Any]) -> dt.datetime | None:
@@ -233,6 +257,8 @@ def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
         if not approved:
             print("No approved series yet. Mark series `include` in the review file, then rerun.")
             return 2
+        if history:
+            return _run_kalshi_history(k, season, week, approved)
         start, end = _week_window(season, week)
         print(
             f"{season} week {week}: markets occurring {start:%Y-%m-%d %H:%M}Z to "
@@ -246,8 +272,6 @@ def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
                     markets.append({**m, "series_ticker": series})
         book_rows: list[dict[str, Any]] = []
         market_rows: list[dict[str, Any]] = []
-        trade_rows: list[dict[str, Any]] = []
-        candle_rows: list[dict[str, Any]] = []
         for m in markets:
             book = k.orderbook(m["ticker"])
             yes_ask, no_ask = book_asks(book)
@@ -259,46 +283,13 @@ def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
                             "side": side,
                             "bid_cc": dollars_to_cc(price),
                             "qty": qty,
+                            "nfl_week": week,
                         }
                     )
-            market_rows.append(
-                {
-                    "ticker": m["ticker"],
-                    "event_ticker": m.get("event_ticker"),
-                    "series_ticker": m["series_ticker"],
-                    "status": m.get("status"),
-                    "yes_sub_title": m.get("yes_sub_title"),
-                    "occurs_at": _occurs(m),
-                    "close_time": m.get("close_time"),
-                    "yes_ask_cc": yes_ask,
-                    "no_ask_cc": no_ask,
-                    "volume_fp": m.get("volume_fp"),
-                    "rules_primary": m.get("rules_primary"),
-                    "rules_secondary": m.get("rules_secondary"),
-                    "raw_json": json.dumps(m),
-                }
-            )
-            if history:
-                trade_rows.extend({**t, "ticker": m["ticker"]} for t in k.trades(m["ticker"]))
-                opened = dt.datetime.fromisoformat(m["open_time"].replace("Z", "+00:00"))
-                for c in k.candlesticks(
-                    m["series_ticker"],
-                    m["ticker"],
-                    int(opened.timestamp()),
-                    int(pulled_at.timestamp()),
-                ):
-                    candle_rows.append(
-                        {
-                            "ticker": m["ticker"],
-                            "raw_json": json.dumps(c),
-                            "end_period_ts": c.get("end_period_ts"),
-                        }
-                    )
+            market_rows.append(market_row(m, m["series_ticker"], week, False, yes_ask, no_ask))
     for name, rows in (
         ("kalshi_markets", market_rows),
         ("kalshi_orderbook", book_rows),
-        ("kalshi_trades", trade_rows),
-        ("kalshi_candles", candle_rows),
     ):
         if rows:
             write_raw(

@@ -1,0 +1,14 @@
+{
+ "source": [
+  "data/raw/depth_charts/season=2025/pulled_at=20260929T185905Z/part.parquet"
+ ],
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: depth_charts(2025)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:59:05.455433+00:00"
+ ],
+ "cut_at": "2026-09-30T14:27:37+00:00",
+ "rows": 34048,
+ "note": "both teams of the first 2025 game (2025_01_DAL_PHI)"
+}

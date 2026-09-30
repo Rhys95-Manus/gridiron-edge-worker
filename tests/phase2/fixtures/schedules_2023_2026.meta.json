@@ -1,0 +1,23 @@
+{
+ "source": [
+  "data/raw/schedules/season=2023/pulled_at=20260929T185907Z/part.parquet",
+  "data/raw/schedules/season=2024/pulled_at=20260929T185907Z/part.parquet",
+  "data/raw/schedules/season=2025/pulled_at=20260929T185907Z/part.parquet",
+  "data/raw/schedules/season=2026/pulled_at=20260929T185907Z/part.parquet"
+ ],
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: schedules(2023)",
+  "nflverse (DATA-04) via nflreadpy 0.1.5: schedules(2024)",
+  "nflverse (DATA-04) via nflreadpy 0.1.5: schedules(2025)",
+  "nflverse (DATA-04) via nflreadpy 0.1.5: schedules(2026)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:59:07.773430+00:00",
+  "2026-09-29 18:59:07.781423+00:00",
+  "2026-09-29 18:59:07.790421+00:00",
+  "2026-09-29 18:59:07.799424+00:00"
+ ],
+ "cut_at": "2026-09-30T14:27:37+00:00",
+ "rows": 1127,
+ "note": "full schedules, 2023-2026"
+}

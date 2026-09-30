@@ -5,6 +5,7 @@ description = "Python worker: NFL and Kalshi data in, priced recommendations out
 readme = "CLAUDE.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "duckdb>=1.5.6",
     "httpx>=0.28.1",
     "nflreadpy>=0.1.5",
     "polars>=1.44.2",

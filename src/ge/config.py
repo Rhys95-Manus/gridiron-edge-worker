@@ -341,6 +341,8 @@ class Backtest(_Group):
     bt_01_last_test_season: Param
     bt_01_holdout_season: Param
     bt_01_ftn_first_season: Param
+    bt_01_assumed_report_hour_et: Param
+    bt_01_assumed_report_days_before_kickoff: Param
     bt_05_min_calibration_slope: Param
     bt_05_max_calibration_slope: Param
     bt_05_min_calibration_forecasts: Param
