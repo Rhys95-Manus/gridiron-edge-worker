@@ -2,6 +2,7 @@
 venues (a London game under a US team's ID) gets each venue's own coordinates. Approved
 overrides pick a Wikidata item; coordinates still come only from Wikidata."""
 
+import functools
 from pathlib import Path
 from typing import Any
 
@@ -13,10 +14,27 @@ from ge.config import load_ingest
 from ge.ingest.stadiums import build_stadiums, load_overrides, stadium_for_game
 from tests.phase1.conftest import load_fixture
 
-SEARCH = load_fixture("wikidata_search.json")["response"]
-ENTITIES = load_fixture("wikidata_entities.json")["response"]["entities"]
-REAL = [n for n, r in SEARCH.items() if r.get("search")]
-NO_HIT = next(n for n, r in SEARCH.items() if not r.get("search"))
+
+@functools.cache
+def _search() -> Any:
+    return load_fixture("wikidata_search.json")["response"]
+
+
+@functools.cache
+def _entities() -> Any:
+    return load_fixture("wikidata_entities.json")["response"]["entities"]
+
+
+@functools.cache
+def _real() -> Any:
+    return [n for n, r in _search().items() if r.get("search")]
+
+
+@functools.cache
+def _no_hit() -> Any:
+    return next(n for n, r in _search().items() if not r.get("search"))
+
+
 CFG = load_ingest().wikidata
 
 
@@ -24,10 +42,10 @@ class FakeWiki:
     """Serves the captured real Wikidata responses."""
 
     def search(self, name: str) -> dict[str, Any]:
-        return SEARCH.get(name, {"search": []})
+        return _search().get(name, {"search": []})
 
     def entities(self, qids: list[str]) -> dict[str, Any]:
-        return {q: ENTITIES[q] for q in qids if q in ENTITIES}
+        return {q: _entities()[q] for q in qids if q in _entities()}
 
 
 def _sched(rows: list[tuple[str, str, int, str | None]]) -> pl.DataFrame:
@@ -35,36 +53,40 @@ def _sched(rows: list[tuple[str, str, int, str | None]]) -> pl.DataFrame:
 
 
 def _coords(qid: str) -> tuple[float, float]:
-    v = ENTITIES[qid]["claims"][CFG.coordinate_property.value][0]["mainsnak"]["datavalue"]["value"]
+    v = _entities()[qid]["claims"][CFG.coordinate_property.value][0]["mainsnak"]["datavalue"][
+        "value"
+    ]
     return v["latitude"], v["longitude"]
 
 
 def test_one_id_two_venues_gets_two_rows_with_their_own_coordinates() -> None:
-    sched = _sched([("TEST00", REAL[0], 2026, "outdoors"), ("TEST00", REAL[1], 2026, "outdoors")])
+    sched = _sched(
+        [("TEST00", _real()[0], 2026, "outdoors"), ("TEST00", _real()[1], 2026, "outdoors")]
+    )
     rows = build_stadiums(sched, FakeWiki(), CFG, 2026, overrides=[])
     by_name = {r["name"]: r for r in rows}
-    assert set(by_name) == {REAL[0], REAL[1]}
-    for name in REAL[:2]:
+    assert set(by_name) == {_real()[0], _real()[1]}
+    for name in _real()[:2]:
         r = by_name[name]
         assert r["stadium_id"] == "TEST00"
         assert r["match_status"] == "matched"
-        qid = SEARCH[name]["search"][0]["id"]
+        qid = _search()[name]["search"][0]["id"]
         assert (r["lat"], r["lon"]) == _coords(qid)
-    assert (by_name[REAL[0]]["lat"], by_name[REAL[0]]["lon"]) != (
-        by_name[REAL[1]]["lat"],
-        by_name[REAL[1]]["lon"],
+    assert (by_name[_real()[0]]["lat"], by_name[_real()[0]]["lon"]) != (
+        by_name[_real()[1]]["lat"],
+        by_name[_real()[1]]["lon"],
     )
 
 
 def test_game_lookup_uses_id_and_name() -> None:
-    sched = _sched([("TEST00", REAL[0], 2026, "outdoors"), ("TEST00", REAL[1], 2026, "dome")])
+    sched = _sched([("TEST00", _real()[0], 2026, "outdoors"), ("TEST00", _real()[1], 2026, "dome")])
     rows = build_stadiums(sched, FakeWiki(), CFG, 2026, overrides=[])
-    assert stadium_for_game(rows, "TEST00", REAL[1])["name"] == REAL[1]
+    assert stadium_for_game(rows, "TEST00", _real()[1])["name"] == _real()[1]
     assert stadium_for_game(rows, "TEST00", "not a venue") is None
 
 
 def test_override_takes_coordinates_from_wikidata_and_cites_approval(tmp_path: Path) -> None:
-    qid = SEARCH[REAL[2]]["search"][0]["id"]
+    qid = _search()[_real()[2]]["search"][0]["id"]
     path = tmp_path / "stadium_overrides.yaml"
     path.write_text(
         yaml.safe_dump(
@@ -72,7 +94,7 @@ def test_override_takes_coordinates_from_wikidata_and_cites_approval(tmp_path: P
                 "overrides": [
                     {
                         "stadium_id": "TEST01",
-                        "name": NO_HIT,
+                        "name": _no_hit(),
                         "qid": qid,
                         "approved_by": "user",
                         "approved_on": "2026-09-29",
@@ -83,7 +105,7 @@ def test_override_takes_coordinates_from_wikidata_and_cites_approval(tmp_path: P
         ),
         encoding="utf-8",
     )
-    sched = _sched([("TEST01", NO_HIT, 2026, "outdoors")])
+    sched = _sched([("TEST01", _no_hit(), 2026, "outdoors")])
     rows = build_stadiums(sched, FakeWiki(), CFG, 2026, overrides=load_overrides(path))
     (r,) = rows
     assert r["match_status"] == "override"
@@ -103,8 +125,8 @@ def test_override_must_be_approved(tmp_path: Path) -> None:
 
 
 def test_override_item_without_coordinates_is_an_error(tmp_path: Path) -> None:
-    qid = SEARCH[REAL[0]]["search"][0]["id"]
-    ents = {**ENTITIES, qid: {**ENTITIES[qid], "claims": {}}}
+    qid = _search()[_real()[0]]["search"][0]["id"]
+    ents = {**_entities(), qid: {**_entities()[qid], "claims": {}}}
 
     class NoCoords(FakeWiki):
         def entities(self, qids: list[str]) -> dict[str, Any]:
@@ -113,7 +135,7 @@ def test_override_item_without_coordinates_is_an_error(tmp_path: Path) -> None:
     ov = [
         {
             "stadium_id": "T",
-            "name": NO_HIT,
+            "name": _no_hit(),
             "qid": qid,
             "approved_by": "user",
             "approved_on": "2026-09-29",
@@ -121,4 +143,4 @@ def test_override_item_without_coordinates_is_an_error(tmp_path: Path) -> None:
         }
     ]
     with pytest.raises(ValueError):
-        build_stadiums(_sched([("T", NO_HIT, 2026, None)]), NoCoords(), CFG, 2026, overrides=ov)
+        build_stadiums(_sched([("T", _no_hit(), 2026, None)]), NoCoords(), CFG, 2026, overrides=ov)

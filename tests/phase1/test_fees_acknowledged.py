@@ -3,12 +3,17 @@ passes only when every disagreement matches an acknowledgement exactly; a new, c
 resolved one fails. The costlier value is used either way."""
 
 import copy
+import functools
+from typing import Any
 
 from ge.config import load_fees
 from ge.ingest.fees_check import fee_check
 from tests.phase1.conftest import load_fixture
 
-SERIES = {s["ticker"]: s for s in load_fixture("kalshi_series_subset.json")["response"]["series"]}
+
+@functools.cache
+def _series() -> Any:
+    return {s["ticker"]: s for s in load_fixture("kalshi_series_subset.json")["response"]["series"]}
 
 
 def _fees_with_acks(acks: list[dict]):  # type: ignore[no-untyped-def]
@@ -33,8 +38,8 @@ def _ack(ticker: str, field: str, yaml_v: float, api_v: float, fee_type: str) ->
 
 
 def _one_disagreeing_series() -> tuple[str, dict]:
-    combo = next(t for t in SERIES if t.startswith("KXMVENFL"))
-    return combo, SERIES[combo]
+    combo = next(t for t in _series() if t.startswith("KXMVENFL"))
+    return combo, _series()[combo]
 
 
 def test_every_acknowledgement_in_fees_yaml_cites_the_user() -> None:
@@ -75,7 +80,7 @@ def test_changed_api_value_fails_even_when_acknowledged() -> None:
 
 def test_resolved_acknowledgement_is_reported_and_fails() -> None:
     fees = load_fees()
-    game = SERIES["KXNFLGAME"]  # agrees with fees.yaml
+    game = _series()["KXNFLGAME"]  # agrees with fees.yaml
     ack = _ack("KXNFLGAME", "maker", 1, 0, "quadratic")
     result = fee_check(_fees_with_acks([ack]), [game])
     assert not result.ok and result.stale

@@ -5,15 +5,25 @@ place lists several parents, the most specific wins: any parent that another lis
 is itself located in is dropped. Blank, with a reason, only if the whole chain has none."""
 
 import copy
+import functools
 from typing import Any
 
 from ge.config import load_ingest
 from ge.ingest.wikidata import city_elevation
 from tests.phase1.conftest import load_fixture
 
+
+@functools.cache
+def _loc() -> Any:
+    return load_fixture("wikidata_located_in_property.json")["response"]["search"][0]
+
+
+@functools.cache
+def _stadium() -> Any:
+    return load_fixture("wikidata_elevation_entities.json")["response"]["entities"]["Q1046135"]
+
+
 CFG = load_ingest().wikidata
-LOC = load_fixture("wikidata_located_in_property.json")["response"]["search"][0]
-STADIUM = load_fixture("wikidata_elevation_entities.json")["response"]["entities"]["Q1046135"]
 PLACES: dict[str, Any] = {
     **load_fixture("wikidata_elevation_parser_entities.json")["response"]["entities"],
     **load_fixture("wikidata_chain_parent.json")["response"]["entities"],
@@ -50,13 +60,13 @@ def _most_specific(qids: list[str], places: dict[str, Any]) -> str:
 
 
 def test_located_in_property_was_confirmed_from_wikidata() -> None:
-    assert LOC["label"] == "located in the administrative territorial entity"
-    assert LOC["id"] == LOCATED
+    assert _loc()["label"] == "located in the administrative territorial entity"
+    assert _loc()["id"] == LOCATED
 
 
 def test_first_place_with_elevation_is_used() -> None:
-    start = _most_specific(_located_in(STADIUM), PLACES)
-    e = city_elevation(STADIUM, _fetch(PLACES), LOCATED, ELEV)
+    start = _most_specific(_located_in(_stadium()), PLACES)
+    e = city_elevation(_stadium(), _fetch(PLACES), LOCATED, ELEV)
     assert e.place_qid == start
     assert e.value == float(_elev(start)["amount"]) and e.unit == _elev(start)["unit"]
     assert e.chain == [start]
@@ -65,11 +75,11 @@ def test_first_place_with_elevation_is_used() -> None:
 
 def test_walks_up_the_chain_when_the_place_has_no_elevation() -> None:
     places = copy.deepcopy(PLACES)
-    start = _most_specific(_located_in(STADIUM), places)
+    start = _most_specific(_located_in(_stadium()), places)
     places[start]["claims"].pop(ELEV)
     step1 = _most_specific(_located_in(places[start]), places)
     assert ELEV in places[step1]["claims"]
-    e = city_elevation(STADIUM, _fetch(places), LOCATED, ELEV)
+    e = city_elevation(_stadium(), _fetch(places), LOCATED, ELEV)
     assert e.chain == [start, step1]
     assert e.place_qid == step1
     assert e.value == float(_elev(step1)["amount"])
@@ -80,12 +90,12 @@ def test_blank_only_when_the_whole_chain_has_none() -> None:
     places = copy.deepcopy(PLACES)
     for q in places:
         places[q]["claims"].pop(ELEV, None)
-    e = city_elevation(STADIUM, _fetch(places), LOCATED, ELEV)
+    e = city_elevation(_stadium(), _fetch(places), LOCATED, ELEV)
     assert e.value is None and e.place_qid is None and len(e.chain) >= 2 and e.reason
 
 
 def test_no_located_in_claim_is_blank() -> None:
-    ent = copy.deepcopy(STADIUM)
+    ent = copy.deepcopy(_stadium())
     ent["claims"].pop(LOCATED)
     e = city_elevation(ent, _fetch(PLACES), LOCATED, ELEV)
     assert e.value is None and e.place_qid is None and e.reason
@@ -95,20 +105,20 @@ def test_two_unrelated_places_are_ambiguous() -> None:
     places = copy.deepcopy(PLACES)
     for q in places:
         places[q]["claims"][LOCATED] = []  # neither listed place is inside the other
-    e = city_elevation(STADIUM, _fetch(places), LOCATED, ELEV)
+    e = city_elevation(_stadium(), _fetch(places), LOCATED, ELEV)
     assert e.value is None and "ambiguous" in e.reason
 
 
 def test_a_cycle_in_the_chain_stops_and_is_blank() -> None:
     places = copy.deepcopy(PLACES)
-    start = _most_specific(_located_in(STADIUM), places)
+    start = _most_specific(_located_in(_stadium()), places)
     places[start]["claims"].pop(ELEV)
     step1 = _most_specific(_located_in(places[start]), places)
     loop = copy.deepcopy(places[step1]["claims"][LOCATED][0])
     loop["mainsnak"]["datavalue"]["value"]["id"] = start
     places[step1]["claims"][LOCATED] = [loop]  # step1 now says it is located in start
     places[step1]["claims"].pop(ELEV, None)
-    stadium = copy.deepcopy(STADIUM)  # list only `start`, so the first step isn't ambiguous
+    stadium = copy.deepcopy(_stadium())  # list only `start`, so the first step isn't ambiguous
     stadium["claims"][LOCATED] = [
         c for c in stadium["claims"][LOCATED] if c["mainsnak"]["datavalue"]["value"]["id"] == start
     ]

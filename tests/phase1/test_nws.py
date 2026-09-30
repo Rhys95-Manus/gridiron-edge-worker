@@ -2,7 +2,9 @@
 pulled, dome/closed skipped, unknown roofs pulled and flagged, non-US points marked unknown."""
 
 import datetime as dt
+import functools
 import re
+from typing import Any
 
 import pytest
 
@@ -15,7 +17,10 @@ from ge.ingest.weather_nws import (
 )
 from tests.phase1.conftest import load_fixture
 
-GRID = load_fixture("nws_gridpoint.json")["response"]
+
+@functools.cache
+def _grid() -> Any:
+    return load_fixture("nws_gridpoint.json")["response"]
 
 
 def _hours(duration: str) -> int:
@@ -36,7 +41,7 @@ def test_grid_fields_are_the_five_the_spec_asks_for() -> None:
 
 @pytest.mark.parametrize("field", ["temperature", "windSpeed", "windGust"])
 def test_intervals_expand_to_one_row_per_hour(field: str) -> None:
-    series = GRID["properties"][field]
+    series = _grid()["properties"][field]
     rows = expand_series(series)
     assert len(rows) == sum(_hours(v["validTime"].split("/")[1]) for v in series["values"])
     first = series["values"][0]
@@ -50,9 +55,9 @@ def test_intervals_expand_to_one_row_per_hour(field: str) -> None:
 
 
 def test_parse_keeps_nws_units() -> None:
-    table = parse_gridpoint(GRID)
+    table = parse_gridpoint(_grid())
     for field in GRID_FIELDS:
-        uom = GRID["properties"][field]["uom"]
+        uom = _grid()["properties"][field]["uom"]
         units = {r["uom"] for r in table if r["field"] == field}
         assert units == {uom}, field
 

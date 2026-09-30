@@ -2,22 +2,27 @@
 reports for each included series. fee_type meanings are from docs.kalshi.com get-series."""
 
 import copy
+import functools
+from typing import Any
 
 from ge.config import load_fees
 from ge.ingest.fees_check import api_fee_alerts, effective_multipliers
 from tests.phase1.conftest import load_fixture
 
-SERIES = {s["ticker"]: s for s in load_fixture("kalshi_series_subset.json")["response"]["series"]}
+
+@functools.cache
+def _series() -> Any:
+    return {s["ticker"]: s for s in load_fixture("kalshi_series_subset.json")["response"]["series"]}
 
 
 def _one(ticker: str, **changes: object) -> dict:
-    s = copy.deepcopy(SERIES[ticker])
+    s = copy.deepcopy(_series()[ticker])
     s.update(changes)
     return s
 
 
 def test_game_series_matches_fees_yaml() -> None:
-    s = SERIES["KXNFLGAME"]
+    s = _series()["KXNFLGAME"]
     assert s["fee_type"] == "quadratic_with_maker_fees", "fixture changed; re-read the docs"
     assert api_fee_alerts(load_fees(), [s]) == []
 
@@ -49,8 +54,8 @@ def test_series_only_prefix_matching_a_row_is_flagged() -> None:
             )
         }
     )
-    combo = next(t for t in SERIES if t.startswith("KXMVENFL"))
-    alerts = api_fee_alerts(old, [SERIES[combo]])
+    combo = next(t for t in _series() if t.startswith("KXMVENFL"))
+    alerts = api_fee_alerts(old, [_series()[combo]])
     assert any(combo in a and "KXMVE" in a and "prefix" in a for a in alerts), alerts
 
 
@@ -61,19 +66,19 @@ def test_futures_series_listed_from_the_pdf_match_the_api() -> None:
 
     fees = load_fees()
     pdf = fee_schedule_nfl_tickers((FIXTURES / "kalshi_fee_schedule.pdf").read_bytes())
-    futs = [t for t in fees.series.futures_and_awards.tickers if t in SERIES and t in pdf]
+    futs = [t for t in fees.series.futures_and_awards.tickers if t in _series() and t in pdf]
     assert len(futs) == len(pdf - {"KXNFLGAME"})
-    assert api_fee_alerts(fees, [SERIES[t] for t in futs]) == []
+    assert api_fee_alerts(fees, [_series()[t] for t in futs]) == []
 
 
 def test_combos_keep_the_costlier_maker_rate_and_alert() -> None:
     """EDG-02 (2026-09-29): where API and fees.yaml disagree, use whichever costs more."""
     fees = load_fees()
-    combos = [t for t in SERIES if t.startswith("KXMVENFL")]
+    combos = [t for t in _series() if t.startswith("KXMVENFL")]
     assert combos and set(combos) <= set(fees.series.kxmve.tickers)
     for t in combos:
-        eff = effective_multipliers(fees, SERIES[t])
-        assert eff.maker == max(fees.series.kxmve.maker_multiplier, _api_maker(SERIES[t]))
+        eff = effective_multipliers(fees, _series()[t])
+        assert eff.maker == max(fees.series.kxmve.maker_multiplier, _api_maker(_series()[t]))
         assert eff.alerts
 
 
@@ -82,20 +87,20 @@ def test_api_maker_fees_on_default_row_series_are_charged_and_alerted() -> None:
     fees = load_fees()
     hits = [
         t
-        for t, s in SERIES.items()
+        for t, s in _series().items()
         if s.get("fee_type") == "quadratic_with_maker_fees"
         and t.startswith(("KXNFLSPREAD", "KXNFLTOTAL", "KXNFLANYTD", "KXNFLFIRSTTD", "KXNFL2TD"))
     ]
     assert hits
     for t in hits:
-        eff = effective_multipliers(fees, SERIES[t])
+        eff = effective_multipliers(fees, _series()[t])
         assert eff.row == "default"
         assert eff.maker == 1 and eff.alerts
 
 
 def test_agreement_means_no_alert_and_same_multipliers() -> None:
     fees = load_fees()
-    eff = effective_multipliers(fees, SERIES["KXNFLGAME"])
+    eff = effective_multipliers(fees, _series()["KXNFLGAME"])
     assert (eff.taker, eff.maker, eff.alerts) == (1, 1, [])
 
 

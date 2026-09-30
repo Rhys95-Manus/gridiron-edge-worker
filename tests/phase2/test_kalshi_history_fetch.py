@@ -6,6 +6,7 @@ finishes so a slow run shows progress and can resume. Fixtures are real Kalshi r
 from __future__ import annotations
 
 import datetime as dt
+import functools
 from pathlib import Path
 from typing import Any
 
@@ -23,9 +24,20 @@ from ge.ingest.kalshi_history import (
 from ge.ingest.raw import partitions, write_raw
 from tests.phase2.conftest import load_json_fixture, load_parquet_fixture
 
-EVENTS = load_json_fixture("kalshi_events_kxnflgame.json")["response"]["events"]
-EVENT_MARKETS = load_json_fixture("kalshi_event_markets.json")
-CANDLES = load_json_fixture("kalshi_candles_2025w10.json")
+
+@functools.cache
+def _events() -> Any:
+    return load_json_fixture("kalshi_events_kxnflgame.json")["response"]["events"]
+
+
+@functools.cache
+def _event_markets() -> Any:
+    return load_json_fixture("kalshi_event_markets.json")
+
+
+@functools.cache
+def _candles() -> Any:
+    return load_json_fixture("kalshi_candles_2025w10.json")
 
 
 def _sched_2025() -> pl.DataFrame:
@@ -33,11 +45,11 @@ def _sched_2025() -> pl.DataFrame:
 
 
 def test_event_ticker_date_parses_every_game_event() -> None:
-    dates = [event_ticker_date(e["event_ticker"]) for e in EVENTS]
+    dates = [event_ticker_date(e["event_ticker"]) for e in _events()]
     assert all(d is not None for d in dates), [
-        e["event_ticker"] for e, d in zip(EVENTS, dates, strict=True) if d is None
+        e["event_ticker"] for e, d in zip(_events(), dates, strict=True) if d is None
     ]
-    assert event_ticker_date(EVENT_MARKETS["archived_event"]) == dt.date.fromisoformat(
+    assert event_ticker_date(_event_markets()["archived_event"]) == dt.date.fromisoformat(
         _sched_2025().filter(pl.col("week") == 10).sort("gameday")["gameday"][-1]
     )
     assert event_ticker_date("KXNFLMVP-26") is None
@@ -47,7 +59,7 @@ def test_event_ticker_date_parses_every_game_event() -> None:
 def test_week_events_match_the_week_game_count_per_date() -> None:
     sched = _sched_2025()
     dates = week_game_dates(sched, 10)
-    picked = events_on_dates(EVENTS, dates)
+    picked = events_on_dates(_events(), dates)
     assert {event_ticker_date(e["event_ticker"]) for e in picked} <= dates
     cov = game_winner_coverage(sched, 10, [e["event_ticker"] for e in picked])
     assert cov and all(r["ok"] for r in cov), cov
@@ -56,7 +68,7 @@ def test_week_events_match_the_week_game_count_per_date() -> None:
 
 def test_coverage_flags_a_missing_game_event() -> None:
     sched = _sched_2025()
-    picked = [e["event_ticker"] for e in events_on_dates(EVENTS, week_game_dates(sched, 10))]
+    picked = [e["event_ticker"] for e in events_on_dates(_events(), week_game_dates(sched, 10))]
     cov = game_winner_coverage(sched, 10, picked[1:])
     bad = [r for r in cov if not r["ok"]]
     assert len(bad) == 1 and bad[0]["events"] == bad[0]["games"] - 1
@@ -69,21 +81,21 @@ class FakeKalshi:
         self.fail_on = fail_on
         self.calls: list[str] = []
         self.candles = {
-            m["market"]["ticker"]: m["response"]["candlesticks"] for m in CANDLES["markets"]
+            m["market"]["ticker"]: m["response"]["candlesticks"] for m in _candles()["markets"]
         }
 
     def events(self, **filters: Any) -> list[dict[str, Any]]:
         self.calls.append(f"events {filters.get('series_ticker')}")
-        return [e for e in EVENTS if e["series_ticker"] == filters.get("series_ticker")]
+        return [e for e in _events() if e["series_ticker"] == filters.get("series_ticker")]
 
     def markets(self, **filters: Any) -> list[dict[str, Any]]:
         self.calls.append(f"markets {filters.get('event_ticker')}")
-        r = EVENT_MARKETS["response"].get(filters.get("event_ticker"), {})
+        r = _event_markets()["response"].get(filters.get("event_ticker"), {})
         return list(r.get("live", []))
 
     def historical_markets(self, **filters: Any) -> list[dict[str, Any]]:
         self.calls.append(f"historical_markets {filters.get('event_ticker')}")
-        r = EVENT_MARKETS["response"].get(filters.get("event_ticker"), {})
+        r = _event_markets()["response"].get(filters.get("event_ticker"), {})
         return list(r.get("historical", []))
 
     def orderbook(self, ticker: str) -> dict[str, Any]:
@@ -107,21 +119,21 @@ class FakeKalshi:
 
 def test_markets_for_event_uses_both_endpoints_live_wins() -> None:
     k = FakeKalshi()
-    old = markets_for_event(k, EVENT_MARKETS["archived_event"])  # type: ignore[arg-type]
+    old = markets_for_event(k, _event_markets()["archived_event"])  # type: ignore[arg-type]
     assert old and all(hist for _, hist in old)
-    live = markets_for_event(k, EVENT_MARKETS["live_event"])  # type: ignore[arg-type]
+    live = markets_for_event(k, _event_markets()["live_event"])  # type: ignore[arg-type]
     assert live and not any(hist for _, hist in live)
     k2 = FakeKalshi()
-    ev = EVENT_MARKETS["archived_event"]
-    both = EVENT_MARKETS["response"][ev]["historical"]
+    ev = _event_markets()["archived_event"]
+    both = _event_markets()["response"][ev]["historical"]
     k2.markets = lambda **f: list(both)  # type: ignore[method-assign]
     got = markets_for_event(k2, ev)  # type: ignore[arg-type]
     assert len(got) == len(both) and not any(hist for _, hist in got)
 
 
 def _run(root: Path, k: FakeKalshi, log: list[str]) -> Any:
-    ev = EVENT_MARKETS["archived_event"]
-    only = [e for e in EVENTS if e["event_ticker"] == ev]
+    ev = _event_markets()["archived_event"]
+    only = [e for e in _events() if e["event_ticker"] == ev]
     k.events = lambda **f: list(only)  # type: ignore[method-assign]
     return run_history(
         k,  # type: ignore[arg-type]
@@ -135,8 +147,8 @@ def _run(root: Path, k: FakeKalshi, log: list[str]) -> Any:
 
 
 def test_each_event_is_written_when_done_and_a_rerun_resumes(tmp_path: Path) -> None:
-    ev = EVENT_MARKETS["archived_event"]
-    tickers = [m["ticker"] for m in EVENT_MARKETS["response"][ev]["historical"]]
+    ev = _event_markets()["archived_event"]
+    tickers = [m["ticker"] for m in _event_markets()["response"][ev]["historical"]]
     log: list[str] = []
     with pytest.raises(RuntimeError, match="simulated"):
         _run(tmp_path, FakeKalshi(fail_on=tickers[-1]), log)

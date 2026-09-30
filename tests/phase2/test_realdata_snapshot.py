@@ -1,11 +1,16 @@
 """BUILD_PLAN Phase 2 acceptance tests on the real downloaded store (data/raw).
 
 Marked realdata: run locally with `uv run pytest -m phase2`; CI has no data. Games are chosen
-by rule (hash rank, weekday, format), never typed by hand."""
+by rule (hash rank, weekday, format), never typed by hand.
+
+Nothing here reads data at import or collection time: the leakage tests are parametrized by
+fixed indices and resolve each index to a game inside the test, so a missing store makes every
+case FAIL with a clear message instead of collecting zero cases."""
 
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import hashlib
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -29,40 +34,47 @@ PLAY_TABLES = {"pbp": "game_id", "ftn_charting": "nflverse_game_id", "snap_count
 
 
 def _sched(season: int) -> pl.DataFrame:
-    return with_kickoff(read_latest(DATA_ROOT, "schedules", season))
+    try:
+        return with_kickoff(read_latest(DATA_ROOT, "schedules", season))
+    except FileNotFoundError as exc:
+        pytest.fail(f"realdata test needs the local store: {exc}. Run `uv run ge ingest nflverse`.")
 
 
 def _hash_rank(ids: list[str]) -> list[str]:
     return sorted(ids, key=lambda g: hashlib.sha256(g.encode()).hexdigest())
 
 
-def _leakage_games() -> list[str]:
+@functools.cache
+def _leakage_games() -> tuple[str, ...]:
     ids = [
         g
         for s in (2022, 2023, 2024, 2025)
         for g in _sched(s).filter(pl.col("result").is_not_null())["game_id"].to_list()
     ]
-    return _hash_rank(ids)[:N_LEAKAGE_GAMES]
+    return tuple(_hash_rank(ids)[:N_LEAKAGE_GAMES])
 
 
-LEAKAGE_GAMES = _leakage_games()
+def _game(i: int) -> str:
+    games = _leakage_games()
+    if len(games) < N_LEAKAGE_GAMES:
+        pytest.fail(
+            f"only {len(games)} completed 2022-2025 games in the store; need {N_LEAKAGE_GAMES}"
+        )
+    return games[i]
 
 
-@pytest.fixture(scope="module")
-def baseline() -> dict[tuple[str, str], str]:
-    return {
-        (g, p): snapshot(g, pass_=p).digest()  # type: ignore[arg-type]
-        for g in LEAKAGE_GAMES
-        for p in ("decision", "inactives")
-    }
+@functools.cache
+def _baseline(game_id: str, pass_: str) -> str:
+    return snapshot(game_id, pass_=pass_).digest()  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("game_id", LEAKAGE_GAMES)
+@pytest.mark.parametrize("i", range(N_LEAKAGE_GAMES))
 @pytest.mark.parametrize("pass_", ["decision", "inactives"])
 @pytest.mark.parametrize("mode", ["delete", "shuffle"])
 def test_leakage_future_games_changed_snapshot_identical(
-    game_id: str, pass_: str, mode: str, tmp_path: Path, baseline: dict[tuple[str, str], str]
+    i: int, pass_: str, mode: str, tmp_path: Path
 ) -> None:
+    game_id = _game(i)
     snap = snapshot(game_id, pass_=pass_)  # type: ignore[arg-type]
     perturbed_store(
         DATA_ROOT,
@@ -73,12 +85,13 @@ def test_leakage_future_games_changed_snapshot_identical(
         datasets=list(SNAPSHOT_DATASETS),
     )
     other = snapshot(game_id, pass_=pass_, root=tmp_path)  # type: ignore[arg-type]
-    assert other.digest() == baseline[(game_id, pass_)]
+    assert other.digest() == _baseline(game_id, pass_)
 
 
-@pytest.mark.parametrize("game_id", LEAKAGE_GAMES)
+@pytest.mark.parametrize("i", range(N_LEAKAGE_GAMES))
 @pytest.mark.parametrize("pass_", ["decision", "inactives"])
-def test_no_play_from_the_target_game_or_any_later_game(game_id: str, pass_: str) -> None:
+def test_no_play_from_the_target_game_or_any_later_game(i: int, pass_: str) -> None:
+    game_id = _game(i)
     snap = snapshot(game_id, pass_=pass_)  # type: ignore[arg-type]
     season = int(game_id[:4])
     kick = pl.concat([_sched(s) for s in (season - 1, season)]).select("game_id", "kickoff_utc")
@@ -120,8 +133,9 @@ def test_same_day_early_games_excluded_at_kickoff_minus_90() -> None:
     assert running <= set(after.collect("pbp")["game_id"].unique().to_list())
 
 
-@pytest.mark.parametrize("game_id", LEAKAGE_GAMES[:3])
-def test_same_snapshot_twice_is_identical(game_id: str) -> None:
+@pytest.mark.parametrize("i", range(3))
+def test_same_snapshot_twice_is_identical(i: int) -> None:
+    game_id = _game(i)
     a, b = snapshot(game_id), snapshot(game_id)
     assert a.digest() == b.digest()
     for t in a.tables:
@@ -130,7 +144,7 @@ def test_same_snapshot_twice_is_identical(game_id: str) -> None:
 
 
 def test_target_game_never_shows_scores_and_hides_closing_lines() -> None:
-    g = LEAKAGE_GAMES[0]
+    g = _game(0)
     tgt = snapshot(g).collect("target_game")
     assert tgt.height == 1
     assert not {"home_score", "away_score", "result", "total"} & set(tgt.columns)
