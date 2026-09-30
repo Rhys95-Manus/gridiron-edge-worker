@@ -214,7 +214,21 @@ assert the snapshot is byte-identical. Tests first.
 - [ ] Test: no snapshot contains a play from the target game or any later game
 - [ ] Test: a player listed Out on the Friday report appears as Out in a Saturday as\_of and not in a Tuesday as\_of
 - [ ] Test: the same snapshot requested twice is identical
+- [ ] Test: injury statuses before our own pulls count as known at 12 noon ET the day before kickoff (labelled); the Friday/Saturday/Tuesday test runs on two real pulls of our own
+- [ ] Test: schedules' temp and wind are labelled observed\_as\_forecast\_proxy; closing lines appear only at or after kickoff or with `--closing-line-backtest`; the target game's scores, result and starting quarterbacks never appear
+- [ ] Test: the latest depth chart on or before as\_of, in both formats (one 2023 game, one 2026 game)
+- [ ] Test: at kickoff − 90 minutes, earlier games still being played that day are left out
+- [ ] Live check: `uv run ge ingest kalshi --season 2025 --week 10 --history`, then a 2025 week-10 snapshot returns Kalshi prices from real candles
+- [ ] Each snapshot reads the latest version pulled at or before as\_of, else the earliest held, labelled (history carries nflverse corrections up to our first pull)
 - [ ] Live check: `uv run ge store snapshot --game <a real 2026 game ID>` prints a summary you can sanity-check against what you know about that week
+
+**Phase 1 findings Phase 2 must handle** (added 2026-09-30):
+
+- **Injury reports have no publish date.** For seasons before our own pulls, a week's injury statuses count as known at 12 noon ET the day before kickoff, a stated assumption labelled in every snapshot. From our own pulls on, `pulled_at` decides. The Friday/Saturday/Tuesday test above runs on two real pulls of our own, not on historical data.
+- **Historical weather is observed, not forecast.** The schedules' `temp` and `wind` were measured at the game, so backtests using them know slightly more than a forecast would. Snapshots label them `observed_as_forecast_proxy`, and BT-07 reports the backtest with and without weather.
+- **Closing lines are kickoff information.** The schedules' `spread_line` and `total_line` are closing lines, so a snapshot shows them only when as\_of is at or after kickoff, unless the caller passes an explicit `closing_line_backtest` flag (used only by the Full-tier backtest, which enters at the close anyway). Final scores and results for the target game are never visible.
+- **Depth charts changed format in 2025** (ESPN daily snapshots, about 15× more rows). The snapshot takes the latest chart dated on or before as\_of in both formats, tested on one 2023 and one 2026 game.
+- **Kalshi history.** Exercise `--history` on one completed 2025 week, so snapshots can return Kalshi prices as of a past moment from real candles.
 
 ### Phase 3 — Metric engine
 
