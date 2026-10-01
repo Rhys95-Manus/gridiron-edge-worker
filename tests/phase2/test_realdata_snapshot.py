@@ -200,65 +200,72 @@ def test_depth_chart_2026_espn_format() -> None:
         assert g_rows.height == mine.filter(pl.col("dt") == want).height
 
 
-def _own_injury_pulls() -> tuple[dt.datetime, dt.datetime, int]:
-    """Two of our own 2026 injury pulls: one on a Tuesday (ET) and one on the Friday or
-    Saturday after it. Returns (tuesday_pull, weekend_pull, week)."""
-    pulls = [
-        dt.datetime.strptime(p.name.split("=", 1)[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=dt.UTC)
-        for p in partitions(DATA_ROOT, "injuries", 2026)
-    ]
-    for tue in pulls:
-        if tue.astimezone(ET).strftime("%A") != "Tuesday":
-            continue
-        for later in pulls:
-            gap = (later.astimezone(ET).date() - tue.astimezone(ET).date()).days
-            if later.astimezone(ET).strftime("%A") in ("Friday", "Saturday") and 0 < gap <= 4:
-                inj = pl.read_parquet(
-                    next(
-                        p
-                        for p in partitions(DATA_ROOT, "injuries", 2026)
-                        if p.name.endswith(later.strftime("%Y%m%dT%H%M%SZ"))
-                    )
-                    / "part.parquet"
-                )
-                week = int(inj["week"].max())
-                return tue, later, week
-    pytest.fail(
-        "needs two of our own 2026 injury pulls: a Tuesday pull and a Friday/Saturday pull after "
-        f"it. Have: {[p.isoformat() for p in pulls]}. After Friday's report, run "
-        "`uv run ge ingest nflverse --seasons 2026 --datasets injuries`."
-    )
+def _pull_time(part: Path) -> dt.datetime:
+    return dt.datetime.strptime(part.name.split("=", 1)[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=dt.UTC)
 
 
-def test_friday_out_seen_saturday_not_tuesday() -> None:
-    tue, weekend, week = _own_injury_pulls()
-    s = _sched(2026)
-    inj = pl.read_parquet(
-        next(
-            p
-            for p in partitions(DATA_ROOT, "injuries", 2026)
-            if p.name.endswith(weekend.strftime("%Y%m%dT%H%M%SZ"))
+_ROW_KEYS_DROP = ("pulled_at", "source")
+
+
+def _injury_rows(part: Path) -> pl.DataFrame:
+    return pl.read_parquet(part / "part.parquet").drop(_ROW_KEYS_DROP)
+
+
+def _new_report_rows() -> tuple[dt.datetime, dt.datetime, pl.DataFrame]:
+    """Our first 2026 injury pull and the next pull of ours that added report rows (game
+    status or practice participation). Returns (earlier, later, rows only in the later)."""
+    parts = partitions(DATA_ROOT, "injuries", 2026)
+    if len(parts) < 2:
+        pytest.fail(
+            "needs two of our own 2026 injury pulls; have "
+            f"{[_pull_time(p).isoformat() for p in parts]}. Run "
+            "`uv run ge ingest nflverse --seasons 2026 --datasets injuries`."
         )
-        / "part.parquet"
-    )
-    day = weekend.astimezone(ET).date()
-    saturday = day if day.strftime("%A") == "Saturday" else day + dt.timedelta(days=1)
-    sat = max(weekend, dt.datetime.combine(saturday, dt.time(0), ET).astimezone(dt.UTC))
-    games = s.filter((pl.col("week") == week) & (pl.col("kickoff_utc") > sat))
-    outs = inj.filter((pl.col("week") == week) & (pl.col("report_status") == "Out"))
-    outs = outs.join(
-        pl.concat(
-            [games.select("game_id", pl.col(c).alias("team")) for c in ("home_team", "away_team")]
-        ),
-        on="team",
-    )
-    assert outs.height, f"no Out players in week {week} for games after {sat.isoformat()}"
-    p = outs.sort("gsis_id").row(0, named=True)
-    key = (pl.col("gsis_id") == p["gsis_id"]) & (pl.col("week") == week)
-    on_sat = snapshot(p["game_id"], as_of=sat).collect("injuries").filter(key)
-    assert on_sat["report_status"].to_list() == ["Out"]
-    on_tue = snapshot(p["game_id"], as_of=tue).collect("injuries").filter(key)
-    assert on_tue.is_empty()
+    first = _injury_rows(parts[0])
+    for later in parts[1:]:
+        new = _injury_rows(later).join(first, on=first.columns, how="anti", nulls_equal=True)
+        if new.height:
+            return _pull_time(parts[0]), _pull_time(later), new
+    pytest.fail("no later 2026 injury pull of ours added a report row")
+
+
+def _game_for(row: dict[str, object]) -> str:
+    s = _sched(2026).filter(pl.col("week") == row["week"])
+    g = s.filter((pl.col("home_team") == row["team"]) | (pl.col("away_team") == row["team"]))
+    assert g.height == 1, f"{row['team']} week {row['week']}: {g.height} games"
+    return str(g["game_id"][0])
+
+
+def _visible(game_id: str, as_of: dt.datetime, row: pl.DataFrame) -> bool:
+    inj = snapshot(game_id, as_of=as_of).collect("injuries").drop(_ROW_KEYS_DROP)
+    return inj.join(row, on=row.columns, how="semi", nulls_equal=True).height > 0
+
+
+def test_report_row_visible_only_after_our_pull() -> None:
+    """A report row (game status or practice participation) that is in a later pull of ours
+    and not an earlier one is visible at an as_of after the later pull and invisible at an
+    as_of between the two. nflverse lags on game statuses, so practice rows count too."""
+    earlier, later, new = _new_report_rows()
+    between = earlier + (later - earlier) / 2
+    row = new.sort(
+        "week", "team", "gsis_id", "practice_status", descending=[True, False, False, False]
+    ).head(1)
+    game = _game_for(row.row(0, named=True))
+    shown = row.select("team", "week", "full_name", "report_status", "practice_status").row(0)
+    print(f"pulls {earlier.isoformat()} -> {later.isoformat()}; {new.height} new rows; {shown}")
+    assert _visible(game, later, row), "row from the later pull not visible after that pull"
+    assert not _visible(game, between, row), "row visible before we pulled it"
+
+    outs = new.filter(pl.col("report_status") == "Out").sort("week", "team", "gsis_id")
+    print(f"new rows with game status Out: {outs.height}")
+    if outs.height:
+        p = outs.row(0, named=True)
+        g = _game_for(p)
+        key = (pl.col("gsis_id") == p["gsis_id"]) & (pl.col("week") == p["week"])
+        after = snapshot(g, as_of=later).collect("injuries").filter(key)
+        assert "Out" in after["report_status"].to_list()
+        before = snapshot(g, as_of=between).collect("injuries").filter(key)
+        assert "Out" not in before["report_status"].to_list()
 
 
 def test_kalshi_prices_as_of_from_real_2025_candles() -> None:
