@@ -4,9 +4,9 @@ secret that never appears in output."""
 import copy
 
 import pytest
+import typer
 import yaml
 from pydantic import ValidationError
-from typer.testing import CliRunner
 
 from ge.cli import app
 from ge.config import INGEST_PATH, IngestConfig, load_ingest
@@ -16,10 +16,15 @@ SUBCOMMANDS = ["nflverse", "stadiums", "weather", "kalshi", "fees-check", "repor
 
 
 def test_ingest_lists_its_subcommands() -> None:
-    result = CliRunner().invoke(app, ["ingest", "--help"])
-    assert result.exit_code == 0, result.output
-    for sub in SUBCOMMANDS:
-        assert sub in result.output
+    """Introspects the command group Typer builds; printed --help varies with terminal width
+    and color settings, so it isn't asserted on."""
+    root = typer.main.get_command(app)
+    assert isinstance(root, typer.core.TyperGroup)
+    assert "ingest" in root.commands, "ge ingest not registered"
+    group = root.commands["ingest"]
+    assert isinstance(group, typer.core.TyperGroup)
+    missing = set(SUBCOMMANDS) - set(group.commands)
+    assert not missing, f"ge ingest is missing {sorted(missing)}"
 
 
 def test_ingest_yaml_loads_and_rejects_missing_keys() -> None:
