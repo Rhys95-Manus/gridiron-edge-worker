@@ -68,7 +68,7 @@ def write_raw(
     )
     path = out_dir / "part.parquet"
     stamped.write_parquet(path)
-    (out_dir / _HASH_FILE).write_text(digest + "\n", encoding="ascii")
+    (out_dir / _HASH_FILE).write_text(digest + "\n", encoding="ascii", newline="\n")
     return path
 
 

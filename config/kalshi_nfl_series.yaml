@@ -7033,13 +7033,14 @@ series:
   KXNFLGAME:
     decision: include
     first_seen: '2026-09-29'
-    title: Professional Football Game
+    title: NFL Game
     category: Sports
     tags:
     - Football
     reasons:
     - tag:Football
     - ticker:NFL
+    - title:NFL
     fee_type: quadratic_with_maker_fees
     fee_multiplier: 1
     proposed: include

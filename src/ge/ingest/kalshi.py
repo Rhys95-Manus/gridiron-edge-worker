@@ -107,7 +107,9 @@ def update_review_file(path: Path, candidates: list[Candidate]) -> int:
         "new candidates arrive as pending and are reported, never auto-included.",
         "series": dict(sorted(rows.items())),
     }
-    path.write_text(yaml.safe_dump(body, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(body, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
+    )
     return new
 
 
@@ -178,7 +180,9 @@ def write_proposals(path: Path, proposals: dict[str, tuple[str, list[str]]]) -> 
         if row is not None:
             row["proposed"] = proposal
             row["proposed_rules"] = rules
-    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
+    )
 
 
 def apply_decisions(
@@ -204,7 +208,9 @@ def apply_decisions(
                 decided_on=decided_on,
                 decision_basis=basis,
             )
-    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
+    )
 
 
 def approved_series(path: Path = REVIEW_PATH) -> set[str]:
