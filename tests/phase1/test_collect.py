@@ -167,7 +167,7 @@ def test_kalshi_step_fails_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> N
     assert not ok and "exit 2" in detail
 
 
-def test_nflverse_step_pulls_injuries_and_depth_charts_for_current_season(
+def test_nflverse_step_pulls_injuries_depth_charts_and_schedules_for_current_season(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[list[int], list[str] | None]] = []
@@ -180,7 +180,8 @@ def test_nflverse_step_pulls_injuries_and_depth_charts_for_current_season(
     monkeypatch.setattr(collect, "ingest_nflverse", fake)
     ok, _ = default_steps()[1].run()
     assert ok
-    assert calls == [([SEASON], ["injuries", "depth_charts"])]
+    # schedules: flexed kickoff times change gametime after the season's first pull
+    assert calls == [([SEASON], ["injuries", "depth_charts", "schedules"])]
 
 
 def test_nflverse_step_fails_when_a_pull_errors(monkeypatch: pytest.MonkeyPatch) -> None:
