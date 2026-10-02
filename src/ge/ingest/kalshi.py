@@ -117,8 +117,9 @@ _PDF_TICKER = re.compile(r"\bKX[A-Z0-9]+\b")
 _PDF_NFL_TEXT = re.compile(
     r"Pro\s+Football|Professional\s+Football|Football\s+Conference|Super\s+Bowl"
 )
-_OTHER_LEAGUE_TICKER = ("NCAA", "CFB", "CFL", "UFL", "XFL")
-_OTHER_LEAGUE_TITLE = re.compile(r"\b(COLLEGE|NCAA\w*|CFB|CFL|UFL|XFL)\b")
+# Other pro leagues added 2026-10-02: Kalshi sometimes tags their series Football.
+_OTHER_LEAGUE_TICKER = ("NCAA", "CFB", "CFL", "UFL", "XFL", "NBA", "WNBA", "NHL", "MLB", "MLS")
+_OTHER_LEAGUE_TITLE = re.compile(r"\b(COLLEGE|NCAA\w*|CFB|CFL|UFL|XFL|NBA|WNBA|NHL|MLB|MLS)\b")
 _SPORTS_CATEGORIES = {"Sports", "Exotics"}  # Kalshi puts NFL combos (KXMVENFL*) in Exotics
 INCLUDE_RULES = ("nfl_prefix", "fee_schedule_nfl", "nfl_team_in_title")
 EXCLUDE_RULES = ("other_league", "non_sports")
