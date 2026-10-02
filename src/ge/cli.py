@@ -106,6 +106,18 @@ def ingest_kalshi_cmd(
     raise typer.Exit(run_kalshi(load_ingest(), season, week, history))
 
 
+@ingest.command("collect")
+def ingest_collect_cmd() -> None:
+    """Scheduled pull: this week's Kalshi markets, this season's injuries and depth charts,
+    then weather. Logs to logs/collect.log; exits 1 if any step failed."""
+    from ge.ingest import collect
+
+    code = collect.run_collect(collect.default_steps(), collect.LOG_PATH)
+    print(f"\ncollect exit {code}; log: {collect.LOG_PATH}")
+    print("Data: nflverse; charting: FTN Data via nflverse")
+    raise typer.Exit(code)
+
+
 @ingest.command("fees-check")
 def ingest_fees_check_cmd(
     pdf: Annotated[str | None, typer.Option(help="path to a saved fee schedule PDF")] = None,
