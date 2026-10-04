@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/nextgen_passing/season=2023/pulled_at=20260929T185915Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-05) via nflreadpy 0.1.5: nextgen_passing(2023)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:59:15.171291+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:18+00:00",
+ "rows": 620,
+ "note": "every 2023 row"
+}

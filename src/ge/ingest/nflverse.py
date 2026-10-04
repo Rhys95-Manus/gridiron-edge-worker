@@ -25,6 +25,10 @@ class Dataset:
     loader: Loader
     first_season: int | None = None  # None -> nflverse.first_season from ingest.yaml
     post_season_only: bool = False  # DATA-03: published only after each season ends
+    seasonless: bool = False  # one table for all seasons, stored under season=0
+
+
+SEASONLESS = 0  # the season partition a seasonless dataset is stored under
 
 
 def _cfg_first() -> int:
@@ -49,6 +53,12 @@ DATASETS: dict[str, Dataset] = {
     "nextgen_passing": Dataset("DATA-05", lambda s: nfl.load_nextgen_stats(s, "passing")),
     "nextgen_rushing": Dataset("DATA-05", lambda s: nfl.load_nextgen_stats(s, "rushing")),
     "nextgen_receiving": Dataset("DATA-05", lambda s: nfl.load_nextgen_stats(s, "receiving")),
+    # Player ID crosswalk: snap counts key players by PFR ID, everything else by GSIS ID
+    # (user decision 2026-10-02). One table covering every season.
+    "players": Dataset("DATA-04", lambda _s: nfl.load_players(), seasonless=True),
+    # Franchise IDs: team_id is shared by a franchise's abbreviations across relocations
+    # (spec G4: relocated teams keep their history). One table covering every season.
+    "teams": Dataset("DATA-04", lambda _s: nfl.load_teams(), seasonless=True),
 }
 
 
@@ -79,8 +89,9 @@ def ingest_nflverse(
     for name in names:
         ds = DATASETS[name]
         first = ds.first_season if ds.first_season is not None else _cfg_first()
-        for season in seasons:
-            if season < first:
+        pull_seasons = [SEASONLESS] if ds.seasonless and seasons else seasons
+        for season in pull_seasons:
+            if season < first and not ds.seasonless:
                 continue
             if ds.post_season_only and season >= now_season:
                 results.append(

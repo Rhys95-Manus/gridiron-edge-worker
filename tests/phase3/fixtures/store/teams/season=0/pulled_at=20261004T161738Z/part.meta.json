@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/teams/season=0/pulled_at=20261004T161738Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: teams(0)"
+ ],
+ "pulled_at": [
+  "2026-10-04 16:17:38.770611+00:00"
+ ],
+ "cut_at": "2026-10-04T16:21:06+00:00",
+ "rows": 36,
+ "note": "every team abbreviation (seasonless); team_abbr and team_id only"
+}

@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/snap_counts/season=2024/pulled_at=20260929T185857Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: snap_counts(2024)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:58:57.595084+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:18+00:00",
+ "rows": 11495,
+ "note": "2024 regular season weeks 1-8"
+}

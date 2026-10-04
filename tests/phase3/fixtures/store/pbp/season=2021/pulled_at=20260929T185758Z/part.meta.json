@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/pbp/season=2021/pulled_at=20260929T185758Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-01) via nflreadpy 0.1.5: pbp(2021)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:57:58.941984+00:00"
+ ],
+ "cut_at": "2026-10-04T16:21:06+00:00",
+ "rows": 16629,
+ "note": "2021 regular season weeks 1-6; 92 columns kept"
+}

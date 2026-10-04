@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/rosters_weekly/season=2024/pulled_at=20260930T145642Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: rosters_weekly(2024)"
+ ],
+ "pulled_at": [
+  "2026-09-30 14:56:42.945082+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:18+00:00",
+ "rows": 20265,
+ "note": "2024 regular season weeks 1-8"
+}

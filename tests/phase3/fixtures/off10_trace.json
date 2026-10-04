@@ -1,0 +1,24 @@
+{
+ "source": "tests/phase3/fixtures/store/pbp/season=2024/pulled_at=20260929T185827Z/part.parquet (nflverse DATA-01 via nflreadpy 0.1.5: pbp(2024))",
+ "pulled_at": "2026-09-29 18:58:27.075334+00:00",
+ "traced_at": "2026-10-04",
+ "rule": "first week-1 drive (by game_id, fixed_drive) with an incomplete pass, a timeout row and a penalty, and at least 8 snap/timeout rows",
+ "game_id": "2024_01_ARI_BUF",
+ "fixed_drive": 14,
+ "method": "each consecutive pair of snap/timeout rows (play_id order) traced by hand against OFF-10 as read in plan A7 and the 2026-10-02 decisions-log row",
+ "pairs": [
+  {"a": 2941, "b": 2979, "keep": false, "why": "prior play is a kickoff, not a qualifying play"},
+  {"a": 2979, "b": 3001, "keep": true, "delta": 41, "why": "run (wp 0.764, 812 s left in half) then pass: 812 - 771"},
+  {"a": 3001, "b": 3030, "keep": true, "delta": 40, "why": "completed pass (wp 0.781) then run: 771 - 731"},
+  {"a": 3030, "b": 3052, "keep": false, "why": "prior play wp 0.813 > 0.80, not neutral"},
+  {"a": 3052, "b": 3075, "keep": false, "why": "prior play incomplete; next row is a no-play penalty"},
+  {"a": 3075, "b": 3099, "keep": false, "why": "prior row is a no-play penalty"},
+  {"a": 3099, "b": 3124, "keep": true, "delta": 38, "why": "pass (wp 0.753) then a scramble (pass = 1): 681 - 643"},
+  {"a": 3124, "b": 3151, "keep": false, "why": "prior play went out of bounds"},
+  {"a": 3151, "b": 3165, "keep": false, "why": "next row is a timeout (no posteam), not a qualifying play"},
+  {"a": 3165, "b": 3182, "keep": false, "why": "prior row is a timeout"},
+  {"a": 3182, "b": 3207, "keep": false, "why": "prior play went out of bounds"},
+  {"a": 3207, "b": 3230, "keep": false, "why": "prior play incomplete"},
+  {"a": 3230, "b": 3253, "keep": false, "why": "next row is an extra point; prior play wp 0.851"}
+ ]
+}

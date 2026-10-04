@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/rosters_weekly/season=2023/pulled_at=20260930T145642Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: rosters_weekly(2023)"
+ ],
+ "pulled_at": [
+  "2026-09-30 14:56:42.391574+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:18+00:00",
+ "rows": 45655,
+ "note": "every 2023 row"
+}

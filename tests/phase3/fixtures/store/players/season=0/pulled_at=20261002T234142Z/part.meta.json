@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/players/season=0/pulled_at=20261002T234142Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: players(0)"
+ ],
+ "pulled_at": [
+  "2026-10-02 23:41:42.546103+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:19+00:00",
+ "rows": 24844,
+ "note": "every player (seasonless crosswalk); gsis_id and pfr_id only"
+}

@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/schedules/season=2021/pulled_at=20260929T185907Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: schedules(2021)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:59:07.754424+00:00"
+ ],
+ "cut_at": "2026-10-04T16:21:06+00:00",
+ "rows": 285,
+ "note": "every 2021 row"
+}

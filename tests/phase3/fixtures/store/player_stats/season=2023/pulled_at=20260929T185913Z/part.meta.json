@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/player_stats/season=2023/pulled_at=20260929T185913Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: player_stats(2023)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:59:13.519116+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:18+00:00",
+ "rows": 18643,
+ "note": "every 2023 row"
+}

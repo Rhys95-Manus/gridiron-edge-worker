@@ -18,6 +18,7 @@ from typing import Literal
 import numpy as np
 import polars as pl
 
+from ge.ingest.nflverse import SEASONLESS
 from ge.ingest.raw import partitions
 from ge.store.known_at import CLOSING_LINES, TARGET_NEVER, with_kickoff
 
@@ -105,6 +106,13 @@ def perturbed_store(
         )
         late_ids |= set(ends.filter(pl.col("time_of_day") > as_of)["game_id"].to_list())
     for ds in datasets:
+        # Seasonless datasets (the DATA-04 player ID crosswalk) hold no game information;
+        # they are copied unchanged.
+        for part in partitions(src, ds, SEASONLESS):
+            _link(
+                part / "part.parquet",
+                dst / ds / f"season={SEASONLESS}" / part.name / "part.parquet",
+            )
         for s in (season - 1, season):
             for part in partitions(src, ds, s):
                 src_file = part / "part.parquet"

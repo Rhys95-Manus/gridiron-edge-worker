@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/nextgen_rushing/season=2024/pulled_at=20260929T185915Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-05) via nflreadpy 0.1.5: nextgen_rushing(2024)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:59:15.534841+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:18+00:00",
+ "rows": 242,
+ "note": "2024 regular season weeks 1-8"
+}

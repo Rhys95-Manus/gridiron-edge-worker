@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/pbp/season=2024/pulled_at=20260929T185827Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-01) via nflreadpy 0.1.5: pbp(2024)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:58:27.075334+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:17+00:00",
+ "rows": 21294,
+ "note": "2024 regular season weeks 1-8; 92 columns kept"
+}

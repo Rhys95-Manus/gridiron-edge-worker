@@ -18,6 +18,7 @@ from pathlib import Path
 import polars as pl
 
 from ge.config import Backtest, load_params
+from ge.ingest.nflverse import SEASONLESS
 from ge.ingest.raw import DATA_ROOT
 from ge.store import known_at as ka
 from ge.store.vintage import Version, choose_version, observations
@@ -33,12 +34,20 @@ WEEKLY_REPORTS = {"injuries": "team", "rosters_weekly": "team"}
 PRIOR_SEASON_ONLY = ("participation", "rosters")
 NWS = ("nws_hourly", "nws_game_status")
 KALSHI = ("kalshi_markets", "kalshi_orderbook", "kalshi_candles", "kalshi_trades")
+# DATA-04 player ID crosswalk: only these columns are exposed. The players table also holds
+# each player's current team and status, which are later knowledge.
+CROSSWALK_COLUMNS = ("gsis_id", "pfr_id")
+# DATA-04 teams table: a franchise's abbreviations share one team_id (G4: relocated teams keep
+# their history). Colors, logos and names aren't exposed.
+FRANCHISE_COLUMNS = ("team_abbr", "team_id")
 SNAPSHOT_DATASETS = (
     "schedules",
     *GAME_KEYED,
     *NGS,
     *WEEKLY_REPORTS,
     *PRIOR_SEASON_ONLY,
+    "players",
+    "teams",
     "depth_charts",
     *NWS,
     *KALSHI,
@@ -53,6 +62,8 @@ TABLES = (
     "injuries",
     "rosters_weekly",
     "rosters",
+    "players",
+    "teams",
     "depth_charts",
     *NWS,
     "kalshi_markets",
@@ -275,6 +286,31 @@ def snapshot(
                 labels.append(f"{ds} {s}: no publish time before our own pulls; {assumed}")
             elif v is not None:
                 labels.append(f"{ds} {s}: our own pull at {v.pulled_at.isoformat()} decides")
+
+    def id_table(ds: str, cols: tuple[str, ...], label: str) -> None:
+        """A seasonless DATA-04 table, reduced to ID columns that carry no game information."""
+        v = versions[(ds, SEASONLESS)] = choose_version(root, ds, SEASONLESS, as_of)
+
+        def load() -> pl.DataFrame:
+            lf = _read(v, list(cols))
+            if lf is None:
+                return pl.DataFrame(schema=dict.fromkeys(cols, pl.Utf8))
+            return lf.drop_nulls(list(cols)).unique().sort(list(cols)).collect()
+
+        loaders[ds] = load
+        if v is not None:
+            labels.append(label)
+
+    id_table(
+        "players",
+        CROSSWALK_COLUMNS,
+        "players: ID crosswalk only (gsis_id, pfr_id); IDs carry no game information",
+    )
+    id_table(
+        "teams",
+        FRANCHISE_COLUMNS,
+        "teams: franchise IDs only (team_abbr, team_id); IDs carry no game information",
+    )
 
     dv = versions[("depth_charts", season)]
 

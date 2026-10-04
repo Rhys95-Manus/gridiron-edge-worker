@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/pbp/season=2023/pulled_at=20260929T185814Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-01) via nflreadpy 0.1.5: pbp(2023)"
+ ],
+ "pulled_at": [
+  "2026-09-29 18:58:14.356531+00:00"
+ ],
+ "cut_at": "2026-10-02T23:42:17+00:00",
+ "rows": 49665,
+ "note": "every 2023 row; 92 columns kept"
+}
