@@ -76,6 +76,26 @@ def ftn(main_snap: Snapshot) -> dict[tuple[str, int], dict]:  # type: ignore[typ
 
 
 @pytest.fixture(scope="session")
+def snaps(main_snap: Snapshot) -> list[dict]:  # type: ignore[type-arg]
+    """This season's snap-count rows in the main snapshot."""
+    return main_snap.collect("snap_counts").filter(pl.col("season") == main_snap.season).to_dicts()
+
+
+@pytest.fixture(scope="session")
+def xw(main_snap: Snapshot) -> dict[str, str]:
+    """DATA-04 crosswalk pfr_id -> gsis_id."""
+    return dict(main_snap.collect("players").select("pfr_id", "gsis_id").iter_rows())
+
+
+@pytest.fixture(scope="session")
+def games(rows, snaps, xw):  # type: ignore[no-untyped-def]
+    """Oracle: (player, team) -> games he played (tests/phase3/oracle_player.py)."""
+    from tests.phase3 import oracle_player as op
+
+    return op.played(rows, snaps, xw)
+
+
+@pytest.fixture(scope="session")
 def teams(main_snap: Snapshot) -> list[str]:
     s = main_snap.collect("schedules").filter(pl.col("season") == main_snap.season)
     return sorted(set(s["home_team"].to_list()) | set(s["away_team"].to_list()))

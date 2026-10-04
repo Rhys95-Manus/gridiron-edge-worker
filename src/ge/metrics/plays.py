@@ -87,6 +87,27 @@ def target() -> pl.Expr:
     return qualifying() & _is1("pass") & pl.col("receiver_player_id").is_not_null()
 
 
+def usage_target() -> pl.Expr:
+    """PLY-03 for usage shares: a pass play with a receiver_player_id. Usage keeps garbage
+    time (plan A26: G7 removes it from efficiency and tendency metrics only)."""
+    return _is1("pass") & pl.col("receiver_player_id").is_not_null() & scrimmage()
+
+
+def usage_carry() -> pl.Expr:
+    """PLY-05 for usage shares: a designed carry (rush == 1, not a scramble), garbage time
+    kept (plan A26)."""
+    return _is1("rush") & ~_is1("qb_scramble") & scrimmage()
+
+
+def dropback_qb() -> pl.Expr:
+    """The QB on a dropback: passer_player_id, or rusher_player_id on a scramble (nflverse
+    leaves the passer empty on scrambles: 501 of 501 in the 2024 fixture)."""
+    return pl.coalesce(
+        pl.col("passer_player_id"),
+        pl.when(_is1("qb_scramble")).then(pl.col("rusher_player_id")),
+    )
+
+
 def offensive_td() -> pl.Expr:
     """Plan A20: a touchdown scored by the offense on the play (td_team == posteam)."""
     return _is1("touchdown") & (pl.col("td_team") == pl.col("posteam")).fill_null(False)

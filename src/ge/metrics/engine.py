@@ -10,6 +10,8 @@ Data: nflverse; charting: FTN Data via nflverse."""
 
 from __future__ import annotations
 
+import math
+from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
@@ -86,32 +88,32 @@ def summarise(
     league: bool = True,
 ) -> pl.DataFrame:
     """Step 1. `units` has entity_id, team, cell, g (games ago) and x; rows with a null x are
-    dropped. `entities` (entity_id, team) sets the grid."""
+    dropped. Optional columns: d (denominator, default 1) and c (how many plays the unit
+    stands for, default 1), so value = sum x / sum d, value_w = sum w x / sum w d,
+    n = sum c and n_eff = (sum w c)^2 / sum w^2 c. With d = c = 1 that is the plain mean.
+    `entities` (entity_id, team) sets the grid; rows are keyed by both, so a player traded
+    mid-season has one row per team (ruling 2026-10-04)."""
     # Rule 6: a canonical row order, so float sums don't depend on how the store's rows
     # happen to be ordered.
-    u = (
-        units.filter(pl.col("x").is_not_null())
-        .sort("entity_id", "cell", "g", "x")
-        .with_columns((pl.lit(0.5) ** (pl.col("g") / h)).alias("w"))
+    for col in ("d", "c"):
+        if col not in units.columns:
+            units = units.with_columns(pl.lit(1.0).alias(col))
+    u = units.filter(pl.col("x").is_not_null()).with_columns(
+        (pl.lit(0.5) ** (pl.col("g") / h)).alias("w")
     )
-    agg = u.group_by("entity_id", "cell").agg(
-        pl.len().cast(pl.Int64).alias("n"),
-        pl.col("x").mean().alias("value"),
-        ((pl.col("w") * pl.col("x")).sum() / pl.col("w").sum()).alias("value_w"),
-        (pl.col("w").sum() ** 2 / (pl.col("w") ** 2).sum()).alias("n_eff"),
-    )
+    agg = _fsum_groups(u, ["entity_id", "team", "cell"])
     grid = (
         entities.select("entity_id", "team")
         .unique()
         .join(pl.DataFrame({"cell": list(cells)}, schema={"cell": pl.Utf8}), how="cross")
     )
-    out = grid.join(agg, on=["entity_id", "cell"], how="left").with_columns(
+    out = grid.join(agg, on=["entity_id", "team", "cell"], how="left").with_columns(
         pl.col("n").fill_null(0), pl.col("n_eff").fill_null(0.0)
     )
     parts = [out.with_columns(pl.lit(entity_type).alias("entity_type"))]
     if league:
-        lg = u.group_by("cell").agg(
-            pl.len().cast(pl.Int64).alias("n"), pl.col("x").mean().alias("value")
+        lg = _fsum_groups(u.with_columns(pl.lit(1.0).alias("w")), ["cell"]).select(
+            "cell", "n", "value"
         )
         lg = pl.DataFrame({"cell": list(cells)}, schema={"cell": pl.Utf8}).join(
             lg, on="cell", how="left"
@@ -138,7 +140,39 @@ def summarise(
         .otherwise((pl.col("n") < pl.col("min_n")).fill_null(False))
         .alias("below_min_sample")
     )
-    return finish(df).sort("entity_type", "entity_id", "cell")
+    return finish(df).sort("entity_type", "entity_id", "team", "cell")
+
+
+def _fsum_groups(u: pl.DataFrame, keys: list[str]) -> pl.DataFrame:
+    """Per group: n = sum c, value = sum x / sum d, value_w = sum w x / sum w d,
+    n_eff = (sum w c)^2 / sum w^2 c. Sums use math.fsum, which is exact, so the result doesn't
+    depend on row order or memory layout (rule 6: byte-identical outputs)."""
+    acc: dict[tuple[object, ...], list[list[float]]] = defaultdict(lambda: [[] for _ in range(7)])
+    for row in u.select(*keys, "w", "x", "d", "c").iter_rows():
+        k, (w, x, d, c) = row[: len(keys)], row[len(keys) :]
+        for lst, val in zip(acc[k], (c, x, d, w * x, w * d, w * c, w * w * c), strict=True):
+            lst.append(val)
+    rows = []
+    for k, (cs, xs, ds, wxs, wds, wcs, w2cs) in acc.items():
+        sd, swd = math.fsum(ds), math.fsum(wds)
+        swc, sw2c = math.fsum(wcs), math.fsum(w2cs)
+        rows.append(
+            (
+                *k,
+                round(math.fsum(cs)),
+                math.fsum(xs) / sd if sd else None,
+                math.fsum(wxs) / swd if swd else None,
+                swc * swc / sw2c if sw2c else 0.0,
+            )
+        )
+    schema = {
+        **{key: pl.Utf8 for key in keys},
+        "n": pl.Int64,
+        "value": pl.Float64,
+        "value_w": pl.Float64,
+        "n_eff": pl.Float64,
+    }
+    return pl.DataFrame(rows, schema=schema, orient="row")
 
 
 def _min_expr(min_n: Mapping[str, float] | float | None) -> pl.Expr:
@@ -171,14 +205,27 @@ class Fixed:
 @dataclass(frozen=True)
 class Parent:
     """Prior = the entity's shrunk value of another metric's cell (e.g. OFF-12 cells shrink to
-    the team's shrunk OFF-01 run EPA)."""
+    the team's shrunk OFF-01 run EPA). `cell=None` means the same cell as the row; `by="team"`
+    matches the row's team to the parent's team rows (PLY-16 lanes shrink toward the team's
+    OFF-12 cell)."""
 
     spec_id: str
     stat: str
-    cell: str
+    cell: str | None
+    by: Literal["entity", "team"] = "entity"
 
 
-Prior = League | Fixed | Parent
+@dataclass(frozen=True)
+class Computed:
+    """Prior computed per row by the metric itself: a function of the context returning
+    entity_id, team, cell, prior (e.g. PLY-15's default redistribution rule)."""
+
+    fn: Callable[[MetricContext], pl.DataFrame]
+
+
+Prior = League | Fixed | Parent | Computed
+NO_FTN = "no FTN"
+MISSING_FTN = "no FTN: missing"
 
 
 @dataclass(frozen=True)
@@ -192,6 +239,8 @@ class StatDef:
     prior: Prior = field(default_factory=League)
     missing: str | None = None
     eligible: Callable[[pl.DataFrame], pl.DataFrame] | None = None
+    # PLY-15: below the minimum sample the observation isn't used at all (shrunk = prior).
+    prior_only_below_min: bool = False
 
     def k_keys(self) -> list[str]:
         if self.k is None:
@@ -207,11 +256,15 @@ class StatDef:
         )
 
 
-def apply_shrink(rows: pl.DataFrame, k: pl.Expr) -> pl.DataFrame:
+def apply_shrink(rows: pl.DataFrame, k: pl.Expr, prior_only: pl.Expr | None = None) -> pl.DataFrame:
     """G1 on rows that already carry a `prior` column. No observation (n = 0, or no defined
-    value, e.g. a ratio whose expected total is 0) leaves the prior."""
+    value, e.g. a ratio whose expected total is 0), or a row `prior_only` marks, leaves the
+    prior."""
+    no_obs = (pl.col("n") == 0) | pl.col("value_w").is_null()
+    if prior_only is not None:
+        no_obs = no_obs | prior_only
     return rows.with_columns(k.alias("k")).with_columns(
-        pl.when((pl.col("n") == 0) | pl.col("value_w").is_null())
+        pl.when(no_obs)
         .then(pl.col("prior"))
         .otherwise(
             (pl.col("n_eff") * pl.col("value_w") + pl.col("k") * pl.col("prior"))
@@ -238,32 +291,45 @@ def shrink_stat(
     rows = raw.filter((pl.col("stat") == sd.stat) & (pl.col("entity_type") != "league"))
     if sd.eligible is not None:
         rows = sd.eligible(rows)
+    if rows.height and (rows["note"].fill_null("") == NO_FTN).all():  # .all() skips nulls
+        # Ruling 2026-10-04: no FTN charting (before 2022) means the metric is missing; the
+        # rows stay, with no prior and no shrunk value, and matchup terms using it add zero.
+        return rows.with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("k"),
+            pl.lit(None, dtype=pl.Float64).alias("prior"),
+            pl.lit(None, dtype=pl.Float64).alias("shrunk"),
+            pl.lit(MISSING_FTN).alias("note"),
+        ).select(list(SHRUNK_SCHEMA))
     pr = sd.prior
     if isinstance(pr, Fixed):
         rows = rows.with_columns(pl.lit(pr.get()).alias("prior"))
     elif isinstance(pr, Parent):
-        p = parent(pr.spec_id, pr.stat).filter(pl.col("cell") == pr.cell)
-        rows = rows.join(
-            p.select("entity_id", pl.col("shrunk").alias("prior")), on="entity_id", how="left"
+        p = parent(pr.spec_id, pr.stat)
+        if pr.cell is not None:
+            p = p.filter(pl.col("cell") == pr.cell)
+        key = "entity_id" if pr.by == "entity" else "team"
+        on = [key] if pr.cell is not None else [key, "cell"]
+        p = p.select(
+            pl.col("entity_id").alias(key),
+            *([] if pr.cell else ["cell"]),
+            pl.col("shrunk").alias("prior"),
         )
-    elif ctx.week is not None and cv.in_carryover_window(ctx.week):
+        rows = rows.join(p, on=on, how="left")
+    elif isinstance(pr, Computed):
+        rows = rows.join(pr.fn(ctx), on=["entity_id", "team", "cell"], how="left")
+    elif side is not None and ctx.week is not None and cv.in_carryover_window(ctx.week):
+        # G4 is a team rule (new play-caller or QB); player metrics have section 4 priors.
         rows = _carryover(ctx, spec_id, sd, rows, side)
     else:
         lg = raw.filter((pl.col("stat") == sd.stat) & (pl.col("entity_type") == "league"))
         rows = rows.join(lg.select("cell", pl.col("value").alias("prior")), on="cell", how="left")
     if rows["prior"].null_count():
         bad = rows.filter(pl.col("prior").is_null())
-        if "no FTN" in set(bad["note"].drop_nulls().to_list()):
-            raise NotImplementedError(
-                f"{spec_id} {sd.stat}: no FTN charting this season (before 2022), so there is no "
-                "league value to shrink toward; BT-07a's 'FTN inputs set to their priors' needs "
-                "a prior defined without later seasons (Phase 3e)"
-            )
         raise ValueError(
             f"{spec_id} {sd.stat}: no prior for {bad.select('entity_id', 'cell').rows()[:5]}"
         )
-    out = apply_shrink(rows, sd.k_expr())
-    return out.select(list(SHRUNK_SCHEMA))
+    skip = pl.col("below_min_sample") if sd.prior_only_below_min else None
+    return apply_shrink(rows, sd.k_expr(), prior_only=skip).select(list(SHRUNK_SCHEMA))
 
 
 def _carryover(

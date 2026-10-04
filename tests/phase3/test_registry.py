@@ -23,9 +23,23 @@ def test_sections_2_and_3_are_registered() -> None:
     assert {"OFF-01", "OFF-17", "DEF-08", *PAID} <= want
 
 
+def test_section_4_is_registered() -> None:
+    want = _section_ids(("PLY-",), range(1, 18))
+    assert len(want) == 17
+    assert want <= set(REGISTRY), sorted(want - set(REGISTRY))
+
+
 def test_paid_entries_are_marked() -> None:
-    for sid in PAID:
+    for sid in PAID | {"PLY-12"}:
         assert REGISTRY[sid].paid
+
+
+def test_proxies_have_a_paid_full_version() -> None:
+    """PLY-02 and PLY-08 are v1 proxies; their full versions need DATA-11."""
+    for sid in ("PLY-02", "PLY-08"):
+        e = REGISTRY[sid]
+        assert e.proxy and not e.paid
+        assert e.full is not None and "PAID" in (e.full.__doc__ or "")
 
 
 def test_every_params_key_exists() -> None:

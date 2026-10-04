@@ -51,10 +51,13 @@ def _synthetic_registry(path: Path, teams: list[str]) -> Path:
 
 
 def _qb(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """Most dropbacks per team; a scramble's QB is its rusher (nflverse leaves the passer
+    empty on scrambles)."""
     c: Counter[tuple[str, str]] = Counter()
     for r in rows:
-        if r["qb_dropback"] == 1 and o.scrimmage(r) and r["passer_player_id"] is not None:
-            c[(r["posteam"], r["passer_player_id"])] += 1
+        qb = r["passer_player_id"] or (r["rusher_player_id"] if r["qb_scramble"] == 1 else None)
+        if r["qb_dropback"] == 1 and o.scrimmage(r) and qb is not None:
+            c[(r["posteam"], qb)] += 1
     best: dict[str, tuple[int, str]] = {}
     for (t, p), n in c.items():
         if t not in best or (n, p) > best[t]:
@@ -166,8 +169,16 @@ def _relocation_pair(present: set[str]) -> tuple[str, str]:
     raise AssertionError("teams table has no relocated franchise")
 
 
-_TEAM_COLS = ("posteam", "defteam", "home_team", "away_team", "td_team", "timeout_team",
-              "penalty_team", "team")  # fmt: skip
+_TEAM_COLS = (
+    "posteam",
+    "defteam",
+    "home_team",
+    "away_team",
+    "td_team",
+    "timeout_team",
+    "penalty_team",
+    "team",
+)
 
 
 def test_relocated_team_keeps_its_history(g4_snap, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

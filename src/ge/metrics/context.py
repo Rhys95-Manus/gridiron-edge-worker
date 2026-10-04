@@ -16,7 +16,7 @@ import polars as pl
 
 from ge.metrics.coaching import CoachingRegistry, load_registry
 from ge.metrics.engine import Side
-from ge.metrics.plays import scrimmage
+from ge.metrics.plays import dropback_qb, scrimmage
 from ge.store.snapshot import Snapshot
 
 
@@ -165,21 +165,104 @@ class MetricContext:
         if pbp.is_empty():
             return {}
         c = (
-            pbp.filter(
-                (pl.col("qb_dropback") == 1).fill_null(False)
-                & scrimmage()
-                & pl.col("passer_player_id").is_not_null()
-            )
-            .group_by("posteam", "passer_player_id")
+            pbp.filter((pl.col("qb_dropback") == 1).fill_null(False) & scrimmage())
+            .with_columns(dropback_qb().alias("_qb"))
+            .filter(pl.col("_qb").is_not_null())
+            .group_by("posteam", "_qb")
             .len()
-            .sort(["posteam", "len", "passer_player_id"], descending=[False, True, True])
+            .sort(["posteam", "len", "_qb"], descending=[False, True, True])
         )
         return dict(
-            c.group_by("posteam", maintain_order=True)
-            .first()
-            .select("posteam", "passer_player_id")
-            .iter_rows()
+            c.group_by("posteam", maintain_order=True).first().select("posteam", "_qb").iter_rows()
         )
+
+    @cached_property
+    def qb_by_game(self) -> dict[tuple[str, str], str]:
+        """(team, game_id) -> the QB with the most dropbacks in that game (PLY-15)."""
+        c = (
+            self.table("pbp")
+            .filter((pl.col("qb_dropback") == 1).fill_null(False) & scrimmage())
+            .with_columns(dropback_qb().alias("_qb"))
+            .filter(pl.col("_qb").is_not_null())
+            .group_by("posteam", "game_id", "_qb")
+            .len()
+            .sort(["posteam", "game_id", "len", "_qb"], descending=[False, False, True, True])
+            .group_by("posteam", "game_id", maintain_order=True)
+            .first()
+        )
+        return {(t, g): q for t, g, q, _ in c.iter_rows()}
+
+    @cached_property
+    def coach_by_game(self) -> dict[tuple[str, str], str]:
+        """(team, game_id) -> head coach in the schedules data (G4 stand-in for the
+        play-caller)."""
+        s = self.table("schedules")
+        out = {}
+        for r in s.select(
+            "game_id", "home_team", "away_team", "home_coach", "away_coach"
+        ).iter_rows(named=True):
+            out[(r["home_team"], r["game_id"])] = r["home_coach"]
+            out[(r["away_team"], r["game_id"])] = r["away_coach"]
+        return out
+
+    @cached_property
+    def positions(self) -> dict[str, str]:
+        """Each player's position on his latest visible weekly roster row this season (a tie on
+        week goes to the larger position string, so the choice is deterministic)."""
+        rw = self.table("rosters_weekly").filter(pl.col("gsis_id").is_not_null())
+        if rw.is_empty():
+            return {}
+        best = (
+            rw.select("gsis_id", "week", pl.col("position").fill_null(""))
+            .sort("gsis_id", "week", "position")
+            .group_by("gsis_id", maintain_order=True)
+            .last()
+        )
+        return dict(best.select("gsis_id", "position").iter_rows())
+
+    @cached_property
+    def snaps(self) -> pl.DataFrame:
+        """This season's snap counts with gsis_id (DATA-04 crosswalk; unmatched keep
+        "pfr:<id>") and the team-game's offensive snaps (A12: max of snaps / pct)."""
+        s = self.table("snap_counts")
+        if s.is_empty():
+            return s
+        team = (
+            s.filter(pl.col("offense_pct") > 0)
+            .group_by("team", "game_id")
+            .agg(
+                (pl.col("offense_snaps") / pl.col("offense_pct")).max().alias("team_offense_snaps")
+            )
+        )
+        return s.with_columns(self.gsis(pl.col("pfr_player_id")).alias("gsis_id")).join(
+            team, on=["team", "game_id"], how="left"
+        )
+
+    @cached_property
+    def played(self) -> pl.DataFrame:
+        """(gsis_id, team, game_id) for every game a player played for a team: an offensive
+        snap in snap counts, or an opportunity of his in play-by-play (a target, a designed
+        carry, or a dropback as QB). The basis of 'games he played' (ruling 2026-10-04)."""
+        parts = []
+        if self.snaps.height:
+            parts.append(
+                self.snaps.filter(pl.col("offense_snaps") > 0).select("gsis_id", "team", "game_id")
+            )
+        p = self.table("pbp").filter(pl.col("posteam").is_not_null() & scrimmage())
+        tgt = (pl.col("pass") == 1) & pl.col("receiver_player_id").is_not_null()
+        car = (pl.col("rush") == 1) & ~(pl.col("qb_scramble") == 1).fill_null(False)
+        db = (pl.col("qb_dropback") == 1).fill_null(False)
+        for who, m in (
+            (pl.col("receiver_player_id"), tgt),
+            (pl.col("rusher_player_id"), car),
+            (dropback_qb(), db),
+        ):
+            parts.append(
+                p.filter(m.fill_null(False))
+                .select(who.alias("gsis_id"), pl.col("posteam").alias("team"), "game_id")
+                .filter(pl.col("gsis_id").is_not_null())
+            )
+        return pl.concat(parts).unique().sort("gsis_id", "team", "game_id")
 
     @cached_property
     def _franchises(self) -> dict[str, str]:

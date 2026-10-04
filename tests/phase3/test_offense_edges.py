@@ -129,8 +129,15 @@ def test_ftn_join_rate_report(ctx, rows, ftn, teams) -> None:  # type: ignore[no
             assert (r["n"], r["joined"]) == (len(mine), joined), (t, name)
             assert r["rate"] == pytest.approx(joined / len(mine))
     print("\nFTN join rate by play set (min / mean / max over teams):")
-    print(rep.group_by("plays").agg(pl.col("rate").min(), pl.col("rate").mean().alias("mean"),
-                                    pl.col("rate").max().alias("max")).sort("plays"))  # fmt: skip
+    print(
+        rep.group_by("plays")
+        .agg(
+            pl.col("rate").min(),
+            pl.col("rate").mean().alias("mean"),
+            pl.col("rate").max().alias("max"),
+        )
+        .sort("plays")
+    )
 
 
 @pytest.fixture(scope="module")
@@ -142,12 +149,19 @@ def ctx_2021():  # type: ignore[no-untyped-def]
 
 @pytest.mark.parametrize(
     ("spec_id", "stat"),
-    [("OFF-06", "play_action_rate"), ("OFF-07", "motion_rate"), ("OFF-08", "rpo_rate")],
+    [
+        ("OFF-06", "play_action_rate"),
+        ("OFF-07", "motion_rate"),
+        ("OFF-08", "rpo_rate"),
+        ("DEF-05", "blitz_rate"),
+        ("DEF-05", "rushers"),
+        ("DEF-05", "box"),
+    ],
 )
-def test_pre_2022_ftn_metrics_have_no_values(ctx_2021, spec_id: str, stat: str) -> None:  # type: ignore[no-untyped-def]
+def test_pre_2022_ftn_metrics_are_missing(ctx_2021, spec_id: str, stat: str) -> None:  # type: ignore[no-untyped-def]
     """FTN starts in 2022. A 2021 snapshot has plays but no charting: every team row has n = 0,
-    no value and the note "no FTN"; there is no league value either, so shrinking raises
-    instead of inventing a prior (BT-07a's "set to their priors" is for Phase 3e to define)."""
+    no value and the note "no FTN". Ruling 2026-10-04: FTN metrics are treated as missing, so
+    the shrunk rows exist with a null shrunk value (matchup terms using them contribute 0)."""
     frame = raw(ctx_2021, spec_id).filter(pl.col("stat") == stat)
     teams = frame.filter(pl.col("entity_type") == "team")
     assert teams.height == 32
@@ -155,5 +169,7 @@ def test_pre_2022_ftn_metrics_have_no_values(ctx_2021, spec_id: str, stat: str) 
     assert teams["value"].null_count() == 32
     assert set(frame["note"].to_list()) == {"no FTN"}
     assert ctx_2021.plays.filter(pf.qualifying()).height > 0  # plays exist, charting doesn't
-    with pytest.raises(NotImplementedError, match="no FTN"):
-        shrunk(ctx_2021, spec_id, stat)
+    s = shrunk(ctx_2021, spec_id, stat)
+    assert s.height == 32
+    assert s["shrunk"].null_count() == 32 and s["prior"].null_count() == 32
+    assert set(s["note"].to_list()) == {"no FTN: missing"}

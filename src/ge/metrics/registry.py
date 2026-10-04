@@ -14,9 +14,10 @@ import polars as pl
 
 from ge.metrics import defense as d
 from ge.metrics import offense as o
+from ge.metrics import player as pl_
 from ge.metrics.context import MetricContext
 from ge.metrics.conventions import HalfLife
-from ge.metrics.engine import Fixed, League, Parent, Side, StatDef, shrink_stat
+from ge.metrics.engine import Computed, Fixed, League, Parent, Side, StatDef, shrink_stat
 
 RawFn = Callable[[MetricContext], pl.DataFrame]
 E: HalfLife = "efficiency"
@@ -29,6 +30,8 @@ class Entry:
     stats: dict[str, StatDef] = field(default_factory=dict)
     side: Side | None = None
     paid: bool = False
+    proxy: bool = False  # a v1 free-data proxy (PLY-02, PLY-08)
+    full: RawFn | None = None  # the full version a proxy stands in for (raises PAID)
 
     def param_keys(self) -> list[str]:
         keys = []
@@ -73,8 +76,26 @@ def _eligible_on_off(rows: pl.DataFrame) -> pl.DataFrame:
     return rows.filter(~pl.col("below_min_sample") & pl.col("value_w").is_not_null())
 
 
+def _role_prior(sid: str, what: str = "a role prior") -> str:
+    return (
+        f"{sid}: shrinks toward {what}: section 4's role prior is last season's shrunk value "
+        "(which itself needs a role prior) or the league average for his depth-chart slot, "
+        "estimated in Phase 3e (BT-02 core); raises until then (user decision 2026-10-02)"
+    )
+
+
+def _usage_role(sid: str, stat: str, k: str, what: str = "a role prior") -> StatDef:
+    return StatDef(stat, U, f"player.{k}", missing=_role_prior(sid, what))
+
+
+def _ply_15_prior(stat: str) -> Computed:
+    return Computed(lambda ctx: pl_.ply_15_prior(ctx, stat))
+
+
 _OFF: Side = "offense"
 _DEF: Side = "defense"
+U: HalfLife = "usage"
+_OVERALL = "his shrunk overall share, which needs a role prior"
 REGISTRY: dict[str, Entry] = {
     e.spec_id: e
     for e in [
@@ -218,6 +239,120 @@ REGISTRY: dict[str, Entry] = {
                 StatDef("on_off", E, "defense.def_08_k", Fixed(0.0), eligible=_eligible_on_off),
             ),
             _DEF,
+        ),
+        # ---- section 4: player ----
+        Entry("PLY-01", pl_.ply_01, _stats(_usage_role("PLY-01", "snap_share", "ply_01_k_games"))),
+        Entry(
+            "PLY-02",
+            pl_.ply_02,
+            _stats(_usage_role("PLY-02", "snap_share", "ply_01_k_games")),
+            proxy=True,
+            full=pl_.ply_02_full,
+        ),
+        Entry(
+            "PLY-03",
+            pl_.ply_03,
+            _stats(_usage_role("PLY-03", "target_share", "ply_03_k_team_targets")),
+        ),
+        Entry(
+            "PLY-04",
+            pl_.ply_04,
+            _stats(
+                _usage_role("PLY-04", "air_share", "ply_04_k_team_targets"),
+                _usage_role("PLY-04", "wopr", "ply_04_k_team_targets"),
+            ),
+        ),
+        Entry(
+            "PLY-05",
+            pl_.ply_05,
+            _stats(_usage_role("PLY-05", "carry_share", "ply_05_k_team_carries")),
+        ),
+        Entry(
+            "PLY-06",
+            pl_.ply_06,
+            _stats(
+                _usage_role("PLY-06", "opportunity_share", "ply_06_k_team_opportunities", _OVERALL)
+            ),
+        ),
+        Entry(
+            "PLY-07",
+            pl_.ply_07,
+            _stats(_usage_role("PLY-07", "opportunity_share", "ply_07_k", _OVERALL)),
+        ),
+        Entry(
+            "PLY-08",
+            pl_.ply_08,
+            _stats(
+                StatDef(
+                    "yards_per_team_dropback",
+                    E,
+                    "player.ply_08_k_team_dropbacks",
+                    missing=_role_prior("PLY-08"),
+                )
+            ),
+            proxy=True,
+            full=pl_.ply_08_full,
+        ),
+        Entry(
+            "PLY-09",
+            pl_.ply_09,
+            _stats(StatDef("yacoe", E, "player.ply_09_k_receptions", Fixed(0.0))),
+        ),
+        Entry(
+            "PLY-10", pl_.ply_10, _stats(StatDef("croe", E, "player.ply_10_k_targets", Fixed(0.0)))
+        ),
+        Entry(
+            "PLY-11",
+            pl_.ply_11,
+            _stats(StatDef("ryoe_per_carry", E, "player.ply_11_k_carries", Fixed(0.0))),
+        ),
+        Entry("PLY-12", pl_.ply_12, paid=True),
+        Entry("PLY-13", pl_.ply_13),
+        Entry("PLY-14", pl_.ply_14),
+        Entry(
+            "PLY-15",
+            pl_.ply_15,
+            _stats(
+                *(
+                    StatDef(
+                        s, U, "player.ply_15_k_games", _ply_15_prior(s), prior_only_below_min=True
+                    )
+                    for s in ("target_share", "carry_share")
+                )
+            ),
+        ),
+        Entry(
+            "PLY-16",
+            pl_.ply_16,
+            _stats(
+                StatDef(
+                    "share",
+                    U,
+                    "player.ply_16_k_carries",
+                    missing=(
+                        "PLY-16: lane carry shares would shrink toward the team's shrunk OFF-12 "
+                        "value, but OFF-12 has no shrunk carry-share stat (user decision "
+                        "2026-10-04: raise until the spec sets it)"
+                    ),
+                ),
+                StatDef(
+                    "success",
+                    E,
+                    "player.ply_16_k_carries",
+                    Parent("OFF-12", "success", None, "team"),
+                ),
+                StatDef("epa", E, "player.ply_16_k_carries", Parent("OFF-12", "epa", None, "team")),
+            ),
+        ),
+        Entry(
+            "PLY-17",
+            pl_.ply_17,
+            _stats(
+                *(
+                    StatDef(s, E, "player.ply_17_k_blitzed_dropbacks")
+                    for s in ("epa_gap", "sack_gap")
+                )
+            ),
         ),
     ]
 }
