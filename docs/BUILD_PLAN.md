@@ -252,7 +252,7 @@ fails any row without a source_url and effective date. Tests first.
 
 - [ ] Property tests (hypothesis): shrink returns the prior at n = 0, the midpoint at n = k, and approaches the observed value as n grows
 - [ ] Golden test: for one real game fixture, EPA per play and success rate per team equal a value the test computes independently from raw rows
-- [ ] Cross-check: per player-week targets, carries and receiving yards match nflverse player stats for 2025 on at least 99% of player-weeks; every mismatch is listed in the report
+- [ ] Cross-check: per player-week targets, carries and receiving yards match nflverse player stats for 2024 (2025 is the BT-07b holdout) on at least 99% of player-weeks; every mismatch is listed in the report
 - [ ] Test: OFF-12 cell carries sum to the team's designed carries
 - [ ] Test: every metric row in spec sections 2–5 has a registry entry; PAID metrics raise the PAID error
 - [ ] Test: COA-01 validation rejects a row with no source\_url
@@ -261,6 +261,27 @@ fails any row without a source_url and effective date. Tests first.
 ## Phases 4–6: the models
 
 This is where most of the risk lives. The tests here check that the models are internally correct and reproduce real football on average; whether they beat the market is a separate question that only Phase 8 answers.
+
+### Phase 3e — Prior and parameter estimation (BT-02 core)
+
+**Spec IDs:** BT-02, G1, G6, section 4 role priors, COA-02, the team-level k values in the 2026-10-02 decisions. **Done when:** every value Phase 3 leaves raising has a fitted value for each walk-forward season, estimated only from earlier seasons, and nothing reads 2025. Added 2026-10-02: these values need only history, not the model, and Phases 4–7 depend on them.
+
+```text
+Phase 3e. Estimate, from history only, every value Phase 3 leaves raising:
+every k by split-half stabilization (G1), the G6 ridge penalty by
+cross-validation, section 4 role priors by depth-chart slot, the COA-02 p_go
+logistic model, and k for team-level run-cell yards/carry, explosive and
+stuff rates and per-cell CPOE. Fit once per walk-forward test season S
+(2021-2024) using only seasons 2016 to S-1, plus one fit on 2016-2024 for
+live 2026 use. Write each to a new versioned params file with status fitted
+and the seasons used; never overwrite the initial file. Nothing may read
+2025 (BT-07b). Tests first.
+```
+
+- [ ] Test: each fitted value for season S changes by zero when seasons ≥ S are altered (leakage harness)
+- [ ] Test: split-half k recovers a planted stabilization point on synthetic data
+- [ ] Test: any read of 2025 data fails the run
+- [ ] Report: every fitted value beside its initial value, with the seasons used; you review the biggest changes
 
 ### Phase 4 — Team ratings (model mode)
 
