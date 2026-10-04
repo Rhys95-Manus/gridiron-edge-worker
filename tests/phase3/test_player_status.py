@@ -121,10 +121,25 @@ def test_ply_14_availability_waits_for_phase_3e(ctx) -> None:  # type: ignore[no
         player.ply_14_availability(ctx)
 
 
-def test_ply_14_return_from_injury(ctx, snaps, xw, rows, report) -> None:  # type: ignore[no-untyped-def]
+def test_ply_14_return_from_injury(ctx, snaps, xw, rows, report, main_snap) -> None:  # type: ignore[no-untyped-def]
     """First game back after missing 2+ games: the return factor (initial 0.85) is attached.
     Missed = the team's visible games after his last game with a snap; only for his latest
-    team, and not when he's listed Out or Doubtful."""
+    team, and not when he's listed Out or Doubtful. User rule 2026-10-04: only if he appeared
+    on that team's injury report (any status) or its weekly roster as reserve (status RES,
+    which is where IR shows: the injury feed has no IR status) in a missed week, so released
+    players aren't flagged."""
+    season = main_snap.season
+    inj_weeks = {
+        (r["gsis_id"], r["team"], r["week"])
+        for r in main_snap.collect("injuries").filter(pl.col("season") == season).to_dicts()
+    }
+    res_weeks = {
+        (r["gsis_id"], r["team"], r["week"])
+        for r in main_snap.collect("rosters_weekly")
+        .filter((pl.col("season") == season) & (pl.col("status") == "RES"))
+        .to_dicts()
+    }
+    week_of = {(r["posteam"], r["game_id"]): r["week"] for r in rows if r["posteam"]}
     ga = o.games_ago(rows)
     last: dict[str, tuple[int, str]] = {}
     played_g: dict[tuple[str, str], list[float]] = defaultdict(list)
@@ -137,10 +152,19 @@ def test_ply_14_return_from_injury(ctx, snaps, xw, rows, report) -> None:  # typ
     out = {(r["gsis_id"], r["team"]) for r in report if r["report_status"] in ("Out", "Doubtful")}
     need = op.v(PL.ply_14_return_min_missed_games)
     want = {}
+    dropped = 0
     for pid, (_, team) in last.items():
         missed = int(min(played_g[(pid, team)]))  # games since his last one = its games-ago
-        if missed >= need and (pid, team) not in out:
+        if missed < need or (pid, team) in out:
+            continue
+        weeks = {week_of[(team, g)] for g, i in ga[team].items() if i < missed}
+        listed = any((pid, team, w) in inj_weeks or (pid, team, w) in res_weeks for w in weeks)
+        if listed:
             want[(pid, team)] = missed
+        else:
+            dropped += 1
+    print(f"\nPLY-14 return flag: {len(want)} players, {dropped} not listed while out (dropped)")
+    assert dropped > 0, "fixture should contain an unlisted absence (e.g. a released player)"
     frame = raw(ctx, "PLY-14").filter(pl.col("stat") == "return_factor")
     got = {(r["entity_id"], r["team"]): r for r in frame.iter_rows(named=True)}
     assert set(got) == set(want)

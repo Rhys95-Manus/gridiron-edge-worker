@@ -17,9 +17,8 @@ from ge.ingest.kalshi import (
     REVIEW_PATH,
     KalshiPublic,
     approved_series,
-    nfl_candidates,
     pending_series,
-    update_review_file,
+    refresh_review,
 )
 from ge.ingest.kalshi_history import (
     GAME_WINNER_SERIES,
@@ -223,13 +222,21 @@ def _occurs(m: dict[str, Any]) -> dt.datetime | None:
     return dt.datetime.fromisoformat(raw.replace("Z", "+00:00")) if raw else None
 
 
+def _team_names() -> list[str]:
+    """NFL team names for the proposal rules, from the nflverse teams table in the raw store
+    (DATA-04, `ge ingest nflverse --datasets teams`). Missing table: fail loudly rather than
+    propose without the team-name rule."""
+    from ge.ingest.nflverse import SEASONLESS
+
+    return read_latest(DATA_ROOT, "teams", SEASONLESS)["team_name"].drop_nulls().to_list()
+
+
 def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
     pulled_at = _now()
     with PublicClient(cfg.http) as http:
         k = KalshiPublic(http, cfg.kalshi)
         all_series = k.series_list()
-        cands = nfl_candidates(all_series)
-        new = update_review_file(REVIEW_PATH, cands)
+        cands, new = refresh_review(REVIEW_PATH, all_series, _team_names())
         write_raw(
             pl.DataFrame(
                 [

@@ -2550,6 +2550,20 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNCAAFDELAY:
+    decision: exclude
+    first_seen: '2026-10-04'
+    title: College Football Weather Delay
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    fee_type: quadratic
+    fee_multiplier: 1
+    decided_by: user
+    decided_on: '2026-10-04'
+    decision_basis: college football market
   KXNCAAFDSTTD:
     decision: exclude
     first_seen: '2026-09-29'

@@ -186,6 +186,33 @@ def write_proposals(path: Path, proposals: dict[str, tuple[str, list[str]]]) -> 
     )
 
 
+FEE_RULE_SKIPPED = "fee_schedule_nfl not run (no saved PDF)"
+
+
+def refresh_review(
+    path: Path, all_series: list[dict[str, Any]], team_names: list[str]
+) -> tuple[list[Candidate], int]:
+    """DATA-08: add new NFL candidates as pending and propose include/exclude for every
+    pending row that has no proposal yet (user request 2026-10-04). Live runs have no
+    fee-schedule PDF (it sits behind a bot check), so that rule is skipped and the skip is
+    recorded in proposed_rules (user decision 2026-10-04). Decisions are never changed."""
+    cands = nfl_candidates(all_series)
+    new = update_review_file(path, cands)
+    rows = _read_review(path)["series"]
+    todo = [
+        c
+        for c in cands
+        if rows[c.ticker]["decision"] == "pending" and "proposed" not in rows[c.ticker]
+    ]
+    if todo:
+        props = {
+            t: (p, [*rules, FEE_RULE_SKIPPED])
+            for t, (p, rules) in propose(todo, team_names, set()).items()
+        }
+        write_proposals(path, props)
+    return cands, new
+
+
 def apply_decisions(
     path: Path,
     include: dict[str, str],

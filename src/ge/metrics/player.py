@@ -612,9 +612,18 @@ def _returns(ctx: MetricContext, out_or_doubtful: set[tuple[str, str]]) -> list[
     )
     need = _P.ply_14_return_min_missed_games.value
     factor = _P.ply_14_return_factor.value
+    listed = _listed_weeks(ctx)
+    weeks_by_g: dict[str, list[tuple[float, int]]] = defaultdict(list)
+    for team, week, g in ctx.games.select("team", "week", "g").iter_rows():
+        weeks_by_g[team].append((g, week))
     out = []
     for pid, team, missed in since.sort("gsis_id").iter_rows():
-        if missed >= need and (pid, team) not in out_or_doubtful:
+        if missed < need or (pid, team) in out_or_doubtful:
+            continue
+        missed_weeks = {w for g, w in weeks_by_g[team] if g < missed}
+        # User rule 2026-10-04: only a player listed while out (injury report, any status, or
+        # reserve on the weekly roster), so released players aren't flagged.
+        if any((pid, team, w) in listed for w in missed_weeks):
             out.append(
                 {
                     "entity_type": "player",
@@ -628,6 +637,21 @@ def _returns(ctx: MetricContext, out_or_doubtful: set[tuple[str, str]]) -> list[
                     "projected snap share x return factor (applied in PRJ-02)",
                 }
             )
+    return out
+
+
+def _listed_weeks(ctx: MetricContext) -> set[tuple[str, str, int]]:
+    """(gsis_id, team, week) where a player was on the team's injury report (any status) or
+    on its weekly roster with status RES (reserve: where IR shows; nflverse's injury feed has
+    no IR status). User decision 2026-10-04."""
+    inj = ctx.table("injuries")
+    rw = ctx.table("rosters_weekly")
+    out: set[tuple[str, str, int]] = set()
+    if inj.height:
+        out |= set(inj.select("gsis_id", "team", "week").drop_nulls().iter_rows())
+    if rw.height:
+        res = rw.filter(pl.col("status") == "RES").select("gsis_id", "team", "week").drop_nulls()
+        out |= set(res.iter_rows())
     return out
 
 
