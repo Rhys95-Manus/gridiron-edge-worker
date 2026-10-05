@@ -11,6 +11,7 @@ http:
 nflverse:
   first_season: {spec_id: [DATA-01, DATA-04, DATA-05], value: 2016, status: initial, source: 'BUILD_PLAN Phase 1: "for 2016 to the current season"'}
   ftn_first_season: {spec_id: DATA-02, value: 2022, status: initial, source: 'MODEL_SPEC DATA-02: "2022 onward"'}
+  combine_first_season: {spec_id: DATA-04, value: 2000, status: initial, source: 'https://nflreadr.nflverse.com/reference/load_combine.html: combine data from 2000 ("courtesy of PFR", via nflverse); nflreadpy load_combine(1999) returns 0 rows, 2000 returns 321 (checked 2026-10-04); user decision 2026-10-04 to ingest from 2000'}
 
 kalshi:
   base_url: {spec_id: DATA-08, value: 'https://external-api.kalshi.com/trade-api/v2', status: initial, source: 'https://docs.kalshi.com/getting_started/quick_start_market_data'}

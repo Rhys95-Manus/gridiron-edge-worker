@@ -29,6 +29,12 @@ def test_section_4_is_registered() -> None:
     assert want <= set(REGISTRY), sorted(want - set(REGISTRY))
 
 
+def test_section_6b_is_registered() -> None:
+    want = _section_ids(("PLY-",), range(18, 35)) | _section_ids(("DEF-",), range(9, 18))
+    assert len(want) == 17 + 9
+    assert want <= set(REGISTRY), sorted(want - set(REGISTRY))
+
+
 def test_paid_entries_are_marked() -> None:
     for sid in PAID | {"PLY-12"}:
         assert REGISTRY[sid].paid

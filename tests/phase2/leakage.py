@@ -19,8 +19,9 @@ import numpy as np
 import polars as pl
 
 from ge.ingest.nflverse import SEASONLESS
-from ge.ingest.raw import partitions
+from ge.ingest.raw import partitions, seasons_stored
 from ge.store.known_at import CLOSING_LINES, TARGET_NEVER, with_kickoff
+from ge.store.snapshot import PRESEASON
 
 Mode = Literal["delete", "shuffle"]
 
@@ -113,6 +114,17 @@ def perturbed_store(
                 part / "part.parquet",
                 dst / ds / f"season={SEASONLESS}" / part.name / "part.parquet",
             )
+        # Pre-season datasets (combine: measured before the draft) are copied unchanged for
+        # every year up to the target season; later years are left out.
+        if ds in PRESEASON:
+            for s in seasons_stored(src, ds):
+                if s <= season:
+                    for part in partitions(src, ds, s):
+                        _link(
+                            part / "part.parquet",
+                            dst / ds / f"season={s}" / part.name / "part.parquet",
+                        )
+            continue
         for s in (season - 1, season):
             for part in partitions(src, ds, s):
                 src_file = part / "part.parquet"

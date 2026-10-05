@@ -146,7 +146,15 @@ def pre_ftn() -> None:
         _cut(dataset, PRE_FTN_SEASON)
 
 
-STEPS = {"main": main_slices, "teams": teams, "pre_ftn": pre_ftn}
+def combine() -> None:
+    """DATA-04 combine (ruling 2026-10-04): every draft year from 2000 through the fixture's
+    season, all columns (about 330 rows a year)."""
+    first = 2000
+    for s in range(first, SEASON + 1):
+        _cut("combine", s)
+
+
+STEPS = {"main": main_slices, "teams": teams, "pre_ftn": pre_ftn, "combine": combine}
 
 
 if __name__ == "__main__":

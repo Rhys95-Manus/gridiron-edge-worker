@@ -19,7 +19,7 @@ import polars as pl
 
 from ge.config import Backtest, load_params
 from ge.ingest.nflverse import SEASONLESS
-from ge.ingest.raw import DATA_ROOT
+from ge.ingest.raw import DATA_ROOT, seasons_stored
 from ge.store import known_at as ka
 from ge.store.vintage import Version, choose_version, observations
 
@@ -40,6 +40,22 @@ CROSSWALK_COLUMNS = ("gsis_id", "pfr_id")
 # DATA-04 teams table: a franchise's abbreviations share one team_id (G4: relocated teams keep
 # their history). Colors, logos and names aren't exposed.
 FRANCHISE_COLUMNS = ("team_abbr", "team_id")
+# DATA-04 combine (ruling 2026-10-04): pre-draft measurements, one partition per draft year.
+# Every draft year up to the target season is read (veterans' combines are years back); a
+# season's combine is held before its games. Names, schools and draft picks aren't exposed.
+COMBINE_COLUMNS = (
+    "season",
+    "pfr_id",
+    "pos",
+    "ht",
+    "wt",
+    "forty",
+    "vertical",
+    "broad_jump",
+    "cone",
+    "shuttle",
+)
+PRESEASON = ("combine",)
 SNAPSHOT_DATASETS = (
     "schedules",
     *GAME_KEYED,
@@ -48,6 +64,7 @@ SNAPSHOT_DATASETS = (
     *PRIOR_SEASON_ONLY,
     "players",
     "teams",
+    *PRESEASON,
     "depth_charts",
     *NWS,
     *KALSHI,
@@ -64,6 +81,7 @@ TABLES = (
     "rosters",
     "players",
     "teams",
+    "combine",
     "depth_charts",
     *NWS,
     "kalshi_markets",
@@ -311,6 +329,26 @@ def snapshot(
         FRANCHISE_COLUMNS,
         "teams: franchise IDs only (team_abbr, team_id); IDs carry no game information",
     )
+
+    combine_versions = [
+        versions.setdefault(("combine", s), choose_version(root, "combine", s, as_of))
+        for s in seasons_stored(root, "combine")
+        if s <= season
+    ]
+
+    def combine() -> pl.DataFrame:
+        frames = [_read(v, list(COMBINE_COLUMNS)) for v in combine_versions]
+        got = _concat(frames)
+        if got.is_empty():
+            return pl.DataFrame(schema=dict.fromkeys(COMBINE_COLUMNS, pl.Utf8))
+        return got.sort("season", "pfr_id", "pos", nulls_last=True)
+
+    loaders["combine"] = combine
+    if combine_versions:
+        labels.append(
+            f"combine: pre-draft measurements for draft years <= {season} (held before the "
+            "season's games)"
+        )
 
     dv = versions[("depth_charts", season)]
 

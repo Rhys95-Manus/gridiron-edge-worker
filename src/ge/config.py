@@ -444,6 +444,7 @@ class HttpSettings(_Group):
 class NflverseSettings(_Group):
     first_season: IntSetting
     ftn_first_season: IntSetting
+    combine_first_season: IntSetting
 
 
 class KalshiSettings(_Group):

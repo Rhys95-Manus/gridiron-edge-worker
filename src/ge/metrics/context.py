@@ -209,7 +209,10 @@ class MetricContext:
     def positions(self) -> dict[str, str]:
         """Each player's position on his latest visible weekly roster row this season (a tie on
         week goes to the larger position string, so the choice is deterministic)."""
-        rw = self.table("rosters_weekly").filter(pl.col("gsis_id").is_not_null())
+        rw = self.table("rosters_weekly")
+        if rw.is_empty() or "gsis_id" not in rw.columns:  # no rosters pulled for the season
+            return {}
+        rw = rw.filter(pl.col("gsis_id").is_not_null())
         if rw.is_empty():
             return {}
         best = (

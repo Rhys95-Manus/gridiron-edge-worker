@@ -59,6 +59,12 @@ DATASETS: dict[str, Dataset] = {
     # Franchise IDs: team_id is shared by a franchise's abbreviations across relocations
     # (spec G4: relocated teams keep their history). One table covering every season.
     "teams": Dataset("DATA-04", lambda _s: nfl.load_teams(), seasonless=True),
+    # Combine measurements by draft year (ruling 2026-10-04: under DATA-04; PLY-34's prior).
+    "combine": Dataset(
+        "DATA-04",
+        lambda s: nfl.load_combine([s]),
+        first_season=load_ingest().nflverse.combine_first_season.value,
+    ),
 }
 
 

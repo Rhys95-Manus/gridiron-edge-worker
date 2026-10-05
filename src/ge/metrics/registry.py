@@ -15,9 +15,19 @@ import polars as pl
 from ge.metrics import defense as d
 from ge.metrics import offense as o
 from ge.metrics import player as pl_
+from ge.metrics import skills as sk
 from ge.metrics.context import MetricContext
 from ge.metrics.conventions import HalfLife
-from ge.metrics.engine import Computed, Fixed, League, Parent, Side, StatDef, shrink_stat
+from ge.metrics.engine import (
+    AtPosition,
+    Computed,
+    Fixed,
+    League,
+    Parent,
+    Side,
+    StatDef,
+    shrink_stat,
+)
 
 RawFn = Callable[[MetricContext], pl.DataFrame]
 E: HalfLife = "efficiency"
@@ -86,6 +96,29 @@ def _role_prior(sid: str, what: str = "a role prior") -> str:
 
 def _usage_role(sid: str, stat: str, k: str, what: str = "a role prior") -> StatDef:
     return StatDef(stat, U, f"player.{k}", missing=_role_prior(sid, what))
+
+
+def _overall(sid: str, k: str, **stats: HalfLife) -> dict[str, StatDef]:
+    """6b stats whose prior is 'his overall' (rule 1: his overall value, itself shrunk toward
+    his role prior): raise until Phase 3e (ruling 2026-10-04)."""
+    return _stats(
+        *(
+            StatDef(
+                s,
+                h,
+                f"player.{k}",
+                missing=_role_prior(sid, "his overall value, which needs a role prior"),
+            )
+            for s, h in stats.items()
+        )
+    )
+
+
+def _no_k(sid: str, stat: str) -> str:
+    return (
+        f"{sid}: {stat} has no k in its own unit in the spec (ruling 2026-10-04: raise until it "
+        "sets one)"
+    )
 
 
 def _ply_15_prior(stat: str) -> Computed:
@@ -351,6 +384,177 @@ REGISTRY: dict[str, Entry] = {
                 *(
                     StatDef(s, E, "player.ply_17_k_blitzed_dropbacks")
                     for s in ("epa_gap", "sack_gap")
+                )
+            ),
+        ),
+        # ---- section 6b: player skills ----
+        Entry("PLY-18", sk.ply_18, _overall("PLY-18", "ply_18_k_attempts", share=U, epa=E, adot=E)),
+        Entry(
+            "PLY-19",
+            sk.ply_19,
+            _stats(
+                StatDef("epa_gap", E, "player.ply_19_k"),
+                StatDef(
+                    "play_action_rate",
+                    E,
+                    "player.ply_19_k",
+                    missing="PLY-19: his play-action rate has no prior in the spec (k = 100 and "
+                    "the league gap belong to the play-action split); raises until it sets one",
+                ),
+            ),
+        ),
+        Entry(
+            "PLY-20",
+            sk.ply_20,
+            _stats(
+                *(
+                    StatDef(s, E, "player.ply_20_k", AtPosition("QB"))
+                    for s in (
+                        "cpoe",
+                        "catchable_rate",
+                        "interception_worthy_rate",
+                        "throwaway_rate",
+                    )
+                )
+            ),
+        ),
+        Entry(
+            "PLY-21",
+            sk.ply_21,
+            _stats(
+                *(
+                    StatDef(s, E, "player.ply_21_k", AtPosition("QB"))
+                    for s in ("time_to_throw", "sack_rate")
+                )
+            ),
+        ),
+        Entry(
+            "PLY-22",
+            sk.ply_22,
+            _stats(
+                StatDef("yards_per_rush", E, "player.ply_22_k", AtPosition("QB")),
+                *(
+                    StatDef(s, E, "player.ply_22_k", missing=_no_k("PLY-22", s))
+                    for s in ("scramble_rate", "designed_runs_per_game")
+                ),
+            ),
+        ),
+        Entry("PLY-23", sk.ply_23, _overall("PLY-23", "ply_23_k", share=U, epa=E)),
+        Entry("PLY-24", sk.ply_24, _overall("PLY-24", "ply_24_k", success=E, ypc=E)),
+        Entry("PLY-25", sk.ply_25, _overall("PLY-25", "ply_25_k", success=E, ypc=E)),
+        Entry(
+            "PLY-26",
+            sk.ply_26,
+            _stats(
+                StatDef("explosive", E, "player.ply_26_k_explosive", AtPosition("RB")),
+                StatDef("stuff", E, "player.ply_26_k_stuff", AtPosition("RB")),
+            ),
+        ),
+        Entry(
+            "PLY-27",
+            sk.ply_27,
+            _stats(
+                *(
+                    _usage_role("PLY-27", s, "ply_27_k")
+                    for s in ("screen_share", "target_share", "yacoe")
+                )
+            ),
+        ),
+        Entry("PLY-28", sk.ply_28, _overall("PLY-28", "ply_28_k", share=U, epa=E, adot=E)),
+        Entry("PLY-29", sk.ply_29, _overall("PLY-29", "ply_29_k", share=U, epa=E)),
+        Entry(
+            "PLY-30",
+            sk.ply_30,
+            _stats(
+                StatDef("drop_rate", E, "player.ply_30_k_catchable", AtPosition()),
+                StatDef("contested_catch_rate", E, "player.ply_30_k_contested", AtPosition()),
+                StatDef(
+                    "created_reception_rate",
+                    E,
+                    "player.ply_30_k_catchable",
+                    missing=_no_k("PLY-30", "created_reception_rate"),
+                ),
+            ),
+        ),
+        Entry(
+            "PLY-31",
+            sk.ply_31,
+            _stats(
+                *(StatDef(s, E, "player.ply_31_k", AtPosition()) for s in ("separation", "cushion"))
+            ),
+        ),
+        Entry(
+            "PLY-32",
+            sk.ply_32,
+            _stats(
+                _usage_role("PLY-32", "end_zone_share", "ply_32_k", "his PLY-06 red-zone share")
+            ),
+        ),
+        Entry("PLY-33", sk.ply_33, _overall("PLY-33", "ply_33_k", target_share=U)),
+        Entry("PLY-34", sk.ply_34),
+        # ---- section 6b: defensive counterparts ----
+        Entry(
+            "DEF-09",
+            d.def_09,
+            _stats(
+                StatDef("epa", E, "defense.def_09_k", Parent("DEF-01", "epa", "pass")),
+                StatDef(
+                    "cpoe",
+                    E,
+                    "defense.def_09_k",
+                    missing="DEF-09: completion over expected per cell shrinks toward the "
+                    "defense's shrunk pass value, which has no team-level k (user decision "
+                    "2026-10-02, OFF-13 ruling)",
+                ),
+            ),
+            _DEF,
+        ),
+        Entry("DEF-10", d.def_10, _stats(StatDef("epa_gap", E, "defense.def_10_k")), _DEF),
+        Entry(
+            "DEF-11", d.def_11, _stats(StatDef("yacoe", E, "defense.def_11_k", Fixed(0.0))), _DEF
+        ),
+        Entry(
+            "DEF-12",
+            d.def_12,
+            _stats(
+                StatDef(
+                    "stacked_box_share",
+                    E,
+                    "defense.def_12_k",
+                    missing="DEF-12: the stacked-box share has no k or prior in the spec (ruling "
+                    "2026-10-04: raise until it sets them)",
+                ),
+                StatDef("success", E, "defense.def_12_k", Parent("DEF-02", "success", "run")),
+                StatDef("ypc", E, "defense.def_12_k", missing=_no_team_k("DEF-12", "yards/carry")),
+            ),
+            _DEF,
+        ),
+        Entry("DEF-13", d.def_13, _stats(StatDef("epa_gap", E, "defense.def_13_k")), _DEF),
+        Entry(
+            "DEF-14",
+            d.def_14,
+            _stats(
+                *(StatDef(s, E, "defense.def_14_k") for s in ("scramble_rate", "qb_rush_yards"))
+            ),
+            _DEF,
+        ),
+        Entry(
+            "DEF-15",
+            d.def_15,
+            _stats(
+                StatDef("success", E, "defense.def_15_k", Parent("DEF-02", "success", "run")),
+                StatDef("ypc", E, "defense.def_15_k", missing=_no_team_k("DEF-15", "yards/carry")),
+            ),
+            _DEF,
+        ),
+        Entry("DEF-16", d.def_16, _stats(StatDef("td_rate", E, "defense.def_16_k")), _DEF),
+        Entry(
+            "DEF-17",
+            d.def_17,
+            _stats(
+                *(
+                    StatDef(s, U, "defense.def_17_k_events_per_share", Computed(d.def_17_prior))
+                    for s in d.DEF17_CREDITS
                 )
             ),
         ),

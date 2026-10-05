@@ -223,7 +223,55 @@ class Computed:
     fn: Callable[[MetricContext], pl.DataFrame]
 
 
-Prior = League | Fixed | Parent | Computed
+@dataclass(frozen=True)
+class AtPosition:
+    """Prior = the league value pooled over players at a position (ruling 2026-10-04): a fixed
+    one ("league QB", "league RB") or the player's own weekly-roster position ("league at
+    position"). The raw frame carries the pooled values as league rows "league:<POS>"; a
+    player with no roster position gets no prior and no shrunk value (noted)."""
+
+    fixed: str | None = None
+
+
+Prior = League | Fixed | Parent | Computed | AtPosition
+NO_POSITION = "no roster position: no position prior"
+
+
+def position_league_rows(
+    ctx: MetricContext, units: pl.DataFrame, spec_id: str, stat: str
+) -> pl.DataFrame:
+    """League rows "league:<POS>" per cell: sum x / sum d over every unit of players at that
+    weekly-roster position (math.fsum, rule 6)."""
+    for col in ("d", "c"):
+        if col not in units.columns:
+            units = units.with_columns(pl.lit(1.0).alias(col))
+    pos = ctx.positions
+    u = (
+        units.filter(pl.col("x").is_not_null())
+        .with_columns(
+            pl.col("entity_id")
+            .replace_strict(pos, default=None, return_dtype=pl.Utf8)
+            .alias("pos"),
+            pl.lit(1.0).alias("w"),
+        )
+        .filter(pl.col("pos").is_not_null() & (pl.col("pos") != ""))
+    )
+    g = _fsum_groups(u, ["pos", "cell"])
+    return finish(
+        g.select(
+            pl.lit(spec_id).alias("spec_id"),
+            pl.lit("league").alias("entity_type"),
+            pl.concat_str([pl.lit("league:"), pl.col("pos")]).alias("entity_id"),
+            "cell",
+            pl.lit(stat).alias("stat"),
+            "value",
+            pl.col("value").alias("value_w"),
+            "n",
+            pl.col("n").cast(pl.Float64).alias("n_eff"),
+        )
+    )
+
+
 NO_FTN = "no FTN"
 MISSING_FTN = "no FTN: missing"
 
@@ -317,6 +365,35 @@ def shrink_stat(
         rows = rows.join(p, on=on, how="left")
     elif isinstance(pr, Computed):
         rows = rows.join(pr.fn(ctx), on=["entity_id", "team", "cell"], how="left")
+    elif isinstance(pr, AtPosition):
+        pos = ctx.positions
+        lg = raw.filter(
+            (pl.col("stat") == sd.stat) & pl.col("entity_id").str.starts_with("league:")
+        ).select(pl.col("entity_id").alias("_key"), "cell", pl.col("value").alias("prior"))
+        pos_key = (
+            pl.lit(f"league:{pr.fixed}")
+            if pr.fixed
+            else pl.concat_str(
+                [
+                    pl.lit("league:"),
+                    pl.col("entity_id").replace_strict(pos, default=None, return_dtype=pl.Utf8),
+                ]
+            )
+        )
+        rows = (
+            rows.with_columns(pos_key.alias("_key"))
+            .join(lg, on=["_key", "cell"], how="left")
+            .drop("_key")
+        )
+        unknown = pl.col("prior").is_null()
+        rows = rows.with_columns(
+            pl.when(unknown).then(pl.lit(NO_POSITION)).otherwise(pl.col("note")).alias("note")
+        )
+        out = apply_shrink(rows.filter(~unknown), sd.k_expr())
+        missing = rows.filter(unknown).with_columns(
+            sd.k_expr().alias("k"), pl.lit(None, dtype=pl.Float64).alias("shrunk")
+        )
+        return pl.concat([out.select(list(SHRUNK_SCHEMA)), missing.select(list(SHRUNK_SCHEMA))])
     elif side is not None and ctx.week is not None and cv.in_carryover_window(ctx.week):
         # G4 is a team rule (new play-caller or QB); player metrics have section 4 priors.
         rows = _carryover(ctx, spec_id, sd, rows, side)
