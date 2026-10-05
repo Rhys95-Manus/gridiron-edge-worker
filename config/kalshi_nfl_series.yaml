@@ -4002,8 +4002,10 @@ series:
     first_seen: '2026-09-29'
     title: 1st Half Fulltime Result
     category: Sports
-    tags: []
+    tags:
+    - Football
     reasons:
+    - tag:Football
     - ticker:NFL
     fee_type: quadratic
     fee_multiplier: 1
@@ -6841,8 +6843,10 @@ series:
     first_seen: '2026-09-29'
     title: Fantasy Ladder
     category: Sports
-    tags: []
+    tags:
+    - Football
     reasons:
+    - tag:Football
     - ticker:NFL
     fee_type: quadratic
     fee_multiplier: 1
@@ -8118,8 +8122,10 @@ series:
     first_seen: '2026-09-29'
     title: Pro Football Overtime
     category: Sports
-    tags: []
+    tags:
+    - Football
     reasons:
+    - tag:Football
     - ticker:NFL
     - title:Pro Football
     fee_type: quadratic
