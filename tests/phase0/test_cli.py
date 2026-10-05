@@ -7,8 +7,9 @@ from typer.testing import CliRunner
 from ge.cli import app
 
 JOBS = ["ingest", "metrics", "simulate", "price", "sync", "backtest"]
-# Phase 1 built `ingest` as a command group (approved 2026-09-29); the rest are placeholders.
-PLACEHOLDER_JOBS = [j for j in JOBS if j != "ingest"]
+# Phase 1 built `ingest` as a command group (approved 2026-09-29); Phase 3d built `metrics`
+# (approved 2026-10-05; tested in tests/phase3/test_metrics_job.py); the rest are placeholders.
+PLACEHOLDER_JOBS = [j for j in JOBS if j not in ("ingest", "metrics")]
 
 runner = CliRunner()
 

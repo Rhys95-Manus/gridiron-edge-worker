@@ -18,7 +18,7 @@ from ge.config import load_params
 from ge.metrics import conventions as cv
 from ge.metrics import plays as pf
 from ge.metrics.context import MetricContext
-from ge.metrics.engine import Side, finish, summarise
+from ge.metrics.engine import RESET_SPECS, Side, finish, summarise
 
 _O = load_params().offense
 H: cv.HalfLife = "efficiency"
@@ -52,8 +52,22 @@ def team_rate(
     cells: Sequence[str],
     min_n: dict[str, float] | float | None,
 ) -> pl.DataFrame:
-    return summarise(
-        units,
+    """Summarise team units. For OFF-04 to OFF-10, a team with a mid-season play-caller change
+    keeps only its plays since the change (COA-01, ruling 2026-10-05); the league average
+    keeps every play."""
+    if spec_id not in RESET_SPECS or not ctx.resets:
+        return summarise(
+            units,
+            spec_id=spec_id,
+            stat=stat,
+            entity_type="team",
+            entities=ctx.teams,
+            cells=cells,
+            h=cv.half_life(H),
+            min_n=min_n,
+        )
+    out = summarise(
+        ctx.apply_resets(units),
         spec_id=spec_id,
         stat=stat,
         entity_type="team",
@@ -61,6 +75,15 @@ def team_rate(
         cells=cells,
         h=cv.half_life(H),
         min_n=min_n,
+        league_units=units,
+    )
+    notes = {t: r.note for t, r in ctx.resets.items()}
+    reset_note = pl.col("entity_id").replace_strict(notes, default=None, return_dtype=pl.Utf8)
+    return out.with_columns(
+        pl.when(reset_note.is_not_null() & (pl.col("entity_type") == "team"))
+        .then(pl.concat_str([pl.col("note"), reset_note], separator="; ", ignore_nulls=True))
+        .otherwise(pl.col("note"))
+        .alias("note")
     )
 
 
@@ -201,19 +224,23 @@ def _flag(c: str) -> pl.Expr:
     return (pl.col(c) == 1).fill_null(False)
 
 
-def pace_pairs(ctx: MetricContext) -> pl.DataFrame:
+def pace_pairs(
+    ctx: MetricContext, prior_ok: pl.Expr | None = None, cell: pl.Expr | None = None
+) -> pl.DataFrame:
     """OFF-10 pairs: one row per kept pair, keyed by the prior play (game_id, fixed_drive,
-    play_id), with the offense, its games-ago g and the clipped delta x. The sequence is the
-    game's snap and timeout rows in play_id order; both plays qualifying, same drive
-    (fixed_drive) and quarter, the prior play neutral (G5) and not incomplete, out of bounds, a
-    timeout, a penalty or a turnover; delta capped (clipped) at 45 s."""
+    play_id), with the offense, its games-ago g, a cell and the clipped delta x. The sequence
+    is the game's snap and timeout rows in play_id order; both plays qualifying, same drive
+    (fixed_drive) and quarter, the prior play neutral (G5; COA-04 passes its script buckets
+    as `prior_ok` and `cell`) and not incomplete, out of bounds, a timeout, a penalty or a
+    turnover; delta capped (clipped) at 45 s."""
     cap = _O.off_10_max_snap_gap_seconds.value
     seq = (
         ctx.plays.filter(pl.col("play_type").is_not_null() | _flag("timeout"))
         .sort("game_id", "play_id")
         .with_columns(
             pf.qualifying().alias("_q"),
-            pf.neutral().alias("_neutral"),
+            (prior_ok if prior_ok is not None else pf.neutral()).fill_null(False).alias("_neutral"),
+            (cell if cell is not None else pl.lit("all")).cast(pl.Utf8).alias("_cell"),
             (
                 _flag("incomplete_pass")
                 | _flag("out_of_bounds")
@@ -243,6 +270,7 @@ def pace_pairs(ctx: MetricContext) -> pl.DataFrame:
         "fixed_drive",
         "play_id",
         "posteam",
+        pl.col("_cell").alias("cell"),
         pl.col("g_off").cast(pl.Float64).alias("g"),
         pl.min_horizontal(
             pl.col("game_seconds_remaining") - pl.col("_bgame_seconds_remaining"), pl.lit(cap)

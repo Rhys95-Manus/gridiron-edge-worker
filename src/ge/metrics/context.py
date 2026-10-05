@@ -9,6 +9,7 @@ Data: nflverse; charting: FTN Data via nflverse."""
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass
 from functools import cached_property
 from typing import Any
 
@@ -354,6 +355,113 @@ class MetricContext:
         if all(v is False for v in checks.values()):
             return False, ""
         return None, ""
+
+    # ---- COA-01: mid-season play-caller change ----
+
+    def _game_days(self) -> dict[str, dt.date]:
+        s = self.table("schedules")
+        days = {g: dt.date.fromisoformat(d) for g, d in s.select("game_id", "gameday").iter_rows()}
+        tg = self.snap.collect("target_game")
+        if tg.height and self.season == self.snap.season:
+            days[tg["game_id"][0]] = dt.date.fromisoformat(tg["gameday"][0])
+        return days
+
+    def _target_coach(self, team: str) -> str | None:
+        tg = self.snap.collect("target_game")
+        if not tg.height or self.season != self.snap.season:
+            return None
+        r = tg.row(0, named=True)
+        for side in ("home", "away"):
+            if r[f"{side}_team"] == team:
+                return str(r[f"{side}_coach"]) if r[f"{side}_coach"] is not None else None
+        return None
+
+    @cached_property
+    def resets(self) -> dict[str, Reset]:
+        """COA-01: teams whose offensive play-caller changed during this season. From COA-01
+        when it names the caller for every game and for as_of; until then a head-coach
+        change in the schedules data stands in (spec G4/COA-01, ruling 2026-10-05). The reset
+        point is the first game of the current caller's latest run (none if he hasn't called
+        a game yet)."""
+        if self.week is None:
+            return {}
+        days = self._game_days()
+        out: dict[str, Reset] = {}
+        for team in self.teams["team"].to_list():
+            games = self.games.filter(pl.col("team") == team).sort("g", descending=True)
+            gids = games["game_id"].to_list()
+            gs = games["g"].to_list()
+            if not gids:
+                continue
+            now_c = self.registry.caller(team, "offense", self.as_of.date())
+            calls = [self.registry.caller(team, "offense", days[g]) for g in gids]
+            if now_c is not None and all(c is not None for c in calls):
+                r = _reset_from(team, gs, calls, now_c, "registry", now_c)
+            else:
+                now_h = self._target_coach(team) or self.coach_by_game.get((team, gids[-1]))
+                coaches = [self.coach_by_game.get((team, g)) for g in gids]
+                if now_h is None or any(c is None for c in coaches):
+                    continue
+                r = _reset_from(
+                    team, gs, coaches, now_h, "head coach (stands in for play-caller)", None
+                )
+            if r is not None:
+                out[team] = r
+        return out
+
+    def apply_resets(self, units: pl.DataFrame) -> pl.DataFrame:
+        """Drop each reset team's units from before its reset (ruling 2026-10-05)."""
+        for team, r in self.resets.items():
+            mine = pl.col("entity_id") == team
+            if r.first_game_g is None:
+                units = units.filter(~mine)
+            else:
+                units = units.filter(~mine | (pl.col("g") <= r.first_game_g))
+        return units
+
+    def caller_history_team(self, team: str) -> str | None:
+        """COA-01: the team the new caller called plays for at the end of last season, from
+        registry rows (the 'his history elsewhere' prior); None when the rows don't show it."""
+        r = self.resets.get(team)
+        if r is None or r.caller is None:
+            return None
+        mine = self.franchise(team)
+        for fr, (day, abbr, _) in sorted(self._then.items()):
+            if fr != mine and self.registry.caller(abbr, "offense", day) == r.caller:
+                return abbr
+        return None
+
+
+@dataclass(frozen=True)
+class Reset:
+    """A mid-season play-caller change: games-ago of the first game under the new caller (None
+    if none yet), what detected it, and the new caller's name when COA-01 gives it."""
+
+    team: str
+    first_game_g: float | None
+    basis: str
+    caller: str | None
+
+    @property
+    def note(self) -> str:
+        when = (
+            "no game yet" if self.first_game_g is None else f"{int(self.first_game_g) + 1} game(s)"
+        )
+        return f"play-caller reset ({self.basis}): plays since the change only, {when}"
+
+
+def _reset_from(
+    team: str, gs: list[float], who: list[str | None], now: str, basis: str, caller: str | None
+) -> Reset | None:
+    """Games are oldest first. No reset if every game had the current caller."""
+    if all(w == now for w in who):
+        return None
+    run = []
+    for g, w in zip(reversed(gs), reversed(who), strict=True):
+        if w != now:
+            break
+        run.append(g)
+    return Reset(team, max(run) if run else None, basis, caller)
 
 
 def build_context(snap: Snapshot, registry: CoachingRegistry | None = None) -> MetricContext:

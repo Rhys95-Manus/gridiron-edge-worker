@@ -225,9 +225,24 @@ def store_snapshot_cmd(
 
 
 @app.command()
-def metrics(season: Season = None, week: Week = None, as_of: AsOf = None) -> None:
-    """Compute team, player and coaching metrics (OFF-, DEF-, PLY-, COA-)."""
-    _not_built("metrics", "Phase 3")
+def metrics(
+    season: Annotated[int, typer.Option(help="Season year, e.g. 2026.")],
+    through_week: Annotated[
+        int, typer.Option("--through-week", "--week", help="Last completed week to include.")
+    ],
+    as_of: AsOf = None,
+) -> None:
+    """Compute team, player and coaching metrics (OFF-, DEF-, PLY-, COA-) through a week."""
+    import datetime as dt
+
+    from ge.metrics.job import run_metrics
+
+    when = dt.datetime.fromisoformat(as_of.replace("Z", "+00:00")) if as_of else None
+    if when is not None and when.tzinfo is None:
+        raise typer.BadParameter("--as-of needs a time zone, e.g. 2026-10-03T17:00:00Z")
+    run = run_metrics(season, through_week, as_of=when)
+    print(run.summary)
+    print(f"\nwrote {run.folder}")
 
 
 @app.command()

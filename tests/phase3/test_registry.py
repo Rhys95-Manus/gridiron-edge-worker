@@ -29,6 +29,13 @@ def test_section_4_is_registered() -> None:
     assert want <= set(REGISTRY), sorted(want - set(REGISTRY))
 
 
+def test_section_5_is_registered() -> None:
+    want = _section_ids(("COA-",), range(1, 8))
+    assert {"COA-01", "COA-07", "COA-05b"} <= want
+    assert want <= set(REGISTRY), sorted(want - set(REGISTRY))
+    assert REGISTRY["COA-05b"].paid
+
+
 def test_section_6b_is_registered() -> None:
     want = _section_ids(("PLY-",), range(18, 35)) | _section_ids(("DEF-",), range(9, 18))
     assert len(want) == 17 + 9

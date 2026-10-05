@@ -215,10 +215,15 @@ def down_zone_cell(r: Row) -> str:
     return f"{dn}_{z}"
 
 
-def pace_pairs(rows: list[Row]) -> list[tuple[str, str, int, float]]:
+def pace_pairs(
+    rows: list[Row],
+    prior_ok: Callable[[Row], bool] = neutral,
+    cell: Callable[[Row], str] = lambda r: "all",
+) -> list[tuple[str, str, int, float]]:
     """OFF-10 (plan A7): consecutive pbp rows (snaps and timeout rows) in the same game, drive
     and quarter for one offense; both rows qualifying snaps; the prior play neutral (G5) and
-    not incomplete, out of bounds, a timeout, a penalty or a turnover; delta clipped at 45 s."""
+    not incomplete, out of bounds, a timeout, a penalty or a turnover; delta clipped at 45 s.
+    COA-04 passes its script buckets as `prior_ok` and `cell`."""
     ga = games_ago(rows)
     cap = v(P.offense.off_10_max_snap_gap_seconds)
     seq = sorted(
@@ -231,7 +236,7 @@ def pace_pairs(rows: list[Row]) -> list[tuple[str, str, int, float]]:
             continue
         if (a["posteam"], a["fixed_drive"], a["qtr"]) != (b["posteam"], b["fixed_drive"], b["qtr"]):
             continue
-        if not (qualifying(a) and qualifying(b) and neutral(a)):
+        if not (qualifying(a) and qualifying(b) and prior_ok(a)):
             continue
         if any(
             a[f] == 1
@@ -246,7 +251,7 @@ def pace_pairs(rows: list[Row]) -> list[tuple[str, str, int, float]]:
         ):
             continue
         d = min(a["game_seconds_remaining"] - b["game_seconds_remaining"], cap)
-        out.append((a["posteam"], "all", ga[a["posteam"]][a["game_id"]], float(d)))
+        out.append((a["posteam"], cell(a), ga[a["posteam"]][a["game_id"]], float(d)))
     return out
 
 

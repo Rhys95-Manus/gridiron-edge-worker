@@ -480,12 +480,21 @@ class ElevationUnits(_Group):
     foot: UnitSetting
 
 
+class FloatSetting(_Entry):
+    value: StrictFloat
+
+
+class GeoSettings(_Group):
+    earth_mean_radius_km: FloatSetting
+
+
 class IngestConfig(_Strict):
     http: HttpSettings
     nflverse: NflverseSettings
     kalshi: KalshiSettings
     nws: NwsSettings
     wikidata_units: ElevationUnits
+    geo: GeoSettings
     wikidata: WikidataSettings
 
 

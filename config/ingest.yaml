@@ -30,6 +30,11 @@ wikidata_units:
   metre: {spec_id: ENV-02, unit_qid: Q11573, value: 1, status: initial, source: 'Q11573 is labelled "metre" on Wikidata; identity'}
   foot: {spec_id: ENV-02, unit_qid: Q3710, value: 0.3048, status: initial, source: 'https://www.nist.gov/pml/us-surveyfoot: "1 foot = 0.304 8 meter exactly" (international foot); Q3710 is labelled "foot" on Wikidata'}
 
+# COA-07 travel distance (great-circle, plan A22). Not a model constant, so it lives here
+# with its source (user decision 2026-10-05).
+geo:
+  earth_mean_radius_km: {spec_id: COA-07, value: 6371.0087714, status: initial, source: 'https://en.wikipedia.org/wiki/Earth_radius (fetched 2026-10-05): IUGG arithmetic mean radius R1 = (2a + b) / 3 "6,371.0087714 km", as published by IUGG and NGA, citing IAU 2015 Resolution B3; user decision 2026-10-05'}
+
 wikidata:
   api_url: {spec_id: DATA-13, value: 'https://www.wikidata.org/w/api.php', status: initial, source: 'Wikidata:Data_access documents https://wikidata.org/w/api.php, which 301-redirects to this URL (seen 2026-09-29)'}
   search_limit: {spec_id: DATA-13, value: 50, status: initial, source: 'https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities: limit "Maximum: 50" (documented maximum, as approved for Kalshi page size)'}

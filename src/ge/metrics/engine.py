@@ -86,21 +86,27 @@ def summarise(
     h: float,
     min_n: Mapping[str, float] | float | None = None,
     league: bool = True,
+    league_units: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Step 1. `units` has entity_id, team, cell, g (games ago) and x; rows with a null x are
     dropped. Optional columns: d (denominator, default 1) and c (how many plays the unit
     stands for, default 1), so value = sum x / sum d, value_w = sum w x / sum w d,
     n = sum c and n_eff = (sum w c)^2 / sum w^2 c. With d = c = 1 that is the plain mean.
     `entities` (entity_id, team) sets the grid; rows are keyed by both, so a player traded
-    mid-season has one row per team (ruling 2026-10-04)."""
-    # Rule 6: a canonical row order, so float sums don't depend on how the store's rows
-    # happen to be ordered.
-    for col in ("d", "c"):
-        if col not in units.columns:
-            units = units.with_columns(pl.lit(1.0).alias(col))
-    u = units.filter(pl.col("x").is_not_null()).with_columns(
-        (pl.lit(0.5) ** (pl.col("g") / h)).alias("w")
-    )
+    mid-season has one row per team (ruling 2026-10-04). `league_units`, when given, sets the
+    league rows instead (a play-caller reset drops a team's old plays from its own value but
+    not from the league average)."""
+
+    def prep(df: pl.DataFrame) -> pl.DataFrame:
+        for col in ("d", "c"):
+            if col not in df.columns:
+                df = df.with_columns(pl.lit(1.0).alias(col))
+        return df.filter(pl.col("x").is_not_null()).with_columns(
+            (pl.lit(0.5) ** (pl.col("g") / h)).alias("w")
+        )
+
+    u = prep(units)
+    lu = u if league_units is None else prep(league_units)
     agg = _fsum_groups(u, ["entity_id", "team", "cell"])
     grid = (
         entities.select("entity_id", "team")
@@ -112,7 +118,7 @@ def summarise(
     )
     parts = [out.with_columns(pl.lit(entity_type).alias("entity_type"))]
     if league:
-        lg = _fsum_groups(u.with_columns(pl.lit(1.0).alias("w")), ["cell"]).select(
+        lg = _fsum_groups(lu.with_columns(pl.lit(1.0).alias("w")), ["cell"]).select(
             "cell", "n", "value"
         )
         lg = pl.DataFrame({"cell": list(cells)}, schema={"cell": pl.Utf8}).join(
@@ -348,6 +354,10 @@ def shrink_stat(
             pl.lit(None, dtype=pl.Float64).alias("shrunk"),
             pl.lit(MISSING_FTN).alias("note"),
         ).select(list(SHRUNK_SCHEMA))
+    reset_rows = None
+    if spec_id in RESET_SPECS and side == "offense" and ctx.resets:
+        hit = pl.col("entity_id").is_in(list(ctx.resets))
+        reset_rows, rows = rows.filter(hit), rows.filter(~hit)
     pr = sd.prior
     if isinstance(pr, Fixed):
         rows = rows.with_columns(pl.lit(pr.get()).alias("prior"))
@@ -400,6 +410,10 @@ def shrink_stat(
     else:
         lg = raw.filter((pl.col("stat") == sd.stat) & (pl.col("entity_type") == "league"))
         rows = rows.join(lg.select("cell", pl.col("value").alias("prior")), on="cell", how="left")
+    if reset_rows is not None and reset_rows.height:
+        rows = pl.concat(
+            [rows, _reset_priors(ctx, spec_id, sd, raw, reset_rows).select(rows.columns)]
+        )
     if rows["prior"].null_count():
         bad = rows.filter(pl.col("prior").is_null())
         raise ValueError(
@@ -407,6 +421,45 @@ def shrink_stat(
         )
     skip = pl.col("below_min_sample") if sd.prior_only_below_min else None
     return apply_shrink(rows, sd.k_expr(), prior_only=skip).select(list(SHRUNK_SCHEMA))
+
+
+RESET_SPECS = ("OFF-04", "OFF-05", "OFF-06", "OFF-07", "OFF-08", "OFF-09", "OFF-10")
+
+
+def _reset_priors(
+    ctx: MetricContext, spec_id: str, sd: StatDef, raw: pl.DataFrame, rows: pl.DataFrame
+) -> pl.DataFrame:
+    """COA-01: after a mid-season play-caller change, OFF-04 to OFF-10 shrink toward the new
+    caller's prior: his last team's end-of-season shrunk value when COA-01 shows where he
+    called plays last season, else the metric's own non-carryover prior (league average, or
+    a stated value) (ruling 2026-10-05). G4 carryover doesn't apply: it's a new caller."""
+    from ge.metrics.registry import shrunk as shrunk_of
+
+    lg = dict(
+        raw.filter((pl.col("stat") == sd.stat) & (pl.col("entity_type") == "league"))
+        .select("cell", "value")
+        .iter_rows()
+    )
+    priors, notes = [], []
+    for r in rows.iter_rows(named=True):
+        hist = ctx.caller_history_team(r["entity_id"])
+        if hist is not None:
+            prev = shrunk_of(ctx.prior_context(), spec_id, sd.stat).filter(
+                (pl.col("entity_id") == hist) & (pl.col("cell") == r["cell"])
+            )
+            prior, why = (
+                prev["shrunk"][0],
+                f"new caller's prior: his last team {hist}'s end-of-season shrunk value",
+            )
+        elif isinstance(sd.prior, Fixed):
+            prior, why = sd.prior.get(), "new caller's prior: the metric's stated prior"
+        else:
+            prior, why = lg.get(r["cell"]), "new caller's prior: league average"
+        priors.append(prior)
+        notes.append("; ".join(x for x in (r["note"], why) if x))
+    return rows.with_columns(
+        pl.Series("prior", priors, dtype=pl.Float64), pl.Series("note", notes, dtype=pl.Utf8)
+    )
 
 
 def _carryover(

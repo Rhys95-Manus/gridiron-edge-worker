@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 import polars as pl
 
+from ge.metrics import coaching as co
 from ge.metrics import defense as d
 from ge.metrics import offense as o
 from ge.metrics import player as pl_
@@ -558,6 +559,34 @@ REGISTRY: dict[str, Entry] = {
                 )
             ),
         ),
+        # ---- section 5: coaching ----
+        Entry("COA-01", co.coa_01),
+        Entry(
+            "COA-02",
+            co.coa_02,
+            _stats(
+                StatDef(
+                    "go_over_expected",
+                    E,
+                    "coaching.coa_02_k",
+                    Fixed(0.0),
+                    missing="COA-02: going for it over expected needs the p_go logistic model, "
+                    "which Phase 3e fits (user decision 2026-10-02); the raw go rate is shown",
+                )
+            ),
+            _OFF,
+        ),
+        Entry("COA-03", co.coa_03, _stats(StatDef("two_point_rate", E, "coaching.coa_03_k")), _OFF),
+        Entry(
+            "COA-04",
+            co.coa_04,
+            _stats(*(StatDef(s, E, "coaching.coa_04_k") for s in ("proe", "seconds_per_play"))),
+            _OFF,
+        ),
+        Entry("COA-05", co.coa_05),
+        Entry("COA-05b", co.coa_05b, paid=True),
+        Entry("COA-06", co.coa_06),
+        Entry("COA-07", co.coa_07),
     ]
 }
 
