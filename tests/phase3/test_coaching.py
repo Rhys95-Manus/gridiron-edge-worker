@@ -9,7 +9,6 @@ stadium after a bye). Registry rows here are synthetic placeholders, not real co
 
 from __future__ import annotations
 
-import csv
 import datetime as dt
 import math
 import shutil
@@ -23,13 +22,14 @@ import pytest
 import yaml
 
 from ge.config import REPO_ROOT, load_ingest
-from ge.metrics.coaching import REGISTRY_COLUMNS, load_registry
+from ge.metrics.coaching import load_registry
 from ge.metrics.context import build_context
 from ge.metrics.registry import raw, shrunk
 from ge.store.snapshot import snapshot
 from tests.phase3 import oracle as o
 from tests.phase3.conftest import MAIN_WEEK, STORE, first_game
 from tests.phase3.golden import check_raw, check_shrunk
+from tests.phase3.registry_rows import staff, write
 
 H = o.v(o.C.g3_efficiency_half_life_games)
 CP = o.P.coaching
@@ -37,24 +37,16 @@ OP = o.P.offense
 
 
 def _registry(path: Path, rows: list[dict[str, str]]) -> Path:
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(REGISTRY_COLUMNS))
-        w.writeheader()
-        w.writerows(rows)
-    return path
+    return write(path, rows)
 
 
-def _row(team: str, caller: str, since: str, dcaller: str | None = None) -> dict[str, str]:
-    return {
-        "team": team,
-        "head_coach": f"TEST-HC-{team}",
-        "offensive_coordinator": f"TEST-OC-{team}",
-        "defensive_coordinator": f"TEST-DC-{team}",
-        "offensive_play_caller": caller,
-        "defensive_play_caller": dcaller or f"TEST-DPC-{team}",
-        "effective_date": since,
-        "source_url": "https://example.invalid/synthetic-test-row",
-    }
+def _row(team: str, caller: str, since: str) -> list[dict[str, str]]:
+    """Synthetic placeholder rows (one per role) for a team from `since`."""
+    return staff(team, since, caller=caller)
+
+
+def _rows(*groups: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [r for g in groups for r in g]
 
 
 def _off04_units(rows: list[dict[str, Any]]) -> list[tuple[str, str, int, float]]:
@@ -72,7 +64,9 @@ def _off04_units(rows: list[dict[str, Any]]) -> list[tuple[str, str, int, float]
 
 def test_coa_01_registry_rows_and_head_coach_check(main_snap, teams, tmp_path) -> None:  # type: ignore[no-untyped-def]
     reg = load_registry(
-        _registry(tmp_path / "r.csv", [_row(t, f"TEST-OPC-{t}", "2022-01-01") for t in teams])
+        _registry(
+            tmp_path / "r.csv", _rows(*(_row(t, f"TEST-OPC-{t}", "2022-01-01") for t in teams))
+        )
     )
     frame = raw(build_context(main_snap, registry=reg), "COA-01")
     got = {(r["entity_id"], r["stat"]): r for r in frame.iter_rows(named=True)}
@@ -150,13 +144,13 @@ def test_registry_change_resets_with_caller_history(main_snap, rows, teams, tmp_
     )
     days = mine["gameday"].to_list()
     change = (dt.date.fromisoformat(days[4]) + dt.timedelta(days=1)).isoformat()
-    rows_ = [_row(t, f"TEST-OPC-{t}", "2022-01-01") for t in teams if t not in (team, other)]
-    rows_ += [
+    rows_ = _rows(
+        *(_row(t, f"TEST-OPC-{t}", "2022-01-01") for t in teams if t not in (team, other)),
         _row(team, f"TEST-OPC-{team}", "2022-01-01"),
         _row(team, "TEST-OPC-MOVER", change),
         _row(other, "TEST-OPC-MOVER", "2022-01-01"),
         _row(other, f"TEST-OPC-{other}", f"{main_snap.season}-02-01"),
-    ]
+    )
     ctx = build_context(main_snap, registry=load_registry(_registry(tmp_path / "r.csv", rows_)))
     ga = o.games_ago(rows)
     # the oldest game under the new caller: the largest games-ago among games after the change
@@ -331,7 +325,9 @@ def test_coa_06_coordinator_history(main_snap, teams, tmp_path) -> None:  # type
     play in those games. Synthetic rows: every caller stayed put since 2022, so the meetings
     are the past games between the two teams."""
     reg = load_registry(
-        _registry(tmp_path / "r.csv", [_row(t, f"TEST-OPC-{t}", "2022-01-01") for t in teams])
+        _registry(
+            tmp_path / "r.csv", _rows(*(_row(t, f"TEST-OPC-{t}", "2022-01-01") for t in teams))
+        )
     )
     ctx = build_context(main_snap, registry=reg)
     tg = main_snap.collect("target_game").row(0, named=True)

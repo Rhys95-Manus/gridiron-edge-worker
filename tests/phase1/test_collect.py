@@ -180,8 +180,26 @@ def test_nflverse_step_pulls_injuries_depth_charts_and_schedules_for_current_sea
     monkeypatch.setattr(collect, "ingest_nflverse", fake)
     ok, _ = default_steps()[1].run()
     assert ok
-    # schedules: flexed kickoff times change gametime after the season's first pull
-    assert calls == [([SEASON], ["injuries", "depth_charts", "schedules"])]
+    # schedules: flexed kickoff times change gametime after the season's first pull.
+    # Game-keyed datasets added 2026-10-07 (user request) so weekly stats stay current.
+    assert calls == [
+        (
+            [SEASON],
+            [
+                "injuries",
+                "depth_charts",
+                "schedules",
+                "pbp",
+                "ftn_charting",
+                "snap_counts",
+                "player_stats",
+                "nextgen_passing",
+                "nextgen_rushing",
+                "nextgen_receiving",
+                "rosters_weekly",
+            ],
+        )
+    ]
 
 
 def test_nflverse_step_fails_when_a_pull_errors(monkeypatch: pytest.MonkeyPatch) -> None:

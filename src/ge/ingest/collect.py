@@ -1,5 +1,6 @@
 """`ge ingest collect`: the scheduled pull. Runs the week's Kalshi pull, the current season's
-injuries, depth charts and schedules, and the weather pull, in that order. Each step's start,
+nflverse datasets (injuries, depth charts, schedules and the game-keyed weekly data), and the
+weather pull, in that order. Each step's start,
 end and result go to logs/collect.log; a failing step never stops the others."""
 
 from __future__ import annotations
@@ -20,8 +21,21 @@ from ge.store.known_at import week_window
 
 LOG_PATH = REPO_ROOT / "logs" / "collect.log"
 # schedules: flexed games change gametime after the first pull, and kickoffs drive the weather
-# window and the next run's current week.
-NFLVERSE_DATASETS = ["injuries", "depth_charts", "schedules"]
+# window and the next run's current week. The game-keyed datasets keep weekly stats current
+# for `ge metrics` (added 2026-10-07; a pull that matches the stored version writes nothing).
+NFLVERSE_DATASETS = [
+    "injuries",
+    "depth_charts",
+    "schedules",
+    "pbp",
+    "ftn_charting",
+    "snap_counts",
+    "player_stats",
+    "nextgen_passing",
+    "nextgen_rushing",
+    "nextgen_receiving",
+    "rosters_weekly",
+]
 
 StepFn = Callable[[], tuple[bool, str]]
 

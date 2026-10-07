@@ -1,7 +1,9 @@
 """Coaching profile (spec section 5). COA-01 is the hand-maintained staff and play-caller
 registry, config/coaching_registry.csv: nflverse does not track coordinators or who calls
-plays, so every row needs a source link and an effective date. The repo ships the header only;
-rows are entered by hand from sources, never from memory (rule 2)."""
+plays. One row per team, season and role, each with its own source link, supporting quote and
+confidence (schema of 2026-10-07). Rows are entered from fetched sources, never from memory
+(rule 2). A role with no row is blank: play-caller lookups then fall back to the G4
+head-coach stand-in, and the team's other rows still count."""
 
 from __future__ import annotations
 
@@ -27,15 +29,26 @@ _C = load_params().coaching
 REGISTRY_PATH = REPO_ROOT / "config" / "coaching_registry.csv"
 REGISTRY_COLUMNS = (
     "team",
+    "season",
+    "role",
+    "person",
+    "effective_date",
+    "source_url",
+    "quote",
+    "confidence",
+)
+ROLES = (
     "head_coach",
     "offensive_coordinator",
     "defensive_coordinator",
     "offensive_play_caller",
     "defensive_play_caller",
-    "effective_date",
-    "source_url",
 )
+# Source confidence (user decision 2026-10-07): a team site or major outlet; a local or
+# team-focused outlet; or only a play-caller ranking.
+CONFIDENCE = ("team_or_major", "local_or_team_focused", "ranking_only")
 _URL = re.compile(r"^https?://[^\s/]+\.[^\s/]+(/\S*)?$")
+_CALLER = {"offense": "offensive_play_caller", "defense": "defensive_play_caller"}
 
 
 class RegistryError(ValueError):
@@ -45,44 +58,65 @@ class RegistryError(ValueError):
 @dataclass(frozen=True)
 class RegistryRow:
     team: str
-    head_coach: str
-    offensive_coordinator: str
-    defensive_coordinator: str
-    offensive_play_caller: str
-    defensive_play_caller: str
+    season: int
+    role: str
+    person: str
     effective_date: dt.date
     source_url: str
+    quote: str
+    confidence: str
 
 
 @dataclass(frozen=True)
 class CoachingRegistry:
-    """COA-01 rows. A row describes the staff from its effective date until the team's next
-    row."""
+    """COA-01 rows. A row says who held a role for a team from its effective date until the
+    team's next row for that role."""
 
     rows: tuple[RegistryRow, ...]
 
-    def current(self, team: str, on: dt.date) -> RegistryRow | None:
-        """The team's latest row effective on or before `on`."""
-        mine = [r for r in self.rows if r.team == team and r.effective_date <= on]
+    def row(self, team: str, role: str, on: dt.date) -> RegistryRow | None:
+        """The team's latest row for `role` effective on or before `on`."""
+        mine = [
+            r for r in self.rows if r.team == team and r.role == role and r.effective_date <= on
+        ]
         return max(mine, key=lambda r: r.effective_date) if mine else None
 
+    def person(self, team: str, role: str, on: dt.date) -> str | None:
+        r = self.row(team, role, on)
+        return None if r is None else r.person
+
+    def current(self, team: str, on: dt.date) -> dict[str, RegistryRow]:
+        """Every role with a row effective on or before `on` (blank roles are absent)."""
+        out = {}
+        for role in ROLES:
+            r = self.row(team, role, on)
+            if r is not None:
+                out[role] = r
+        return out
+
     def caller(self, team: str, side: Literal["offense", "defense"], on: dt.date) -> str | None:
-        r = self.current(team, on)
-        if r is None:
-            return None
-        return r.offensive_play_caller if side == "offense" else r.defensive_play_caller
+        return self.person(team, _CALLER[side], on)
 
 
 def load_registry(path: Path = REGISTRY_PATH) -> CoachingRegistry:
-    """COA-01: read and validate the registry. Every field is required; effective_date is an
-    ISO date; source_url is an http(s) link."""
+    """COA-01: read and validate the registry. Every field of a row is required: season is
+    a year; role and confidence come from fixed lists; effective_date is an ISO date;
+    source_url is an http(s) link. One row per team, role and effective date."""
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if tuple(reader.fieldnames or ()) != REGISTRY_COLUMNS:
             raise RegistryError(f"COA-01: {path} columns must be {', '.join(REGISTRY_COLUMNS)}")
         rows = []
+        seen: set[tuple[str, str, dt.date]] = set()
         for i, raw in enumerate(reader, start=2):
-            rows.append(_row(raw, f"{path.name} line {i}"))
+            r = _row(raw, f"{path.name} line {i}")
+            key = (r.team, r.role, r.effective_date)
+            if key in seen:
+                raise RegistryError(
+                    f"COA-01: {path.name} line {i}: duplicate team, role, date {key}"
+                )
+            seen.add(key)
+            rows.append(r)
     return CoachingRegistry(tuple(rows))
 
 
@@ -91,6 +125,14 @@ def _row(raw: dict[str, str | None], where: str) -> RegistryRow:
     for c, v in vals.items():
         if not v:
             raise RegistryError(f"COA-01: {where}: {c} is empty")
+    if not vals["season"].isdigit():
+        raise RegistryError(f"COA-01: {where}: season {vals['season']!r} is not a year")
+    if vals["role"] not in ROLES:
+        raise RegistryError(f"COA-01: {where}: role {vals['role']!r} not in {ROLES}")
+    if vals["confidence"] not in CONFIDENCE:
+        raise RegistryError(
+            f"COA-01: {where}: confidence {vals['confidence']!r} not in {CONFIDENCE}"
+        )
     try:
         when = dt.date.fromisoformat(vals["effective_date"])
     except ValueError as exc:
@@ -99,13 +141,13 @@ def _row(raw: dict[str, str | None], where: str) -> RegistryRow:
         raise RegistryError(f"COA-01: {where}: source_url {vals['source_url']!r} is not a link")
     return RegistryRow(
         team=vals["team"],
-        head_coach=vals["head_coach"],
-        offensive_coordinator=vals["offensive_coordinator"],
-        defensive_coordinator=vals["defensive_coordinator"],
-        offensive_play_caller=vals["offensive_play_caller"],
-        defensive_play_caller=vals["defensive_play_caller"],
+        season=int(vals["season"]),
+        role=vals["role"],
+        person=vals["person"],
         effective_date=when,
         source_url=vals["source_url"],
+        quote=vals["quote"],
+        confidence=vals["confidence"],
     )
 
 
@@ -115,10 +157,11 @@ def _row(raw: dict[str, str | None], where: str) -> RegistryRow:
 
 
 def coa_01(ctx: MetricContext) -> pl.DataFrame:
-    """COA-01: staff and play-caller registry. Per team: its registry row at as_of (or that
-    none covers it); whether the registry head coach matches the schedules data's head coach
-    for its target or latest game; and whether a mid-season play-caller change reset OFF-04
-    to OFF-10 (registry, else the head-coach stand-in; ruling 2026-10-05)."""
+    """COA-01: staff and play-caller registry. Per team: its registry roles at as_of (blank
+    roles listed as blank, or that no row covers it); whether the registry head coach matches
+    the schedules data's head coach for its target or latest game; and whether a mid-season
+    play-caller change reset OFF-04 to OFF-10 (registry, else the head-coach stand-in; ruling
+    2026-10-05)."""
     rows: list[dict[str, object]] = []
     for team in ctx.teams["team"].to_list():
         reg = ctx.registry.current(team, ctx.as_of.date())
@@ -127,18 +170,19 @@ def coa_01(ctx: MetricContext) -> pl.DataFrame:
         sched_hc = ctx._target_coach(team) or latest
         base = {"entity_type": "team", "entity_id": team, "team": team, "cell": "staff"}
         match: float | None = None
-        if reg is None:
+        if not reg:
             rows.append({**base, "stat": "registry", "note": "no COA-01 row covering as_of"})
         else:
-            note = (
-                f"HC {reg.head_coach}; OC {reg.offensive_coordinator}; "
-                f"DC {reg.defensive_coordinator}; "
-                f"offensive play-caller {reg.offensive_play_caller}; "
-                f"defensive play-caller {reg.defensive_play_caller}; "
-                f"since {reg.effective_date}; {reg.source_url}"
-            )
-            rows.append({**base, "stat": "registry", "note": note})
-            match = None if sched_hc is None else float(reg.head_coach == sched_hc)
+            parts = [
+                f"{role}: {reg[role].person} ({reg[role].confidence}, since "
+                f"{reg[role].effective_date})"
+                if role in reg
+                else f"{role}: blank"
+                for role in ROLES
+            ]
+            rows.append({**base, "stat": "registry", "note": "; ".join(parts)})
+            hc = reg.get("head_coach")
+            match = None if sched_hc is None or hc is None else float(hc.person == sched_hc)
         rows.append(
             {
                 **base,

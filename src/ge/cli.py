@@ -108,8 +108,9 @@ def ingest_kalshi_cmd(
 
 @ingest.command("collect")
 def ingest_collect_cmd() -> None:
-    """Scheduled pull: this week's Kalshi markets, this season's injuries, depth charts and
-    schedules, then weather. Logs to logs/collect.log; exits 1 if any step failed."""
+    """Scheduled pull: this week's Kalshi markets, this season's nflverse data (injuries, depth
+    charts, schedules, play-by-play and the other weekly game data), then weather. Logs to
+    logs/collect.log; exits 1 if any step failed."""
     from ge.ingest import collect
 
     code = collect.run_collect(collect.default_steps(), collect.LOG_PATH)

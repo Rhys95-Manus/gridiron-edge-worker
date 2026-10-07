@@ -8,7 +8,6 @@ by franchise with the nflverse teams table. An unknown change still raises (user
 
 from __future__ import annotations
 
-import csv
 import shutil
 from collections import Counter
 from pathlib import Path
@@ -17,12 +16,13 @@ from typing import Any
 import polars as pl
 import pytest
 
-from ge.metrics.coaching import REGISTRY_COLUMNS, load_registry
+from ge.metrics.coaching import load_registry
 from ge.metrics.context import build_context
 from ge.metrics.registry import raw, shrunk
 from ge.store.snapshot import snapshot
 from tests.phase3 import oracle as o
 from tests.phase3.conftest import G4_WEEK, SEASON, STORE, first_game, store_table
+from tests.phase3.registry_rows import staff, write
 
 H = o.v(o.C.g3_efficiency_half_life_games)
 EXTRA = o.v(o.C.g4_new_caller_or_qb_extra_regression)
@@ -31,23 +31,7 @@ K = o.P.offense.off_01_k_overall.value
 
 def _synthetic_registry(path: Path, teams: list[str]) -> Path:
     """Placeholder rows, not real coaches: every team keeps one caller from before 2023."""
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(REGISTRY_COLUMNS))
-        w.writeheader()
-        for t in teams:
-            w.writerow(
-                {
-                    "team": t,
-                    "head_coach": f"TEST-HC-{t}",
-                    "offensive_coordinator": f"TEST-OC-{t}",
-                    "defensive_coordinator": f"TEST-DC-{t}",
-                    "offensive_play_caller": f"TEST-OPC-{t}",
-                    "defensive_play_caller": f"TEST-DPC-{t}",
-                    "effective_date": "2022-01-01",
-                    "source_url": "https://example.invalid/synthetic-test-row",
-                }
-            )
-    return path
+    return write(path, [r for t in teams for r in staff(t, "2022-01-01")])
 
 
 def _qb(rows: list[dict[str, Any]]) -> dict[str, str]:
@@ -110,7 +94,8 @@ def _check(ctx: Any, snap: Any, want: dict[str, tuple[float, bool]]) -> None:
 
 
 def test_head_coach_stands_in_without_registry(g4_snap) -> None:  # type: ignore[no-untyped-def]
-    """The repo registry has no rows: a head-coach change in schedules is the caller change."""
+    """The repo registry has no rows for the fixture's seasons: a head-coach change in
+    schedules is the caller change."""
     ctx = build_context(g4_snap)
     assert g4_snap.week <= o.v(o.C.g4_prior_carryover_last_week)
     want = _expected(g4_snap, use_hc=True)
@@ -211,16 +196,3 @@ def test_franchise_map_comes_from_teams_table(g4_snap) -> None:  # type: ignore[
         assert ctx.franchise(abbr) == tid
     with pytest.raises(KeyError):
         ctx.franchise("NOT-A-TEAM")
-
-
-def test_registry_columns() -> None:
-    assert REGISTRY_COLUMNS == (
-        "team",
-        "head_coach",
-        "offensive_coordinator",
-        "defensive_coordinator",
-        "offensive_play_caller",
-        "defensive_play_caller",
-        "effective_date",
-        "source_url",
-    )
