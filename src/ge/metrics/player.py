@@ -16,13 +16,13 @@ from collections.abc import Sequence
 
 import polars as pl
 
-from ge.config import load_params
+from ge.config import Player, group_proxy
 from ge.metrics import conventions as cv
 from ge.metrics import plays as pf
 from ge.metrics.context import MetricContext
-from ge.metrics.engine import NO_FTN, finish, summarise
+from ge.metrics.engine import NO_FTN, empty_raw, finish, record_units, summarise
 
-_P = load_params().player
+_P: Player = group_proxy("player")
 PAID = "PAID: DATA-11"
 DESIGNATIONS = ("Out", "Doubtful", "Questionable")
 
@@ -211,7 +211,9 @@ def ply_04(ctx: MetricContext) -> pl.DataFrame:
     0.7 x air share (from the raw and the weighted shares). Min 3 games."""
     who = pl.col("receiver_player_id")
     air = pl.col("air_yards")
-    ua = share_units(ctx, pf.usage_target(), pl.lit("all"), who, x=air, d=air)
+    # Air share counts only targets with recorded air_yards, on both sides (ruling 2026-10-09).
+    charted = pf.usage_target() & air.is_not_null()
+    ua = share_units(ctx, charted, pl.lit("all"), who, x=air, d=air)
     ut = share_units(ctx, pf.usage_target(), pl.lit("all"), who)
     a = _rate(ctx, "PLY-04", "air_share", ua, ["all"], stints(ctx), "usage")
     t = _rate(ctx, "PLY-04", "target_share", ut, ["all"], stints(ctx), "usage")
@@ -267,15 +269,25 @@ def ply_06(ctx: MetricContext) -> pl.DataFrame:
         ]
     )
     cells = [f"inside_{int(z)}" for z in zones]
-    return _rate(
-        ctx,
-        "PLY-06",
-        "opportunity_share",
-        u,
-        cells,
-        stints(ctx),
-        "usage",
-        _P.ply_06_min_team_opportunities.value,
+    # Phase 3e: PLY-06/07's prior, "his overall opportunity share (carries + targets)" on every
+    # play, as `opportunity_share_overall` in cell `all`; it shrinks toward his role prior.
+    overall = share_units(ctx, _opportunity(), pl.lit("all"), _owner())
+    return pl.concat(
+        [
+            _rate(
+                ctx,
+                "PLY-06",
+                "opportunity_share",
+                u,
+                cells,
+                stints(ctx),
+                "usage",
+                _P.ply_06_min_team_opportunities.value,
+            ),
+            _rate(
+                ctx, "PLY-06", "opportunity_share_overall", overall, ["all"], stints(ctx), "usage"
+            ),
+        ]
     )
 
 
@@ -655,12 +667,46 @@ def _listed_weeks(ctx: MetricContext) -> set[tuple[str, str, int]]:
     return out
 
 
+PRACTICE_SHORT = {
+    "Did Not Participate In Practice": "DNP",
+    "Limited Participation in Practice": "Limited",
+    "Full Participation in Practice": "Full",
+}
+
+
 def ply_14_availability(ctx: MetricContext) -> pl.DataFrame:
-    """PLY-14: availability from practice participation for "status unknown" players uses base
-    rates fit in BT-02, which Phase 3e estimates. Until then this raises."""
-    raise NotImplementedError(
-        "PLY-14: practice-participation base rates come from Phase 3e (BT-02)"
-    )
+    """PLY-14: for players flagged "status unknown" (their team's final report isn't in the
+    feed), the probability he plays from his practice participation, using the base rates fit
+    in BT-02 (Phase 3e; over every report row with that status, ruling 2026-10-08). A player
+    with no recognised practice status gets no value. Raises without a fit for the season."""
+    from ge.config import current_params
+
+    rates = {
+        s: current_params().extra(f"fit:PLY-14/practice/{s}", "PLY-14")
+        for s in PRACTICE_SHORT.values()
+    }
+    st = ply_14(ctx).filter((pl.col("stat") == "status_unknown") & (pl.col("value") == 1.0))
+    inj = ctx.injuries_now()
+    prac = {
+        (r["team"], r["gsis_id"]): PRACTICE_SHORT.get((r["practice_status"] or "").strip())
+        for r in inj.select("team", "gsis_id", "practice_status").iter_rows(named=True)
+    }
+    rows = []
+    for pid, team in st.select("entity_id", "team").iter_rows():
+        p = prac.get((team, pid))
+        rows.append(
+            {
+                "entity_type": "player",
+                "entity_id": pid,
+                "team": team,
+                "cell": "report",
+                "stat": "availability",
+                "value": rates[p] if p else None,
+                "note": f"status unknown; practice: {p}" if p else "status unknown; no practice",
+            }
+        )
+    df = pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+    return finish(df.with_columns(pl.lit("PLY-14").alias("spec_id"))) if rows else empty_raw()
 
 
 # ---- PLY-15: opportunity redistribution ----
@@ -928,6 +974,18 @@ def ply_17(ctx: MetricContext) -> pl.DataFrame:
     )
     rows = []
     for stat, col in (("epa_gap", "epa"), ("sack_gap", "sack")):
+        record_units(
+            "PLY-17",
+            stat,
+            "gap",
+            arms.select(
+                pl.col("_qb").alias("entity_id"),
+                pl.col("posteam").alias("team"),
+                pl.col("g_off").cast(pl.Float64).alias("g"),
+                pl.col(col).cast(pl.Float64).alias("x"),
+                pl.col("_b").alias("arm"),
+            ),
+        )
         g = arms.group_by(
             pl.col("_qb").alias("entity_id"), pl.col("posteam").alias("team"), "_b"
         ).agg(

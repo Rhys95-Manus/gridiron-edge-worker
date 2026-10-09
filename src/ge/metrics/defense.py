@@ -10,11 +10,11 @@ from collections import defaultdict
 
 import polars as pl
 
-from ge.config import load_params
+from ge.config import Defense, current_params, group_proxy
 from ge.metrics import conventions as cv
 from ge.metrics import plays as pf
 from ge.metrics.context import MetricContext
-from ge.metrics.engine import finish, summarise
+from ge.metrics.engine import finish, record_units, summarise
 from ge.metrics.offense import (
     SPLITS,
     hit_flag,
@@ -26,7 +26,7 @@ from ge.metrics.offense import (
     zone_trips,
 )
 
-_D = load_params().defense
+_D: Defense = group_proxy("defense")
 POSITIONS = ("RB", "TE", "WR")
 MISSING_STATUSES = ("Out", "Doubtful")
 PAID = "PAID: DATA-11"
@@ -39,9 +39,11 @@ def def_01(ctx: MetricContext) -> pl.DataFrame:
 
 
 def def_01_adjusted(ctx: MetricContext) -> pl.DataFrame:
-    """DEF-01 / G6: opponent-adjusted EPA allowed; raises until BT-02 sets the ridge penalty."""
-    cv.g6_penalty()
-    raise AssertionError("unreachable")
+    """DEF-01 / G6: opponent-adjusted EPA per play allowed, the defense ratings of the
+    season's G6 ridge (penalty from the Phase 3e fit; raises without one)."""
+    from ge.metrics.offense import adjusted_rows
+
+    return adjusted_rows(ctx, "DEF-01", "defense")
 
 
 def def_02(ctx: MetricContext) -> pl.DataFrame:
@@ -103,6 +105,7 @@ def def_04(ctx: MetricContext) -> pl.DataFrame:
     k_min_games, k_min_tg = _D.def_04_min_games.value, _D.def_04_min_targets.value
     zero = dict.fromkeys(_DEF04_STATS, 0.0)
     rows = []
+    per_game: list[tuple[object, ...]] = []  # Phase 3e: actual and expected per game
     for d in ctx.teams["team"].to_list():
         for p in POSITIONS:
             act, exp, actw, expw = (dict(zero) for _ in range(4))
@@ -116,12 +119,17 @@ def def_04(ctx: MetricContext) -> pl.DataFrame:
                 n_games += 1
                 w = 0.5 ** (g / h)
                 a = tot.get((o, gid, p), zero)
+                ex: dict[str, float] = {}
                 for s in _DEF04_STATS:
                     e = sum(tot.get((o, x, p), zero)[s] for x in others) / len(others)
+                    ex[s] = e
                     act[s] += a[s]
                     exp[s] += e
                     actw[s] += w * a[s]
                     expw[s] += w * e
+                per_game.append(
+                    (d, p, gid, g, *(a[s] for s in _DEF04_STATS), *(ex[s] for s in _DEF04_STATS))
+                )
                 wsum += w * a["targets"]
                 wsq += w * w * a["targets"]
             n = int(act["targets"])
@@ -160,6 +168,23 @@ def def_04(ctx: MetricContext) -> pl.DataFrame:
                     else None,
                 }
             )
+    record_units(
+        "DEF-04",
+        "per_game",
+        "ratio",
+        pl.DataFrame(
+            per_game,
+            schema={
+                "entity_id": pl.Utf8,
+                "cell": pl.Utf8,
+                "game_id": pl.Utf8,
+                "g": pl.Float64,
+                **{f"a_{s}": pl.Float64 for s in _DEF04_STATS},
+                **{f"e_{s}": pl.Float64 for s in _DEF04_STATS},
+            },
+            orient="row",
+        ),
+    )
     df = pl.DataFrame(rows, infer_schema_length=None).with_columns(
         pl.lit("DEF-04").alias("spec_id")
     )
@@ -376,7 +401,8 @@ def def_09(ctx: MetricContext) -> pl.DataFrame:
     from ge.metrics.offense import pass_map
 
     out = pass_map(ctx, "DEF-09", "defense", _D.def_09_min_targets_per_cell.value)
-    return out.filter(pl.col("stat").is_in(["epa", "cpoe"]))
+    # cpoe_team: the defense's overall completion over expected allowed, each cell's prior.
+    return out.filter(pl.col("stat").is_in(["epa", "cpoe", "cpoe_team"]))
 
 
 def _defense_gap(
@@ -429,7 +455,7 @@ def def_12(ctx: MetricContext) -> pl.DataFrame:
 
     has = "n_defense_box" in ctx.plays.columns
     box = pl.col("n_defense_box") if has else pl.lit(None, dtype=pl.Float64)
-    stacked = load_params().player.ply_24_stacked_box_min.value
+    stacked = current_params().params.player.ply_24_stacked_box_min.value
     share = team_units(
         ctx, pf.qualifying() & box.is_not_null(), pl.lit("all"), (box >= stacked), "defense"
     )
@@ -450,7 +476,7 @@ def def_13(ctx: MetricContext) -> pl.DataFrame:
     2022."""
     flag = None
     if "n_blitzers" in ctx.plays.columns:
-        p = load_params().player
+        p = current_params().params.player
         n = pl.col("n_blitzers")
         flag = (
             pl.when(n >= p.ply_17_blitz_min_blitzers.value)

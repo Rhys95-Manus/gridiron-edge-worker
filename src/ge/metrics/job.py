@@ -22,6 +22,7 @@ from ge.metrics.coaching import CoachingRegistry
 from ge.metrics.context import build_context
 from ge.metrics.engine import RAW_SCHEMA, SHRUNK_SCHEMA
 from ge.metrics.registry import REGISTRY, raw, shrunk
+from ge.store.holdout import refuse_holdout
 from ge.store.snapshot import ATTRIBUTION, snapshot
 
 OUT_ROOT = DATA_ROOT.parent / "metrics"
@@ -54,6 +55,7 @@ def run_metrics(
     out_dir: Path = OUT_ROOT,
     registry: CoachingRegistry | None = None,
 ) -> MetricsRun:
+    refuse_holdout(season, "ge metrics")  # BT-07b: before any read
     game = anchor_game(season, through_week, root)
     snap = snapshot(game, as_of, root=root)
     ctx = build_context(snap, registry)

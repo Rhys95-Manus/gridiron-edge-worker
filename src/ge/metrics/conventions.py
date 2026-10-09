@@ -11,7 +11,7 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
-from ge.config import load_params
+from ge.config import current_params
 
 HalfLife = Literal["usage", "efficiency"]
 FloatArray = npt.NDArray[np.float64]
@@ -31,7 +31,7 @@ def shrink(observed: float, n: float, prior: float, k: float) -> float:
 
 def half_life(kind: HalfLife) -> float:
     """G3: initial h = 3 games for usage metrics, 6 for efficiency metrics."""
-    c = load_params().conventions
+    c = current_params().params.conventions
     if kind == "usage":
         return float(c.g3_usage_half_life_games.value)
     if kind == "efficiency":
@@ -62,7 +62,7 @@ def weighted_mean(x: FloatArray, weights: FloatArray) -> float:
 
 def in_carryover_window(week: int) -> bool:
     """G4: weeks 1-4 use last season's shrunk value as the prior."""
-    return week <= int(load_params().conventions.g4_prior_carryover_last_week.value)
+    return week <= int(current_params().params.conventions.g4_prior_carryover_last_week.value)
 
 
 def carryover_prior(last_season: float, league: float, *, changed: bool | None) -> float:
@@ -76,7 +76,7 @@ def carryover_prior(last_season: float, league: float, *, changed: bool | None) 
         )
     if not changed:
         return last_season
-    extra = float(load_params().conventions.g4_new_caller_or_qb_extra_regression.value)
+    extra = float(current_params().params.conventions.g4_new_caller_or_qb_extra_regression.value)
     return last_season + extra * (league - last_season)
 
 
@@ -101,7 +101,11 @@ def weighted_ridge(
     return np.asarray(np.linalg.solve(xtw @ X + penalty * np.diag(d), xtw @ y), dtype=np.float64)
 
 
+G6_PENALTY_KEY = "fit:G6/penalty"
+
+
 def g6_penalty() -> float:
-    """G6: the ridge penalty is tuned by cross-validation in BT-02. The spec gives no initial
-    value, so there is none to use yet (user decision 2026-10-02)."""
-    raise NotImplementedError("G6: ridge penalty from BT-02 (no initial value in the spec)")
+    """G6: the ridge penalty, tuned by cross-validation in BT-02 (Phase 3e) for the season in
+    force. The spec gives no initial value, so a season without a fit raises (user decision
+    2026-10-02)."""
+    return current_params().extra(G6_PENALTY_KEY, "G6")

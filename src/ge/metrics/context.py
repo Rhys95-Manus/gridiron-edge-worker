@@ -18,6 +18,7 @@ import polars as pl
 from ge.metrics.coaching import CoachingRegistry, load_registry
 from ge.metrics.engine import Side
 from ge.metrics.plays import dropback_qb, scrimmage
+from ge.store.holdout import refuse_holdout
 from ge.store.snapshot import Snapshot
 
 
@@ -269,6 +270,13 @@ class MetricContext:
         return pl.concat(parts).unique().sort("gsis_id", "team", "game_id")
 
     @cached_property
+    def slots(self) -> dict[tuple[str, str], str]:
+        """Section 4: (gsis_id, team) -> slot (QB1, RB1, RB2, WR1-3, TE1), ge.metrics.roles."""
+        from ge.metrics.roles import context_slots
+
+        return context_slots(self)
+
+    @cached_property
     def _franchises(self) -> dict[str, str]:
         t = self.snap.collect("teams")
         return dict(t.select("team_abbr", "team_id").iter_rows()) if t.height else {}
@@ -465,5 +473,7 @@ def _reset_from(
 
 
 def build_context(snap: Snapshot, registry: CoachingRegistry | None = None) -> MetricContext:
-    """Phase 3 entry point: metrics for the snapshot's season, as of its as_of."""
+    """Phase 3 entry point: metrics for the snapshot's season, as of its as_of. A holdout
+    target season is refused (BT-07b; ruling 2026-10-07)."""
+    refuse_holdout(snap.season, "metrics")
     return MetricContext(snap, snap.season, snap.week, registry or load_registry())

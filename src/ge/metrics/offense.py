@@ -14,13 +14,13 @@ from collections.abc import Sequence
 
 import polars as pl
 
-from ge.config import load_params
+from ge.config import Offense, group_proxy
 from ge.metrics import conventions as cv
 from ge.metrics import plays as pf
 from ge.metrics.context import MetricContext
 from ge.metrics.engine import RESET_SPECS, Side, finish, summarise
 
-_O = load_params().offense
+_O: Offense = group_proxy("offense")
 H: cv.HalfLife = "efficiency"
 SPLITS = ("all", "pass", "run")
 OL_POSITIONS = ("T", "G", "C")
@@ -105,11 +105,61 @@ def off_01(ctx: MetricContext) -> pl.DataFrame:
     return team_rate(ctx, "OFF-01", "epa", split_units(ctx, pl.col("epa"), "offense"), SPLITS, mins)
 
 
+def g6_ratings(ctx: MetricContext) -> dict[str, dict[str, float]]:
+    """G6: one weighted ridge over the season's qualifying plays (EPA = intercept + offense +
+    defense + home + error; weights G3 by the offense's games ago, efficiency h), with the
+    season's fitted penalty (Phase 3e; raises without one). Cached on the context."""
+    key = ("g6",)
+    if key not in ctx.cache:
+        from ge.config import use_season
+        from ge.fit.ridge_cv import ridge_ratings
+
+        plays = ctx.plays.filter(pf.qualifying() & pl.col("epa").is_not_null()).select(
+            "game_id",
+            pl.col("week").cast(pl.Int64),
+            "posteam",
+            "defteam",
+            (pl.col("posteam") == pl.col("home_team")).cast(pl.Int64).alias("is_home"),
+            pl.col("epa").cast(pl.Float64),
+        )
+        with use_season(ctx.snap.season):
+            r = ridge_ratings(plays, cv.g6_penalty(), cv.half_life(H))
+        ctx.cache[key] = pl.DataFrame(
+            {
+                "team": sorted(r.offense),
+                "offense": [r.offense[t] for t in sorted(r.offense)],
+                "defense": [r.defense[t] for t in sorted(r.offense)],
+            }
+        )
+    df = ctx.cache[key]
+    return {
+        "offense": dict(df.select("team", "offense").iter_rows()),
+        "defense": dict(df.select("team", "defense").iter_rows()),
+    }
+
+
+def adjusted_rows(ctx: MetricContext, spec_id: str, side: Side) -> pl.DataFrame:
+    vals = g6_ratings(ctx)[side]
+    return finish(
+        pl.DataFrame(
+            {
+                "spec_id": spec_id,
+                "entity_type": "team",
+                "entity_id": list(vals),
+                "team": list(vals),
+                "cell": "all",
+                "stat": "epa_adjusted",
+                "value": list(vals.values()),
+                "note": "G6 ridge rating (EPA/play vs league, opponent-adjusted)",
+            }
+        )
+    ).sort("entity_id")
+
+
 def off_01_adjusted(ctx: MetricContext) -> pl.DataFrame:
-    """OFF-01 / G6: opponent-adjusted EPA from the weighted ridge regression. Its penalty comes
-    from BT-02, so this raises until a fitted value exists (user decision 2026-10-02)."""
-    cv.g6_penalty()
-    raise AssertionError("unreachable")
+    """OFF-01 / G6: opponent-adjusted EPA per play, the offense ratings of the season's G6
+    ridge (penalty from the Phase 3e fit; raises without one)."""
+    return adjusted_rows(ctx, "OFF-01", "offense")
 
 
 def off_02(ctx: MetricContext) -> pl.DataFrame:
@@ -310,9 +360,37 @@ def off_11(ctx: MetricContext) -> pl.DataFrame:
     return team_rate(ctx, "OFF-11", "plays_per_game", u, ["all"], _O.off_11_min_games.value)
 
 
+def team_overall(ctx: MetricContext, spec_id: str, stat: str, units: pl.DataFrame) -> pl.DataFrame:
+    """Phase 3e: a cell stat's team-level parent ("the team's own shrunk value"): the same units
+    pooled over every cell, as stat `<stat>_team` in cell `all`. Its k is fitted in Phase 3e
+    (the spec gives none; user decision 2026-10-02). No minimum sample."""
+    return team_rate(
+        ctx, spec_id, f"{stat}_team", units.with_columns(pl.lit("all").alias("cell")), ["all"], None
+    )
+
+
+def cell_share_units(
+    ctx: MetricContext, mask: pl.Expr, cell: pl.Expr, cells: Sequence[str], side: Side
+) -> pl.DataFrame:
+    """One unit per kept play per cell: x = 1 if the play is in that cell (team share of plays
+    by cell)."""
+    team, g = _col(side)
+    p = ctx.plays.filter(mask).with_columns(cell.alias("_cell"))
+    grid = pl.DataFrame({"cell": list(cells)}, schema={"cell": pl.Utf8})
+    return p.join(grid, how="cross").select(
+        pl.col(team).alias("entity_id"),
+        pl.col(team).alias("team"),
+        pl.col("cell"),
+        pl.col(g).cast(pl.Float64).alias("g"),
+        (pl.col("_cell") == pl.col("cell")).cast(pl.Float64).alias("x"),
+    )
+
+
 def run_grid(ctx: MetricContext, spec_id: str, side: Side, min_n: float) -> pl.DataFrame:
     """OFF-12 / DEF-03 grid on designed runs: carries, yards/carry, EPA/carry, success,
-    explosive rate (10+ yards), per cell."""
+    explosive rate (10+ yards), per cell. Phase 3e adds each cell's share of the team's
+    designed runs (`share`, PLY-16's lane-share prior) and the team-level parents of yards per
+    carry and explosive rate (`ypc_team`, `explosive_team`), whose k the spec doesn't give."""
     exp = _O.off_12_explosive_run_min_yards.value
     stats = {
         "carries": pl.lit(1.0),
@@ -321,19 +399,15 @@ def run_grid(ctx: MetricContext, spec_id: str, side: Side, min_n: float) -> pl.D
         "success": pl.col("success"),
         "explosive": (pl.col("yards_gained") >= exp).cast(pl.Float64),
     }
-    return pl.concat(
-        [
-            team_rate(
-                ctx,
-                spec_id,
-                s,
-                team_units(ctx, pf.designed_run(), pf.run_cell(), x, side),
-                pf.RUN_CELLS,
-                min_n,
-            )
-            for s, x in stats.items()
-        ]
-    )
+    parts = []
+    for s, x in stats.items():
+        u = team_units(ctx, pf.designed_run(), pf.run_cell(), x, side)
+        parts.append(team_rate(ctx, spec_id, s, u, pf.RUN_CELLS, min_n))
+        if s in ("ypc", "explosive"):
+            parts.append(team_overall(ctx, spec_id, s, u))
+    share = cell_share_units(ctx, pf.designed_run(), pf.run_cell(), pf.RUN_CELLS, side)
+    parts.append(team_rate(ctx, spec_id, "share", share, pf.RUN_CELLS, min_n))
+    return pl.concat(parts)
 
 
 def off_12(ctx: MetricContext) -> pl.DataFrame:
@@ -366,13 +440,13 @@ def pass_map(ctx: MetricContext, spec_id: str, side: Side, min_n: float) -> pl.D
         min_n,
     )
     cp = pf.target() & pl.col("cp").is_not_null()
-    cpoe = team_rate(
-        ctx,
-        spec_id,
-        "cpoe",
-        team_units(ctx, cp, pf.pass_cell(), pl.col("complete_pass") - pl.col("cp"), side),
-        pf.PASS_CELLS,
-        min_n,
+    cp_units = team_units(ctx, cp, pf.pass_cell(), pl.col("complete_pass") - pl.col("cp"), side)
+    cpoe = pl.concat(
+        [
+            team_rate(ctx, spec_id, "cpoe", cp_units, pf.PASS_CELLS, min_n),
+            # Phase 3e: the team's own completion over expected, each cell's prior.
+            team_overall(ctx, spec_id, "cpoe", cp_units),
+        ]
     )
     counts = tg.group_by(pl.col(team).alias("entity_id"), pl.col("_cell").alias("cell")).agg(
         pl.len().alias("_targets")
@@ -506,11 +580,13 @@ def off_15(ctx: MetricContext) -> pl.DataFrame:
 
 def off_16(ctx: MetricContext) -> pl.DataFrame:
     """OFF-16: run blocking by side (a proxy that mixes blocking with the runner's skill):
-    success rate and stuff rate (gain <= 0) on designed runs to the left vs right."""
+    success rate and stuff rate (gain <= 0) on designed runs to the left vs right. Phase 3e
+    adds `stuff_team`, the team's overall stuff rate on those runs (each side's prior)."""
     m = pf.designed_run() & pl.col("run_location").is_in(["left", "right"])
     stuff = (pl.col("yards_gained") <= _O.off_16_stuff_max_yards.value).cast(pl.Float64)
     mn = _O.off_16_min_carries_per_side.value
     side = ["left", "right"]
+    stuff_u = team_units(ctx, m, pl.col("run_location"), stuff, "offense")
     return pl.concat(
         [
             team_rate(
@@ -521,14 +597,8 @@ def off_16(ctx: MetricContext) -> pl.DataFrame:
                 side,
                 mn,
             ),
-            team_rate(
-                ctx,
-                "OFF-16",
-                "stuff",
-                team_units(ctx, m, pl.col("run_location"), stuff, "offense"),
-                side,
-                mn,
-            ),
+            team_rate(ctx, "OFF-16", "stuff", stuff_u, side, mn),
+            team_overall(ctx, "OFF-16", "stuff", stuff_u),
         ]
     )
 

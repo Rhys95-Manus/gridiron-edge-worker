@@ -307,3 +307,25 @@ backtest:
   bt_07d_roi_bootstrap_confidence: {spec_id: BT-07d, value: 0.95, status: initial, source: '95% bootstrap interval resampled by game'}
   bt_07e_start_units: {spec_id: BT-07e, value: 100, status: initial, source: 'Start at 100 units'}
   bt_07e_max_share_of_hourly_volume: {spec_id: BT-07e, value: 0.25, status: initial, source: 'capped at 25% of contracts traded in the hour before decision time'}
+fitting:
+  bt_02_k_m_1: {spec_id: BT-02, value: 25, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
+  bt_02_k_m_2: {spec_id: BT-02, value: 50, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
+  bt_02_k_m_3: {spec_id: BT-02, value: 100, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
+  bt_02_k_m_4: {spec_id: BT-02, value: 200, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
+  bt_02_k_m_5: {spec_id: BT-02, value: 400, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
+  bt_02_k_min_entities_per_m: {spec_id: BT-02, value: 30, status: initial, source: 'using only m with at least 30 qualifying entities'}
+  bt_02_k_splits: {spec_id: BT-02, value: 50, status: initial, source: 'averaged over 50 seeded splits'}
+  bt_02_g6_penalty_log10_min: {spec_id: BT-02, value: 1, status: initial, source: 'chosen from 10^x for x = 1 to 5 in steps of 0.25'}
+  bt_02_g6_penalty_log10_max: {spec_id: BT-02, value: 5, status: initial, source: 'chosen from 10^x for x = 1 to 5 in steps of 0.25'}
+  bt_02_g6_penalty_log10_step: {spec_id: BT-02, value: 0.25, status: initial, source: 'chosen from 10^x for x = 1 to 5 in steps of 0.25'}
+  bt_02_half_life_1: {spec_id: BT-02, value: 1.5, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_2: {spec_id: BT-02, value: 2, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_3: {spec_id: BT-02, value: 3, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_4: {spec_id: BT-02, value: 4, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_5: {spec_id: BT-02, value: 6, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_6: {spec_id: BT-02, value: 8, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_7: {spec_id: BT-02, value: 12, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_half_life_8: {spec_id: BT-02, value: 16, status: initial, source: 'chosen from {1.5, 2, 3, 4, 6, 8, 12, 16} games'}
+  bt_02_min_entities: {spec_id: BT-02, value: 30, status: initial, source: 'a fitted value needs at least 30 entities (k, priors) or 200 events (logistic models, base rates)'}
+  bt_02_min_events: {spec_id: BT-02, value: 200, status: initial, source: 'a fitted value needs at least 30 entities (k, priors) or 200 events (logistic models, base rates)'}
+  bt_02_no_signal_confidence: {spec_id: BT-02, value: 0.95, status: initial, source: 'a 95% Fisher-z interval for r is computed from the number of entities'}

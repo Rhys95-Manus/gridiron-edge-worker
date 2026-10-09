@@ -17,6 +17,7 @@ from pathlib import Path
 
 import polars as pl
 
+from ge.config import ATTRIBUTION as ATTRIBUTION
 from ge.config import Backtest, load_params
 from ge.ingest.nflverse import SEASONLESS
 from ge.ingest.raw import DATA_ROOT, seasons_stored
@@ -90,7 +91,6 @@ TABLES = (
     "kalshi_prices",
     "kalshi_trades",
 )
-ATTRIBUTION = "Data: nflverse; charting: FTN Data via nflverse"
 
 Loader = Callable[[], pl.DataFrame]
 

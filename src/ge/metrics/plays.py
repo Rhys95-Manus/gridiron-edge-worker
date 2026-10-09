@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import polars as pl
 
-from ge.config import load_params
+from ge.config import Conventions, Offense, group_proxy
 
-_P = load_params()
-_C = _P.conventions
-_O = _P.offense
+_C: Conventions = group_proxy("conventions")
+_O: Offense = group_proxy("offense")
 
 RUN_CELLS = (
     "left_end",

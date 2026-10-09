@@ -7,6 +7,11 @@ misspelled or extra parameter stops the worker instead of silently falling back 
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -363,7 +368,48 @@ class Backtest(_Group):
     bt_07e_max_share_of_hourly_volume: Param
 
 
+class Fitting(_Group):
+    """BT-02 method (Phase 3e) settings: the split-half m grid, splits and entity floor, the
+    G6 penalty grid (log10 bounds and step), the half-life grid and the minimums."""
+
+    bt_02_k_m_1: Param
+    bt_02_k_m_2: Param
+    bt_02_k_m_3: Param
+    bt_02_k_m_4: Param
+    bt_02_k_m_5: Param
+    bt_02_k_min_entities_per_m: Param
+    bt_02_k_splits: Param
+    bt_02_g6_penalty_log10_min: Param
+    bt_02_g6_penalty_log10_max: Param
+    bt_02_g6_penalty_log10_step: Param
+    bt_02_half_life_1: Param
+    bt_02_half_life_2: Param
+    bt_02_half_life_3: Param
+    bt_02_half_life_4: Param
+    bt_02_half_life_5: Param
+    bt_02_half_life_6: Param
+    bt_02_half_life_7: Param
+    bt_02_half_life_8: Param
+    bt_02_min_entities: Param
+    bt_02_min_events: Param
+    bt_02_no_signal_confidence: Param
+
+    def m_grid(self) -> tuple[int, ...]:
+        return tuple(int(getattr(self, f"bt_02_k_m_{i}").value) for i in range(1, 6))
+
+    def half_life_grid(self) -> tuple[float, ...]:
+        return tuple(float(getattr(self, f"bt_02_half_life_{i}").value) for i in range(1, 9))
+
+    def penalty_grid(self) -> tuple[float, ...]:
+        lo = float(self.bt_02_g6_penalty_log10_min.value)
+        hi = float(self.bt_02_g6_penalty_log10_max.value)
+        step = float(self.bt_02_g6_penalty_log10_step.value)
+        n = round((hi - lo) / step)
+        return tuple(10 ** (lo + i * step) for i in range(n + 1))
+
+
 class Params(_Strict):
+    fitting: Fitting
     conventions: Conventions
     offense: Offense
     defense: Defense
@@ -506,8 +552,248 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 
 def load_params(path: Path = PARAMS_PATH) -> Params:
-    """Load and validate config/params.yaml. Raises pydantic.ValidationError on any bad key."""
+    """Load and validate config/params.yaml. Raises pydantic.ValidationError on any bad key.
+    Parsed once per file version (path, modification time, size); Params is frozen."""
+    st = path.stat()
+    return _load_params(path, st.st_mtime_ns, st.st_size)
+
+
+@lru_cache(maxsize=8)
+def _load_params(path: Path, mtime_ns: int, size: int) -> Params:
     return Params.model_validate(_read_yaml(path))
+
+
+# ---- Phase 3e (BT-02): versioned fitted params ----
+#
+# config/params.yaml holds the initial values and is never written by a fit. Each fit writes
+# config/params_fitted/<fit_version>/<window>.yaml (S2021..S2024 walk-forward, `live` for
+# seasons after the holdout); config/params_fitted/active.yaml names the version the engine
+# reads. A fitted value for a params.yaml key overlays that entry; a fit-only key ("fit:...",
+# e.g. a team-level k the spec never set, a role prior, a p_go coefficient) is read with
+# ActiveParams.extra and raises NotImplementedError when the season has no fit for it.
+
+FITTED_ROOT = REPO_ROOT / "config" / "params_fitted"
+ATTRIBUTION = "Data: nflverse; charting: FTN Data via nflverse"
+FIT_KEY_PREFIX = "fit:"
+
+
+class FitVersionMissing(FileNotFoundError):
+    """active.yaml names a fit version with no folder."""
+
+
+class FittedValue(_Strict):
+    spec_id: SpecId | Annotated[list[SpecId], Field(min_length=1)]
+    status: Literal["fitted"]
+    value: StrictInt | StrictFloat
+    method: Annotated[str, StringConstraints(min_length=1)]
+    seasons: Annotated[list[StrictInt], Field(min_length=1)]
+    n: StrictInt
+    initial_value: StrictInt | StrictFloat | None
+
+
+class FittedFile(_Strict):
+    fit_version: Annotated[str, StringConstraints(min_length=1)]
+    window: Annotated[str, StringConstraints(min_length=1)]
+    test_season: StrictInt | None
+    seasons: Annotated[list[StrictInt], Field(min_length=1)]
+    data_as_of: str
+    data_digest: str
+    code_commit: str
+    attribution: str
+    values: dict[str, FittedValue]
+    missing: dict[str, str]
+    # BT-02 "No signal": fit-only k keys whose stat showed no detectable signal (k infinite).
+    no_signal: dict[str, str] = Field(default_factory=dict)
+
+
+class _ActiveVersion(_Strict):
+    fit_version: Annotated[str, StringConstraints(min_length=1)]
+
+
+def _check_fitted(f: FittedFile, path: Path, initial: Params) -> None:
+    from ge.store.holdout import Window
+
+    if f.attribution != ATTRIBUTION:
+        raise ValueError(f"{path}: attribution must be {ATTRIBUTION!r}")
+    if f.window != path.stem:
+        raise ValueError(f"{path}: window {f.window!r} does not match the file name")
+    expected = None if f.window == "live" else int(f.window[1:])
+    if f.test_season != expected:
+        raise ValueError(f"{path}: test_season {f.test_season} does not match {f.window}")
+    Window(f.window, f.test_season, tuple(f.seasons))  # BT-07a / BT-07b: raises on a bad season
+    dumped = initial.model_dump()
+    for key, v in f.values.items():
+        outside = sorted(set(v.seasons) - set(f.seasons))
+        if outside:
+            raise ValueError(f"{path}: {key} uses seasons {outside} outside the file's seasons")
+        if key.startswith(FIT_KEY_PREFIX):
+            continue
+        group, _, name = key.partition(".")
+        if group not in dumped or name not in dumped[group]:
+            raise ValueError(f"{path}: {key} is not a params.yaml key (fit-only keys use 'fit:')")
+
+
+def _overlay(initial: Params, f: FittedFile) -> Params:
+    data = initial.model_dump()
+    for key, v in f.values.items():
+        if key.startswith(FIT_KEY_PREFIX):
+            continue
+        group, _, name = key.partition(".")
+        seasons = f"{min(v.seasons)}-{max(v.seasons)}"
+        data[group][name] = {
+            "spec_id": v.spec_id,
+            "status": "fitted",
+            "source": f"fitted {f.fit_version}/{f.window} on {seasons} (n = {v.n}): {v.method}",
+            "value": v.value,
+        }
+    return Params.model_validate(data)
+
+
+@dataclass(frozen=True)
+class ActiveParams:
+    """The params one season's computation uses: initial overlaid with that season's fit."""
+
+    params: Params
+    fitted: FittedFile | None
+
+    @property
+    def window(self) -> str | None:
+        return self.fitted.window if self.fitted is not None else None
+
+    def fit_status(
+        self, key: str
+    ) -> tuple[Literal["fitted", "no_signal", "missing", "none"], float | None, str | None]:
+        """(status, value, reason) of a fit-only key in this season's fit."""
+        f = self.fitted
+        if f is None:
+            return "none", None, None
+        if key in f.values:
+            return "fitted", float(f.values[key].value), None
+        if key in f.no_signal:
+            return "no_signal", None, f.no_signal[key]
+        if key in f.missing:
+            return "missing", None, f.missing[key]
+        return "none", None, None
+
+    def extra(self, key: str, spec_id: str) -> float:
+        """A fit-only value. Raises NotImplementedError (with the spec ID) when this season's
+        fit doesn't have it."""
+        f = self.fitted
+        if f is not None and key in f.values:
+            return float(f.values[key].value)
+        if f is not None and key in f.missing:
+            raise NotImplementedError(
+                f"{spec_id}: {key} was not fitted in {f.fit_version}/{f.window}: {f.missing[key]}"
+            )
+        where = f"{f.fit_version}/{f.window}" if f is not None else "none for this season"
+        raise NotImplementedError(
+            f"{spec_id}: {key} has no Phase 3e (BT-02) fitted value (fit: {where})"
+        )
+
+
+@lru_cache(maxsize=1)
+def _initial() -> Params:
+    return load_params()
+
+
+@lru_cache(maxsize=64)
+def _read_fitted(path: Path, mtime_ns: int, size: int) -> FittedFile:
+    f = FittedFile.model_validate(_read_yaml(path))
+    _check_fitted(f, path, _initial())
+    return f
+
+
+def window_for(season: int) -> str | None:
+    """BT-07a: which fit a season's computation reads. The holdout raises (BT-07b)."""
+    from ge.store.holdout import refuse_holdout
+
+    refuse_holdout(season, "params")
+    bt = _initial().backtest
+    if season > int(bt.bt_01_holdout_season.value):
+        return "live"
+    if int(bt.bt_01_first_test_season.value) <= season <= int(bt.bt_01_last_test_season.value):
+        return f"S{season}"
+    return None
+
+
+def params_for(season: int, root: Path = FITTED_ROOT) -> ActiveParams:
+    """Initial params overlaid with the active fit for `season` (none before the first test
+    season, or when no fit is active or written for it)."""
+    window = window_for(season)
+    active = root / "active.yaml"
+    if window is None or not active.exists():
+        return ActiveParams(_initial(), None)
+    version = _ActiveVersion.model_validate(_read_yaml(active)).fit_version
+    folder = root / version
+    if not folder.is_dir():
+        raise FitVersionMissing(f"{active} names fit version {version!r}, but {folder} is missing")
+    path = folder / f"{window}.yaml"
+    if not path.exists():
+        return ActiveParams(_initial(), None)
+    st = path.stat()
+    f = _read_fitted(path, st.st_mtime_ns, st.st_size)
+    return ActiveParams(_overlay(_initial(), f), f)
+
+
+_ROOT: ContextVar[Path] = ContextVar("ge_fitted_root", default=FITTED_ROOT)
+_ACTIVE: ContextVar[ActiveParams | None] = ContextVar("ge_active_params", default=None)
+_PINNED: ContextVar[bool] = ContextVar("ge_params_pinned", default=False)
+
+
+def current_params() -> ActiveParams:
+    """The params in force: set by use_season / use_params, else the initial file."""
+    a = _ACTIVE.get()
+    return a if a is not None else ActiveParams(_initial(), None)
+
+
+@contextmanager
+def use_fitted_root(root: Path) -> Iterator[None]:
+    tok = _ROOT.set(root)
+    try:
+        yield
+    finally:
+        _ROOT.reset(tok)
+
+
+@contextmanager
+def use_params(active: ActiveParams) -> Iterator[None]:
+    """Pin these params: use_season inside it doesn't replace them (tests, fitters)."""
+    tok, pin = _ACTIVE.set(active), _PINNED.set(True)
+    try:
+        yield
+    finally:
+        _PINNED.reset(pin)
+        _ACTIVE.reset(tok)
+
+
+@contextmanager
+def use_season(season: int) -> Iterator[None]:
+    """Compute with `season`'s params (BT-07a). The holdout raises (BT-07b)."""
+    if _PINNED.get():
+        yield
+        return
+    tok = _ACTIVE.set(params_for(season, _ROOT.get()))
+    try:
+        yield
+    finally:
+        _ACTIVE.reset(tok)
+
+
+class _GroupProxy:
+    """A params group resolved at each attribute read, so module-level `_O = group_proxy(...)`
+    follows the season in force instead of freezing the initial values at import."""
+
+    def __init__(self, group: str) -> None:
+        self._group = group
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(getattr(current_params().params, self._group), name)
+
+
+def group_proxy(group: str) -> Any:
+    if group not in Params.model_fields:
+        raise KeyError(f"no params group {group!r}")
+    return _GroupProxy(group)
 
 
 def load_fees(path: Path = FEES_PATH) -> Fees:

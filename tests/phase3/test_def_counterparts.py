@@ -29,7 +29,9 @@ def _defteam(r: dict[str, Any]) -> tuple[str, str] | None:
 
 def test_def_09_pass_map_allowed(ctx, rows, teams) -> None:  # type: ignore[no-untyped-def]
     frame = raw(ctx, "DEF-09")
-    assert set(frame["stat"].unique().to_list()) == {"epa", "cpoe"}
+    # Phase 3e added cpoe_team, the defense's overall CPOE allowed that each cell's CPOE
+    # shrinks toward (user approval 2026-10-09).
+    assert set(frame["stat"].unique().to_list()) == {"epa", "cpoe", "cpoe_team"}
     k = DP.def_09_k.value
     mn = DP.def_09_min_targets_per_cell.value
     ue = o.units(rows, "defteam", o.target, o.pass_cell, lambda r: r["epa"])

@@ -1,6 +1,7 @@
 """Every metric by spec ID: its raw function, and for each stat the k (a params.yaml key),
 the prior and the G3 half-life class. `raw(ctx, id)` and `shrunk(ctx, id, stat)` are the only
-entry points later phases use.
+entry points later phases use; both compute with the params of the snapshot's target season
+(Phase 3e: initial values overlaid with that season's walk-forward fit, BT-07a).
 
 Where the spec doesn't define something a stat needs, the stat says so in `missing` and
 shrinking it raises NotImplementedError (user decisions 2026-10-02)."""
@@ -12,19 +13,23 @@ from dataclasses import dataclass, field
 
 import polars as pl
 
+from ge.config import use_season
 from ge.metrics import coaching as co
 from ge.metrics import defense as d
 from ge.metrics import offense as o
 from ge.metrics import player as pl_
 from ge.metrics import skills as sk
+from ge.metrics.coaching import P_GO_TERMS, p_go_key
 from ge.metrics.context import MetricContext
 from ge.metrics.conventions import HalfLife
 from ge.metrics.engine import (
+    FIT_ONLY,
     AtPosition,
     Computed,
     Fixed,
     League,
     Parent,
+    Role,
     Side,
     StatDef,
     shrink_stat,
@@ -57,15 +62,17 @@ def _stats(*defs: StatDef) -> dict[str, StatDef]:
     return {s.stat: s for s in defs}
 
 
-def _no_team_k(sid: str, what: str) -> str:
-    return (
-        f"{sid}: {what} cells shrink toward the team's own shrunk value, but the spec gives no "
-        "team-level k for it (user decision 2026-10-02: raise until the spec sets one)"
-    )
-
-
 def _split_k(prefix: str) -> dict[str, str]:
     return {"all": f"{prefix}_k_overall", "pass": f"{prefix}_k_pass", "run": f"{prefix}_k_run"}
+
+
+def _team_parent(sid: str, stat: str, k: str) -> tuple[StatDef, StatDef]:
+    """A cell stat shrinking toward the team's own shrunk value (`<stat>_team`, cell all),
+    which shrinks toward the league with a Phase 3e fitted k (the spec gives none)."""
+    return (
+        StatDef(stat, E, k, Parent(sid, f"{stat}_team", "all")),
+        StatDef(f"{stat}_team", E, FIT_ONLY),
+    )
 
 
 def _run_grid(
@@ -75,10 +82,10 @@ def _run_grid(
         StatDef("carries", E),
         StatDef("epa", E, f"{grp}.{pre}_k_epa_ypc", Parent(epa_parent, "epa", "run")),
         StatDef("success", E, f"{grp}.{pre}_k_success", Parent(success_parent, "success", "run")),
-        StatDef("ypc", E, f"{grp}.{pre}_k_epa_ypc", missing=_no_team_k(sid, "yards/carry")),
-        StatDef(
-            "explosive", E, f"{grp}.{pre}_k_explosive", missing=_no_team_k(sid, "explosive-rate")
-        ),
+        *_team_parent(sid, "ypc", f"{grp}.{pre}_k_epa_ypc"),
+        *_team_parent(sid, "explosive", f"{grp}.{pre}_k_explosive"),
+        # Each lane's share of the team's designed runs: PLY-16's lane-share prior (3e).
+        StatDef("share", E, FIT_ONLY),
     )
 
 
@@ -87,39 +94,19 @@ def _eligible_on_off(rows: pl.DataFrame) -> pl.DataFrame:
     return rows.filter(~pl.col("below_min_sample") & pl.col("value_w").is_not_null())
 
 
-def _role_prior(sid: str, what: str = "a role prior") -> str:
-    return (
-        f"{sid}: shrinks toward {what}: section 4's role prior is last season's shrunk value "
-        "(which itself needs a role prior) or the league average for his depth-chart slot, "
-        "estimated in Phase 3e (BT-02 core); raises until then (user decision 2026-10-02)"
-    )
+def _role(stat: str, k: str, h: HalfLife | None = None) -> StatDef:
+    """Section 4: shrinks toward his role prior (ge.metrics.roles)."""
+    return StatDef(stat, h or U, f"player.{k}", Role())
 
 
-def _usage_role(sid: str, stat: str, k: str, what: str = "a role prior") -> StatDef:
-    return StatDef(stat, U, f"player.{k}", missing=_role_prior(sid, what))
-
-
-def _overall(sid: str, k: str, **stats: HalfLife) -> dict[str, StatDef]:
-    """6b stats whose prior is 'his overall' (rule 1: his overall value, itself shrunk toward
-    his role prior): raise until Phase 3e (ruling 2026-10-04)."""
-    return _stats(
-        *(
-            StatDef(
-                s,
-                h,
-                f"player.{k}",
-                missing=_role_prior(sid, "his overall value, which needs a role prior"),
-            )
-            for s, h in stats.items()
-        )
-    )
-
-
-def _no_k(sid: str, stat: str) -> str:
-    return (
-        f"{sid}: {stat} has no k in its own unit in the spec (ruling 2026-10-04: raise until it "
-        "sets one)"
-    )
+def _his_overall(sid: str, k: str, **stats: HalfLife) -> list[StatDef]:
+    """6b "prior = his overall": each stat's cells shrink toward his shrunk `<stat>_overall`
+    (cell all, same team), which shrinks toward his role prior with a Phase 3e fitted k."""
+    out = []
+    for s, h in stats.items():
+        out.append(StatDef(s, h, f"player.{k}", Parent(sid, f"{s}_overall", "all", "stint")))
+        out.append(StatDef(f"{s}_overall", h, FIT_ONLY, Role()))
+    return out
 
 
 def _ply_15_prior(stat: str) -> Computed:
@@ -129,7 +116,6 @@ def _ply_15_prior(stat: str) -> Computed:
 _OFF: Side = "offense"
 _DEF: Side = "defense"
 U: HalfLife = "usage"
-_OVERALL = "his shrunk overall share, which needs a role prior"
 REGISTRY: dict[str, Entry] = {
     e.spec_id: e
     for e in [
@@ -174,15 +160,7 @@ REGISTRY: dict[str, Entry] = {
             _stats(
                 StatDef("share", E, "offense.off_13_k_targets"),
                 StatDef("epa", E, "offense.off_13_k_targets", Parent("OFF-01", "epa", "pass")),
-                StatDef(
-                    "cpoe",
-                    E,
-                    "offense.off_13_k_targets",
-                    missing=(
-                        "OFF-13: completion over expected per cell shrinks toward the team's "
-                        "shrunk pass value, which has no team-level k (user decision 2026-10-02)"
-                    ),
-                ),
+                *_team_parent("OFF-13", "cpoe", "offense.off_13_k_targets"),
             ),
             _OFF,
         ),
@@ -209,7 +187,7 @@ REGISTRY: dict[str, Entry] = {
             o.off_16,
             _stats(
                 StatDef("success", E, "offense.off_16_k", Parent("OFF-02", "success", "run")),
-                StatDef("stuff", E, "offense.off_16_k", missing=_no_team_k("OFF-16", "stuff-rate")),
+                *_team_parent("OFF-16", "stuff", "offense.off_16_k"),
             ),
             _OFF,
         ),
@@ -275,55 +253,61 @@ REGISTRY: dict[str, Entry] = {
             _DEF,
         ),
         # ---- section 4: player ----
-        Entry("PLY-01", pl_.ply_01, _stats(_usage_role("PLY-01", "snap_share", "ply_01_k_games"))),
+        Entry("PLY-01", pl_.ply_01, _stats(_role("snap_share", "ply_01_k_games"))),
         Entry(
             "PLY-02",
             pl_.ply_02,
-            _stats(_usage_role("PLY-02", "snap_share", "ply_01_k_games")),
+            _stats(_role("snap_share", "ply_01_k_games")),
             proxy=True,
             full=pl_.ply_02_full,
         ),
         Entry(
             "PLY-03",
             pl_.ply_03,
-            _stats(_usage_role("PLY-03", "target_share", "ply_03_k_team_targets")),
+            _stats(_role("target_share", "ply_03_k_team_targets")),
         ),
         Entry(
             "PLY-04",
             pl_.ply_04,
             _stats(
-                _usage_role("PLY-04", "air_share", "ply_04_k_team_targets"),
-                _usage_role("PLY-04", "wopr", "ply_04_k_team_targets"),
+                _role("air_share", "ply_04_k_team_targets"),
+                _role("wopr", "ply_04_k_team_targets"),
             ),
         ),
         Entry(
             "PLY-05",
             pl_.ply_05,
-            _stats(_usage_role("PLY-05", "carry_share", "ply_05_k_team_carries")),
+            _stats(_role("carry_share", "ply_05_k_team_carries")),
         ),
         Entry(
             "PLY-06",
             pl_.ply_06,
             _stats(
-                _usage_role("PLY-06", "opportunity_share", "ply_06_k_team_opportunities", _OVERALL)
+                StatDef(
+                    "opportunity_share",
+                    U,
+                    "player.ply_06_k_team_opportunities",
+                    Parent("PLY-06", "opportunity_share_overall", "all", "stint"),
+                ),
+                StatDef("opportunity_share_overall", U, FIT_ONLY, Role()),
             ),
         ),
         Entry(
             "PLY-07",
             pl_.ply_07,
-            _stats(_usage_role("PLY-07", "opportunity_share", "ply_07_k", _OVERALL)),
+            _stats(
+                StatDef(
+                    "opportunity_share",
+                    U,
+                    "player.ply_07_k",
+                    Parent("PLY-06", "opportunity_share_overall", "all", "stint"),
+                )
+            ),
         ),
         Entry(
             "PLY-08",
             pl_.ply_08,
-            _stats(
-                StatDef(
-                    "yards_per_team_dropback",
-                    E,
-                    "player.ply_08_k_team_dropbacks",
-                    missing=_role_prior("PLY-08"),
-                )
-            ),
+            _stats(_role("yards_per_team_dropback", "ply_08_k_team_dropbacks", E)),
             proxy=True,
             full=pl_.ply_08_full,
         ),
@@ -359,15 +343,9 @@ REGISTRY: dict[str, Entry] = {
             "PLY-16",
             pl_.ply_16,
             _stats(
+                # Lane shares shrink toward the team's shrunk OFF-12 lane share (Phase 3e).
                 StatDef(
-                    "share",
-                    U,
-                    "player.ply_16_k_carries",
-                    missing=(
-                        "PLY-16: lane carry shares would shrink toward the team's shrunk OFF-12 "
-                        "value, but OFF-12 has no shrunk carry-share stat (user decision "
-                        "2026-10-04: raise until the spec sets it)"
-                    ),
+                    "share", U, "player.ply_16_k_carries", Parent("OFF-12", "share", None, "team")
                 ),
                 StatDef(
                     "success",
@@ -389,19 +367,22 @@ REGISTRY: dict[str, Entry] = {
             ),
         ),
         # ---- section 6b: player skills ----
-        Entry("PLY-18", sk.ply_18, _overall("PLY-18", "ply_18_k_attempts", share=U, epa=E, adot=E)),
+        Entry(
+            "PLY-18",
+            sk.ply_18,
+            _stats(
+                _role("share", "ply_18_k_attempts"),
+                _role("adot", "ply_18_k_attempts", E),
+                *_his_overall("PLY-18", "ply_18_k_attempts", epa=E),
+            ),
+        ),
         Entry(
             "PLY-19",
             sk.ply_19,
             _stats(
                 StatDef("epa_gap", E, "player.ply_19_k"),
-                StatDef(
-                    "play_action_rate",
-                    E,
-                    "player.ply_19_k",
-                    missing="PLY-19: his play-action rate has no prior in the spec (k = 100 and "
-                    "the league gap belong to the play-action split); raises until it sets one",
-                ),
+                # Phase 3e: league QB prior, fitted k (the spec's k belongs to the split).
+                StatDef("play_action_rate", E, FIT_ONLY, AtPosition("QB")),
             ),
         ),
         Entry(
@@ -434,15 +415,20 @@ REGISTRY: dict[str, Entry] = {
             sk.ply_22,
             _stats(
                 StatDef("yards_per_rush", E, "player.ply_22_k", AtPosition("QB")),
+                # Phase 3e: k fitted in each stat's own unit; prior league QB (ruling 2026-10-04).
                 *(
-                    StatDef(s, E, "player.ply_22_k", missing=_no_k("PLY-22", s))
+                    StatDef(s, E, FIT_ONLY, AtPosition("QB"))
                     for s in ("scramble_rate", "designed_runs_per_game")
                 ),
             ),
         ),
-        Entry("PLY-23", sk.ply_23, _overall("PLY-23", "ply_23_k", share=U, epa=E)),
-        Entry("PLY-24", sk.ply_24, _overall("PLY-24", "ply_24_k", success=E, ypc=E)),
-        Entry("PLY-25", sk.ply_25, _overall("PLY-25", "ply_25_k", success=E, ypc=E)),
+        Entry(
+            "PLY-23",
+            sk.ply_23,
+            _stats(_role("share", "ply_23_k"), *_his_overall("PLY-23", "ply_23_k", epa=E)),
+        ),
+        Entry("PLY-24", sk.ply_24, _stats(*_his_overall("PLY-24", "ply_24_k", success=E, ypc=E))),
+        Entry("PLY-25", sk.ply_25, _stats(*_his_overall("PLY-25", "ply_25_k", success=E, ypc=E))),
         Entry(
             "PLY-26",
             sk.ply_26,
@@ -455,26 +441,33 @@ REGISTRY: dict[str, Entry] = {
             "PLY-27",
             sk.ply_27,
             _stats(
-                *(
-                    _usage_role("PLY-27", s, "ply_27_k")
-                    for s in ("screen_share", "target_share", "yacoe")
-                )
+                _role("screen_share", "ply_27_k"),
+                _role("target_share", "ply_27_k"),
+                _role("yacoe", "ply_27_k"),
             ),
         ),
-        Entry("PLY-28", sk.ply_28, _overall("PLY-28", "ply_28_k", share=U, epa=E, adot=E)),
-        Entry("PLY-29", sk.ply_29, _overall("PLY-29", "ply_29_k", share=U, epa=E)),
+        Entry(
+            "PLY-28",
+            sk.ply_28,
+            _stats(
+                _role("share", "ply_28_k"),
+                _role("adot", "ply_28_k", E),
+                *_his_overall("PLY-28", "ply_28_k", epa=E),
+            ),
+        ),
+        Entry(
+            "PLY-29",
+            sk.ply_29,
+            _stats(_role("share", "ply_29_k"), *_his_overall("PLY-29", "ply_29_k", epa=E)),
+        ),
         Entry(
             "PLY-30",
             sk.ply_30,
             _stats(
                 StatDef("drop_rate", E, "player.ply_30_k_catchable", AtPosition()),
                 StatDef("contested_catch_rate", E, "player.ply_30_k_contested", AtPosition()),
-                StatDef(
-                    "created_reception_rate",
-                    E,
-                    "player.ply_30_k_catchable",
-                    missing=_no_k("PLY-30", "created_reception_rate"),
-                ),
+                # Phase 3e: k fitted per reception (ruling 2026-10-04); prior league at position.
+                StatDef("created_reception_rate", E, FIT_ONLY, AtPosition()),
             ),
         ),
         Entry(
@@ -488,10 +481,28 @@ REGISTRY: dict[str, Entry] = {
             "PLY-32",
             sk.ply_32,
             _stats(
-                _usage_role("PLY-32", "end_zone_share", "ply_32_k", "his PLY-06 red-zone share")
+                # Prior = his PLY-06 red-zone (inside the 20) share.
+                StatDef(
+                    "end_zone_share",
+                    U,
+                    "player.ply_32_k",
+                    Parent("PLY-06", "opportunity_share", "inside_20", "stint"),
+                )
             ),
         ),
-        Entry("PLY-33", sk.ply_33, _overall("PLY-33", "ply_33_k", target_share=U)),
+        Entry(
+            "PLY-33",
+            sk.ply_33,
+            _stats(
+                # Prior = his overall target share (PLY-03).
+                StatDef(
+                    "target_share",
+                    U,
+                    "player.ply_33_k",
+                    Parent("PLY-03", "target_share", "all", "stint"),
+                )
+            ),
+        ),
         Entry("PLY-34", sk.ply_34),
         # ---- section 6b: defensive counterparts ----
         Entry(
@@ -499,14 +510,7 @@ REGISTRY: dict[str, Entry] = {
             d.def_09,
             _stats(
                 StatDef("epa", E, "defense.def_09_k", Parent("DEF-01", "epa", "pass")),
-                StatDef(
-                    "cpoe",
-                    E,
-                    "defense.def_09_k",
-                    missing="DEF-09: completion over expected per cell shrinks toward the "
-                    "defense's shrunk pass value, which has no team-level k (user decision "
-                    "2026-10-02, OFF-13 ruling)",
-                ),
+                *_team_parent("DEF-09", "cpoe", "defense.def_09_k"),
             ),
             _DEF,
         ),
@@ -518,15 +522,11 @@ REGISTRY: dict[str, Entry] = {
             "DEF-12",
             d.def_12,
             _stats(
-                StatDef(
-                    "stacked_box_share",
-                    E,
-                    "defense.def_12_k",
-                    missing="DEF-12: the stacked-box share has no k or prior in the spec (ruling "
-                    "2026-10-04: raise until it sets them)",
-                ),
+                # Phase 3e: fitted k, league prior.
+                StatDef("stacked_box_share", E, FIT_ONLY),
                 StatDef("success", E, "defense.def_12_k", Parent("DEF-02", "success", "run")),
-                StatDef("ypc", E, "defense.def_12_k", missing=_no_team_k("DEF-12", "yards/carry")),
+                # Prior = its overall run defense: the defense's shrunk DEF-03 yards per carry.
+                StatDef("ypc", E, "defense.def_12_k", Parent("DEF-03", "ypc_team", "all")),
             ),
             _DEF,
         ),
@@ -544,7 +544,7 @@ REGISTRY: dict[str, Entry] = {
             d.def_15,
             _stats(
                 StatDef("success", E, "defense.def_15_k", Parent("DEF-02", "success", "run")),
-                StatDef("ypc", E, "defense.def_15_k", missing=_no_team_k("DEF-15", "yards/carry")),
+                StatDef("ypc", E, "defense.def_15_k", Parent("DEF-03", "ypc_team", "all")),
             ),
             _DEF,
         ),
@@ -570,8 +570,8 @@ REGISTRY: dict[str, Entry] = {
                     E,
                     "coaching.coa_02_k",
                     Fixed(0.0),
-                    missing="COA-02: going for it over expected needs the p_go logistic model, "
-                    "which Phase 3e fits (user decision 2026-10-02); the raw go rate is shown",
+                    # The p_go coefficients come from the season's Phase 3e fit.
+                    needs=tuple(p_go_key(t) for t in P_GO_TERMS),
                 )
             ),
             _OFF,
@@ -601,7 +601,8 @@ def raw(ctx: MetricContext, spec_id: str) -> pl.DataFrame:
     """Raw rows (value, value_w, n, n_eff, min-n flag, league rows) for one metric."""
     key = ("raw", spec_id)
     if key not in ctx.cache:
-        ctx.cache[key] = _entry(spec_id).raw(ctx)
+        with use_season(ctx.snap.season):
+            ctx.cache[key] = _entry(spec_id).raw(ctx)
     return ctx.cache[key]
 
 
@@ -612,14 +613,15 @@ def shrunk(ctx: MetricContext, spec_id: str, stat: str) -> pl.DataFrame:
         e = _entry(spec_id)
         if stat not in e.stats:
             raise KeyError(f"{spec_id} has no shrinkable stat {stat!r}; has {sorted(e.stats)}")
-        ctx.cache[key] = shrink_stat(
-            ctx,
-            spec_id,
-            e.stats[stat],
-            raw(ctx, spec_id),
-            e.side,
-            lambda sid, st: shrunk(ctx, sid, st),
-        )
+        with use_season(ctx.snap.season):
+            ctx.cache[key] = shrink_stat(
+                ctx,
+                spec_id,
+                e.stats[stat],
+                raw(ctx, spec_id),
+                e.side,
+                lambda sid, st: shrunk(ctx, sid, st),
+            )
     return ctx.cache[key]
 
 

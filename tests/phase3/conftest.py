@@ -26,6 +26,17 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.phase3)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _no_repo_fit(tmp_path_factory: pytest.TempPathFactory):  # type: ignore[no-untyped-def]
+    """Phase 3 tests run against the initial params unless a test points at its own fitted
+    root (use_fitted_root); the repo's active Phase 3e fit (config/params_fitted) would
+    otherwise change which stats raise."""
+    from ge.config import use_fitted_root
+
+    with use_fitted_root(tmp_path_factory.mktemp("no_fit")):
+        yield
+
+
 def _parts(dataset: str, season: int) -> list[Path]:
     return sorted((STORE / dataset / f"season={season}").glob("pulled_at=*/part.parquet"))
 

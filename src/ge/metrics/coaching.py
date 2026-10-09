@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import polars as pl
 
-from ge.config import REPO_ROOT, load_params
+from ge.config import REPO_ROOT, Coaching, group_proxy
 from ge.metrics.engine import finish
 
 if TYPE_CHECKING:
     from ge.metrics.context import MetricContext
 
-_C = load_params().coaching
+_C: Coaching = group_proxy("coaching")
 
 REGISTRY_PATH = REPO_ROOT / "config" / "coaching_registry.csv"
 REGISTRY_COLUMNS = (
@@ -208,21 +208,71 @@ def coa_01(ctx: MetricContext) -> pl.DataFrame:
     return finish(df).sort("entity_id", "stat")
 
 
-def coa_02(ctx: MetricContext) -> pl.DataFrame:
-    """COA-02: 4th-down aggressiveness. Going for it = a 4th-down pass or run, against a punt
-    or field goal (no-play penalties, kneels and spikes out; G7 garbage time out, since this
-    is a tendency). The raw go rate is shown; the over-expected value needs the p_go model,
-    which Phase 3e fits (user decision 2026-10-02), so it raises."""
+P_GO_FEATURES = ("ydstogo", "yardline_100", "score_differential", "game_seconds_remaining")
+P_GO_TERMS = ("intercept", *P_GO_FEATURES)
+
+
+def p_go_key(term: str) -> str:
+    """Phase 3e fit key of one p_go coefficient."""
+    return f"fit:COA-02/p_go/{term}"
+
+
+def fourth_downs(plays: pl.DataFrame) -> pl.DataFrame:
+    """COA-02's 4th-down decisions: a 4th-down pass or run (went for it) against a punt or
+    field goal; no-play penalties, kneels and spikes out; G7 garbage time out (a tendency).
+    Rows with any p_go feature missing are left out. Shared with the Phase 3e p_go fit."""
     from ge.metrics import plays as pf
-    from ge.metrics.offense import team_rate, team_units
 
     fourth = (pl.col("down") == 4) & pl.col("play_type").is_in(
         ["pass", "run", "punt", "field_goal"]
     )
     m = fourth & ~pf.garbage() & pl.col("posteam").is_not_null()
-    x = pl.col("play_type").is_in(["pass", "run"]).cast(pl.Float64)
-    u = team_units(ctx, m, pl.lit("all"), x, "offense")
-    return team_rate(ctx, "COA-02", "go_rate", u, ["all"], _C.coa_02_min_fourth_downs.value)
+    return (
+        plays.filter(m)
+        .with_columns(pl.col("play_type").is_in(["pass", "run"]).cast(pl.Float64).alias("go"))
+        .drop_nulls(list(P_GO_FEATURES))
+    )
+
+
+def p_go(coef: dict[str, float]) -> pl.Expr:
+    """COA-02 logistic p_go with the four fields as linear terms (spec synced 2026-10-08)."""
+    eta = pl.lit(coef["intercept"])
+    for f in P_GO_FEATURES:
+        eta = eta + coef[f] * pl.col(f).cast(pl.Float64)
+    return 1.0 / (1.0 + (-eta).exp())
+
+
+def coa_02(ctx: MetricContext) -> pl.DataFrame:
+    """COA-02: 4th-down aggressiveness. The raw go rate, and going for it over expected:
+    mean(went for it - p_go), measured against the league's mean over-expected in the same
+    season to date (spec synced 2026-10-08), so league-wide drift doesn't make every recent
+    team look aggressive. p_go's coefficients come from the season's Phase 3e fit; without a
+    fit the over-expected rows aren't produced and shrinking them raises (StatDef.needs)."""
+    from ge.config import current_params
+    from ge.metrics.offense import team_rate
+
+    rows = fourth_downs(ctx.plays)
+
+    def units(x: pl.Expr) -> pl.DataFrame:
+        return rows.select(
+            pl.col("posteam").alias("entity_id"),
+            pl.col("posteam").alias("team"),
+            pl.lit("all").alias("cell"),
+            pl.col("g_off").cast(pl.Float64).alias("g"),
+            x.cast(pl.Float64).alias("x"),
+        )
+
+    mn = _C.coa_02_min_fourth_downs.value
+    out = [team_rate(ctx, "COA-02", "go_rate", units(pl.col("go")), ["all"], mn)]
+    try:
+        coef = {t: current_params().extra(p_go_key(t), "COA-02") for t in P_GO_TERMS}
+    except NotImplementedError:
+        return out[0]
+    resid = rows.select((pl.col("go") - p_go(coef)).alias("r"))["r"]
+    centre = math.fsum(resid.to_list()) / resid.len() if resid.len() else 0.0
+    x = pl.col("go") - p_go(coef) - centre
+    out.append(team_rate(ctx, "COA-02", "go_over_expected", units(x), ["all"], mn))
+    return pl.concat(out)
 
 
 def coa_03(ctx: MetricContext) -> pl.DataFrame:

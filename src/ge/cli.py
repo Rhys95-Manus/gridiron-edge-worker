@@ -247,6 +247,41 @@ def metrics(
 
 
 @app.command()
+def fit(
+    as_of: Annotated[
+        str, typer.Option(help="Data cut: each dataset's latest pull at or before this time.")
+    ],
+    window: Annotated[
+        str, typer.Option(help="S2021, S2022, S2023, S2024, live, or all (default).")
+    ] = "all",
+    fit_version: Annotated[str, typer.Option(help="Folder under config/params_fitted/.")] = "v1",
+    fresh: Annotated[bool, typer.Option(help="Re-extract every season.")] = False,
+) -> None:
+    """Phase 3e (BT-02 core): fit k, half-lives, G6 penalty, role priors, p_go, availability
+    rates and the OL factor walk-forward; writes config/params_fitted/<version>/<window>.yaml."""
+    import datetime as dt
+
+    from ge.config import ATTRIBUTION
+    from ge.fit.job import run_fit
+    from ge.fit.report import write_report
+    from ge.store.holdout import Window
+
+    when = dt.datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+    if when.tzinfo is None:
+        raise typer.BadParameter("--as-of needs a time zone, e.g. 2026-10-08T00:00:00Z")
+    windows = Window.walk_forward() if window == "all" else [Window.named(window)]
+    results = run_fit(windows, fit_version, when, fresh=fresh)
+    path = write_report(results, windows, fit_version)
+    for name, out in results.items():
+        print(
+            f"{name}: {len(out.values)} fitted, {len(out.no_signal)} no detectable signal, "
+            f"{len(out.missing)} missing"
+        )
+    print(f"report: {path}")
+    print(ATTRIBUTION)
+
+
+@app.command()
 def simulate(season: Season = None, week: Week = None, as_of: AsOf = None) -> None:
     """Run the game simulation (PRJ-02)."""
     _not_built("simulate", "Phase 5")

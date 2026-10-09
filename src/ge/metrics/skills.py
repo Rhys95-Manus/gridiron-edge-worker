@@ -14,14 +14,14 @@ from collections import defaultdict
 
 import polars as pl
 
-from ge.config import load_params
+from ge.config import Player, group_proxy
 from ge.metrics import conventions as cv
 from ge.metrics import plays as pf
 from ge.metrics.context import MetricContext
-from ge.metrics.engine import NO_FTN, finish, position_league_rows, summarise
+from ge.metrics.engine import NO_FTN, finish, position_league_rows, record_units, summarise
 from ge.metrics.player import _entities, _rate, own_units, share_units, stints
 
-_P = load_params().player
+_P: Player = group_proxy("player")
 BANDS = (*pf.DEPTH_BANDS, "unknown")
 SIDES = (*pf.PASS_LOCATIONS, "unknown")
 BOX_BANDS = ("light", "standard", "stacked")
@@ -97,6 +97,23 @@ def cell_share(
     )
 
 
+def his_overall(
+    ctx: MetricContext, spec_id: str, stat: str, units: pl.DataFrame, entities: pl.DataFrame
+) -> pl.DataFrame:
+    """Phase 3e, "prior = his overall": the stat over all his units, as `<stat>_overall` in
+    cell `all` (efficiency half-life). It shrinks toward his role prior (section 4); its k is
+    fitted in Phase 3e (the spec gives none). No minimum sample."""
+    return _rate(
+        ctx,
+        spec_id,
+        f"{stat}_overall",
+        units.with_columns(pl.lit("all").alias("cell")),
+        ["all"],
+        entities,
+        "efficiency",
+    )
+
+
 def _with_position_league(
     ctx: MetricContext, frame: pl.DataFrame, units: pl.DataFrame, spec_id: str, stat: str
 ) -> pl.DataFrame:
@@ -135,6 +152,12 @@ def gap_metric(
     )
     ents = plays.select("entity_id", "team").unique()
     arms = plays.filter(pl.col("_b").is_not_null())
+    record_units(
+        spec_id,
+        stat,
+        "gap",
+        arms.select("entity_id", "team", "g", pl.col("_v").alias("x"), pl.col("_b").alias("arm")),
+    )
     rows = []
     for (eid, tm), grp in arms.sort("game_id", "play_id").group_by(
         ["entity_id", "team"], maintain_order=True
@@ -262,6 +285,7 @@ def ply_18(ctx: MetricContext) -> pl.DataFrame:
                 _P.ply_18_min_attempts_per_band.value,
             ),
             _rate(ctx, "PLY-18", "adot", adot, ["all"], qbs, "efficiency"),
+            his_overall(ctx, "PLY-18", "epa", epa, qbs),
         ]
     )
 
@@ -279,7 +303,14 @@ def ply_19(ctx: MetricContext) -> pl.DataFrame:
         if pa is None
         else (own_units(ctx, m & pa.is_not_null(), pf.dropback_qb(), pl.lit("all"), x))
     )
-    rate = _rate(ctx, "PLY-19", "play_action_rate", rate_u, ["all"], _entities(qbs), "efficiency")
+    # Phase 3e: his play-action rate shrinks toward league QB (pooled), with a fitted k.
+    rate = _with_position_league(
+        ctx,
+        _rate(ctx, "PLY-19", "play_action_rate", rate_u, ["all"], _entities(qbs), "efficiency"),
+        rate_u,
+        "PLY-19",
+        "play_action_rate",
+    )
     if pa is None:
         rate = _no_ftn(rate, {"play_action_rate"})
     return pl.concat([gap, rate])
@@ -446,8 +477,23 @@ def ply_22(ctx: MetricContext) -> pl.DataFrame:
                 "PLY-22",
                 "yards_per_rush",
             ),
-            _rate(ctx, "PLY-22", "scramble_rate", keep(scr), ["all"], qbs, "efficiency"),
-            _rate(ctx, "PLY-22", "designed_runs_per_game", keep(rpg), ["all"], qbs, "efficiency"),
+            # Phase 3e: league QB rows for the two stats whose k is fitted (prior league QB).
+            _with_position_league(
+                ctx,
+                _rate(ctx, "PLY-22", "scramble_rate", keep(scr), ["all"], qbs, "efficiency"),
+                keep(scr),
+                "PLY-22",
+                "scramble_rate",
+            ),
+            _with_position_league(
+                ctx,
+                _rate(
+                    ctx, "PLY-22", "designed_runs_per_game", keep(rpg), ["all"], qbs, "efficiency"
+                ),
+                keep(rpg),
+                "PLY-22",
+                "designed_runs_per_game",
+            ),
         ]
     )
 
@@ -473,6 +519,7 @@ def ply_23(ctx: MetricContext) -> pl.DataFrame:
                 "efficiency",
                 _P.ply_23_min_attempts_per_side.value,
             ),
+            his_overall(ctx, "PLY-23", "epa", epa, qbs),
         ]
     )
 
@@ -524,8 +571,17 @@ def ply_24(ctx: MetricContext) -> pl.DataFrame:
                 _P.ply_24_min_carries_per_band.value,
             )
         )
+        # Phase 3e: his overall value on every designed run, the bands' prior. It exists only
+        # with FTN (before 2022 the bands it serves are missing, so it is too).
+        all_runs = own_units(ctx, pf.designed_run(), who, pl.lit("all"), x)
+        parts.append(
+            his_overall(
+                ctx, "PLY-24", stat, all_runs if box is not None else all_runs.head(0), backs
+            )
+        )
     out = pl.concat(parts)
-    return _no_ftn(out, {"success", "ypc"}) if box is None else out
+    overall = {"success_overall", "ypc_overall"}
+    return _no_ftn(out, {"success", "ypc", *overall}) if box is None else out
 
 
 def ply_25(ctx: MetricContext) -> pl.DataFrame:
@@ -534,21 +590,23 @@ def ply_25(ctx: MetricContext) -> pl.DataFrame:
     cell = pl.when(pl.col("shotgun") == 1).then(pl.lit("shotgun")).otherwise(pl.lit("under_center"))
     backs = _backs(ctx)
     who = pl.col("rusher_player_id")
-    return pl.concat(
-        [
+    parts = []
+    for stat, x in (("success", pl.col("success")), ("ypc", pl.col("yards_gained"))):
+        u = own_units(ctx, pf.designed_run(), who, cell, x)
+        parts.append(
             _rate(
                 ctx,
                 "PLY-25",
                 stat,
-                own_units(ctx, pf.designed_run(), who, cell, x),
+                u,
                 ["shotgun", "under_center"],
                 backs,
                 "efficiency",
                 _P.ply_25_min_carries_each.value,
             )
-            for stat, x in (("success", pl.col("success")), ("ypc", pl.col("yards_gained")))
-        ]
-    )
+        )
+        parts.append(his_overall(ctx, "PLY-25", stat, u, backs))
+    return pl.concat(parts)
 
 
 def ply_26(ctx: MetricContext) -> pl.DataFrame:
@@ -636,6 +694,7 @@ def ply_28(ctx: MetricContext) -> pl.DataFrame:
                 _P.ply_28_min_targets_per_band.value,
             ),
             _rate(ctx, "PLY-28", "adot", adot, ["all"], keys, "efficiency"),
+            his_overall(ctx, "PLY-28", "epa", epa, keys),
         ]
     )
 
@@ -661,6 +720,7 @@ def ply_29(ctx: MetricContext) -> pl.DataFrame:
                 "efficiency",
                 _P.ply_29_min_targets_per_side.value,
             ),
+            his_overall(ctx, "PLY-29", "epa", epa, keys),
         ]
     )
     mid = pl.col("cell") == "middle"

@@ -20,7 +20,9 @@ from tests.phase0.helpers import (
     value_matches,
 )
 
-_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+# Seasons are not sample sizes: years, and walk-forward bounds like "S minus 1", written
+# with a minus sign or a hyphen (COA-07, user approval 2026-10-08).
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b|\bS\s*[\N{MINUS SIGN}-]\s*1\b")
 
 
 def _entries() -> list[dict[str, Any]]:

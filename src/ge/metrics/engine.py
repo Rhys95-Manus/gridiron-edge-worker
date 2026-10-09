@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 import polars as pl
 
-from ge.config import load_params
+from ge.config import current_params
 from ge.metrics import conventions as cv
 
 if TYPE_CHECKING:
@@ -56,10 +58,43 @@ UNITS_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
 Side = Literal["offense", "defense"]
 
 
+@dataclass(frozen=True)
+class CapturedUnits:
+    """One summarise() call's input, recorded for Phase 3e fitting (capture_units)."""
+
+    spec_id: str
+    stat: str
+    entity_type: str
+    units: pl.DataFrame
+
+
+_SINK: ContextVar[list[CapturedUnits] | None] = ContextVar("ge_unit_sink", default=None)
+
+
+@contextmanager
+def capture_units() -> Iterator[list[CapturedUnits]]:
+    """Phase 3e: record the units of every summarise() call made inside the block, so the
+    fitters read the same units the metrics summarise (no second implementation)."""
+    sink: list[CapturedUnits] = []
+    tok = _SINK.set(sink)
+    try:
+        yield sink
+    finally:
+        _SINK.reset(tok)
+
+
+def record_units(spec_id: str, stat: str, kind: str, frame: pl.DataFrame) -> None:
+    """Phase 3e: record a metric's fitting input (units, gap arms, per-game ratio rows) when a
+    capture_units() block is active; otherwise nothing."""
+    sink = _SINK.get()
+    if sink is not None:
+        sink.append(CapturedUnits(spec_id, stat, kind, frame))
+
+
 def param(key: str) -> float:
     """A params.yaml value by "group.name" key (registry entries name keys, not numbers)."""
     group, name = key.split(".")
-    return float(getattr(getattr(load_params(), group), name).value)
+    return float(getattr(getattr(current_params().params, group), name).value)
 
 
 def empty_raw() -> pl.DataFrame:
@@ -105,6 +140,9 @@ def summarise(
             (pl.lit(0.5) ** (pl.col("g") / h)).alias("w")
         )
 
+    sink = _SINK.get()
+    if sink is not None:
+        sink.append(CapturedUnits(spec_id, stat, entity_type, units))
     u = prep(units)
     lu = u if league_units is None else prep(league_units)
     agg = _fsum_groups(u, ["entity_id", "team", "cell"])
@@ -218,7 +256,8 @@ class Parent:
     spec_id: str
     stat: str
     cell: str | None
-    by: Literal["entity", "team"] = "entity"
+    # "stint" matches entity and team (a traded player's rows stay on their own team).
+    by: Literal["entity", "team", "stint"] = "entity"
 
 
 @dataclass(frozen=True)
@@ -239,8 +278,26 @@ class AtPosition:
     fixed: str | None = None
 
 
-Prior = League | Fixed | Parent | Computed | AtPosition
+@dataclass(frozen=True)
+class Role:
+    """Section 4 role prior: last season's shrunk value if the player has the same team and
+    play-caller; otherwise the league average for his slot (QB1, RB1, RB2, WR1, WR2, WR3, TE1)
+    from the season's Phase 3e fit (ge.metrics.roles). A player with no slot (e.g. a WR4) gets
+    no prior and no shrunk value (noted)."""
+
+
+Prior = League | Fixed | Parent | Computed | AtPosition | Role
 NO_POSITION = "no roster position: no position prior"
+NO_SLOT = "no slot (outside QB1, RB1-2, WR1-3, TE1): no role prior"
+NO_SIGNAL = "no detectable signal (BT-02): shrunk = prior"
+# A k the spec doesn't give: only Phase 3e's fitted k exists (none -> NotImplementedError).
+FIT_ONLY = "fit"
+
+
+def fit_k_key(spec_id: str, stat: str, group: str | None) -> str:
+    """Phase 3e key of a stat's fitted k (one per stat, or per cell where the spec gives one k
+    per cell, e.g. OFF-01 all / pass / run)."""
+    return f"fit:k/{spec_id}/{stat}" + (f"/{group}" if group else "")
 
 
 def position_league_rows(
@@ -284,8 +341,11 @@ MISSING_FTN = "no FTN: missing"
 
 @dataclass(frozen=True)
 class StatDef:
-    """How one stat of a metric is shrunk. `k` is a params key, or one per cell. `missing`
-    names what the spec lacks; shrinking such a stat raises NotImplementedError."""
+    """How one stat of a metric is shrunk. `k` is a params key, one per cell, or FIT_ONLY;
+    Phase 3e's fitted k for the stat (fit_k_key) takes precedence when the season has one, an
+    infinite one meaning "no detectable signal" (shrunk = prior). `missing` names what the spec
+    lacks; shrinking such a stat raises NotImplementedError. `needs` lists fit-only keys
+    (e.g. COA-02's p_go coefficients) whose absence raises the same way."""
 
     stat: str
     half_life: cv.HalfLife
@@ -295,26 +355,54 @@ class StatDef:
     eligible: Callable[[pl.DataFrame], pl.DataFrame] | None = None
     # PLY-15: below the minimum sample the observation isn't used at all (shrunk = prior).
     prior_only_below_min: bool = False
+    needs: tuple[str, ...] = ()
 
     def k_keys(self) -> list[str]:
+        """The params.yaml keys of the spec's k (none for FIT_ONLY)."""
         if self.k is None:
             return []
-        return [self.k] if isinstance(self.k, str) else list(self.k.values())
+        keys = [self.k] if isinstance(self.k, str) else list(self.k.values())
+        return [k for k in keys if k != FIT_ONLY]
 
-    def k_expr(self) -> pl.Expr:
-        if isinstance(self.k, str):
-            return pl.lit(param(self.k))
-        assert self.k is not None
-        return pl.col("cell").replace_strict(
-            {c: param(key) for c, key in self.k.items()}, return_dtype=pl.Float64
+    def k_value(self, spec_id: str, cell: str) -> tuple[float, str | None]:
+        """(k, note) for one cell: the fitted k, else the spec's initial k, else raise."""
+        from ge.config import current_params
+
+        if self.k is None:
+            raise ValueError(f"{spec_id} {self.stat}: a count, not shrunk")
+        group = None if isinstance(self.k, str) else cell
+        key = self.k if isinstance(self.k, str) else self.k.get(cell)
+        if key is None:
+            raise KeyError(f"{spec_id} {self.stat}: no k for cell {cell!r}")
+        status, value, why = current_params().fit_status(fit_k_key(spec_id, self.stat, group))
+        if status == "fitted" and value is not None:
+            return value, None
+        if status == "no_signal":
+            return math.inf, NO_SIGNAL
+        if key == FIT_ONLY:
+            raise NotImplementedError(
+                f"{spec_id}: {self.stat} has no k in the spec and no Phase 3e fitted k for this "
+                f"season ({why or 'no fit'})"
+            )
+        return param(key), None
+
+    def k_expr(self, spec_id: str, cells: Sequence[str]) -> tuple[pl.Expr, dict[str, str]]:
+        """k per row by cell, and the cells whose k carries a note (no detectable signal)."""
+        got = {c: self.k_value(spec_id, c) for c in sorted(set(cells))}
+        notes = {c: n for c, (_, n) in got.items() if n}
+        return (
+            pl.col("cell").replace_strict(
+                {c: v for c, (v, _) in got.items()}, default=None, return_dtype=pl.Float64
+            ),
+            notes,
         )
 
 
 def apply_shrink(rows: pl.DataFrame, k: pl.Expr, prior_only: pl.Expr | None = None) -> pl.DataFrame:
     """G1 on rows that already carry a `prior` column. No observation (n = 0, or no defined
-    value, e.g. a ratio whose expected total is 0), or a row `prior_only` marks, leaves the
-    prior."""
-    no_obs = (pl.col("n") == 0) | pl.col("value_w").is_null()
+    value, e.g. a ratio whose expected total is 0), a row `prior_only` marks, or an infinite k
+    (BT-02 "no detectable signal") leaves the prior."""
+    no_obs = (pl.col("n") == 0) | pl.col("value_w").is_null() | pl.col("k").is_infinite()
     if prior_only is not None:
         no_obs = no_obs | prior_only
     return rows.with_columns(k.alias("k")).with_columns(
@@ -342,6 +430,11 @@ def shrink_stat(
         raise NotImplementedError(sd.missing)
     if sd.k is None:
         raise ValueError(f"{spec_id} {sd.stat}: a count, not shrunk")
+    if sd.needs:
+        from ge.config import current_params
+
+        for key in sd.needs:
+            current_params().extra(key, spec_id)  # raises NotImplementedError when unfitted
     rows = raw.filter((pl.col("stat") == sd.stat) & (pl.col("entity_type") != "league"))
     if sd.eligible is not None:
         rows = sd.eligible(rows)
@@ -362,17 +455,32 @@ def shrink_stat(
     if isinstance(pr, Fixed):
         rows = rows.with_columns(pl.lit(pr.get()).alias("prior"))
     elif isinstance(pr, Parent):
-        p = parent(pr.spec_id, pr.stat)
+        try:
+            p = parent(pr.spec_id, pr.stat)
+        except NotImplementedError as exc:
+            raise NotImplementedError(
+                f"{spec_id} {sd.stat}: its prior ({pr.spec_id} {pr.stat}) is not available: {exc}"
+            ) from exc
         if pr.cell is not None:
             p = p.filter(pl.col("cell") == pr.cell)
-        key = "entity_id" if pr.by == "entity" else "team"
-        on = [key] if pr.cell is not None else [key, "cell"]
-        p = p.select(
-            pl.col("entity_id").alias(key),
-            *([] if pr.cell else ["cell"]),
-            pl.col("shrunk").alias("prior"),
-        )
+        if pr.by == "stint":
+            keys, sel = ["entity_id", "team"], [pl.col("entity_id"), pl.col("team")]
+        else:
+            k0 = "entity_id" if pr.by == "entity" else "team"
+            keys, sel = [k0], [pl.col("entity_id").alias(k0)]
+        on = keys if pr.cell is not None else [*keys, "cell"]
+        p = p.select(*sel, *([] if pr.cell else ["cell"]), pl.col("shrunk").alias("prior"))
         rows = rows.join(p, on=on, how="left")
+        if pr.by == "stint":
+            # A player with no parent value (e.g. no slot for his role prior) gets none either.
+            return _shrink_known(rows, spec_id, sd, NO_SLOT)
+    elif isinstance(pr, Role):
+        from ge.metrics.roles import role_priors
+
+        rows = rows.join(
+            role_priors(ctx, spec_id, sd.stat), on=["entity_id", "team", "cell"], how="left"
+        )
+        return _shrink_known(rows, spec_id, sd, NO_SLOT)
     elif isinstance(pr, Computed):
         rows = rows.join(pr.fn(ctx), on=["entity_id", "team", "cell"], how="left")
     elif isinstance(pr, AtPosition):
@@ -395,15 +503,7 @@ def shrink_stat(
             .join(lg, on=["_key", "cell"], how="left")
             .drop("_key")
         )
-        unknown = pl.col("prior").is_null()
-        rows = rows.with_columns(
-            pl.when(unknown).then(pl.lit(NO_POSITION)).otherwise(pl.col("note")).alias("note")
-        )
-        out = apply_shrink(rows.filter(~unknown), sd.k_expr())
-        missing = rows.filter(unknown).with_columns(
-            sd.k_expr().alias("k"), pl.lit(None, dtype=pl.Float64).alias("shrunk")
-        )
-        return pl.concat([out.select(list(SHRUNK_SCHEMA)), missing.select(list(SHRUNK_SCHEMA))])
+        return _shrink_known(rows, spec_id, sd, NO_POSITION)
     elif side is not None and ctx.week is not None and cv.in_carryover_window(ctx.week):
         # G4 is a team rule (new play-caller or QB); player metrics have section 4 priors.
         rows = _carryover(ctx, spec_id, sd, rows, side)
@@ -420,7 +520,42 @@ def shrink_stat(
             f"{spec_id} {sd.stat}: no prior for {bad.select('entity_id', 'cell').rows()[:5]}"
         )
     skip = pl.col("below_min_sample") if sd.prior_only_below_min else None
-    return apply_shrink(rows, sd.k_expr(), prior_only=skip).select(list(SHRUNK_SCHEMA))
+    return _shrink_with_k(rows, spec_id, sd, skip)
+
+
+def _note(extra: pl.Expr) -> pl.Expr:
+    return pl.concat_str([pl.col("note"), extra], separator="; ", ignore_nulls=True)
+
+
+def _shrink_with_k(
+    rows: pl.DataFrame, spec_id: str, sd: StatDef, prior_only: pl.Expr | None = None
+) -> pl.DataFrame:
+    """G1 with the season's k per cell; cells with "no detectable signal" get that note."""
+    k, notes = sd.k_expr(spec_id, rows["cell"].unique().to_list() if rows.height else [])
+    out = apply_shrink(rows, k, prior_only=prior_only)
+    if notes:
+        out = out.with_columns(
+            pl.when(pl.col("cell").is_in(list(notes)))
+            .then(_note(pl.lit(NO_SIGNAL)))
+            .otherwise(pl.col("note"))
+            .alias("note")
+        )
+    return out.select(list(SHRUNK_SCHEMA))
+
+
+def _shrink_known(rows: pl.DataFrame, spec_id: str, sd: StatDef, why: str) -> pl.DataFrame:
+    """Rows with a prior are shrunk; rows without one keep no prior and no shrunk value, with
+    `why` in the note (no roster position, no slot)."""
+    unknown = pl.col("prior").is_null()
+    out = _shrink_with_k(rows.filter(~unknown), spec_id, sd)
+    miss = rows.filter(unknown)
+    if miss.height:
+        k, _ = sd.k_expr(spec_id, miss["cell"].unique().to_list())
+        miss = miss.with_columns(
+            k.alias("k"), pl.lit(None, dtype=pl.Float64).alias("shrunk"), pl.lit(why).alias("note")
+        )
+        return pl.concat([out, miss.select(list(SHRUNK_SCHEMA))])
+    return out
 
 
 RESET_SPECS = ("OFF-04", "OFF-05", "OFF-06", "OFF-07", "OFF-08", "OFF-09", "OFF-10")

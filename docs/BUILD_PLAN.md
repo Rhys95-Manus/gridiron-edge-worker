@@ -293,7 +293,7 @@ ratings for offense and defense, pass and run separately, with home-field,
 rest, travel and time-zone terms (COA-07), recency half-life from
 params.yaml, and conversion to expected points per drive. Ratings for any
 game must be built only from snapshot(game_id, as_of). Fit the ridge penalty
-by cross-validation on training seasons only (2016-2021). Also write a
+from the Phase 3e fit for each walk-forward season (never refit here). Also write a
 synthetic-data generator that plants known team effects so the fitter can be
 tested against the truth. Tests first. Do not build PRJ-01b yet; it needs
 the simulator.
@@ -321,7 +321,7 @@ and total within 0.25 points. Tests first.
 ```
 
 - [ ] Test: simulating all 2024 games from true pre-game snapshots reproduces league averages within PRJ-02 tolerances: points per team-game ±0.7, plays ±2, pass rate ±1.5 points, yards per attempt ±0.2
-- [ ] Test: the standard deviation of simulated margins is within 1 point of the actual 2016–2025 margin standard deviation, which the test computes from schedules (not from memory)
+- [ ] Test: the standard deviation of simulated margins is within 1 point of the actual 2016–2024 margin standard deviation (2025 is the holdout), which the test computes from schedules (not from memory)
 - [ ] Test: in every run, player receiving yards sum to team passing yards, and player TDs sum to team offensive TDs
 - [ ] Test: same game, same seed → identical output; different seed → different output
 - [ ] Test: PRJ-01b hits a target spread and total within 0.25 points for 20 real games

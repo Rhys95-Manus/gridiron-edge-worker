@@ -5750,6 +5750,23 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLDRAFTSELECT:
+    decision: pending
+    first_seen: '2026-10-09'
+    title: NFL Draft Exact Selection
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    - title:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
   KXNFLDRAFTTE:
     decision: include
     first_seen: '2026-09-29'
@@ -8250,6 +8267,22 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLPASSTDSPROT:
+    decision: pending
+    first_seen: '2026-10-09'
+    title: Passing Touchdowns Protected
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
   KXNFLPASSYDS:
     decision: include
     first_seen: '2026-09-29'
@@ -8288,6 +8321,22 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLPASSYDSPROT:
+    decision: pending
+    first_seen: '2026-10-09'
+    title: Passing Yards Protected
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
   KXNFLPLAYOFF:
     decision: include
     first_seen: '2026-09-29'
@@ -8612,6 +8661,22 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLRECPROT:
+    decision: pending
+    first_seen: '2026-10-09'
+    title: Receptions Protected
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
   KXNFLRECYDS:
     decision: include
     first_seen: '2026-09-29'
@@ -8650,6 +8715,22 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLRECYDSPROT:
+    decision: pending
+    first_seen: '2026-10-09'
+    title: Receiving Yards Protected
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
   KXNFLRECYDSRECORD:
     decision: include
     first_seen: '2026-09-29'
@@ -8871,6 +8952,22 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLRSHYDSPROT:
+    decision: pending
+    first_seen: '2026-10-09'
+    title: Rushing Yards Protected
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
   KXNFLSACK:
     decision: include
     first_seen: '2026-09-29'
@@ -9407,7 +9504,7 @@ series:
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
   KXNFLTDPROT:
-    decision: pending
+    decision: include
     first_seen: '2026-10-07'
     title: Pro Football Touchdowns Protected
     category: Sports
@@ -9423,6 +9520,9 @@ series:
     proposed_rules:
     - nfl_prefix
     - fee_schedule_nfl not run (no saved PDF)
+    decided_by: user
+    decided_on: '2026-10-08'
+    decision_basis: explicit include by user
   KXNFLTEAM1POS:
     decision: include
     first_seen: '2026-09-29'
