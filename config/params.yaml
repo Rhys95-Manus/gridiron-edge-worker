@@ -207,6 +207,7 @@ player:
   ply_32_k: {spec_id: PLY-32, value: 15, status: initial, source: 'k = 15; prior = his PLY-06 red-zone share'}
   ply_33_min_targets_each: {spec_id: PLY-33, value: 15, status: initial, source: '15 targets each'}
   ply_33_k: {spec_id: PLY-33, value: 40, status: initial, source: 'k = 40; prior = his overall target share'}
+  ply_35_min_games: {spec_id: PLY-35, value: 3, status: initial, source: '3 games'}
 
 coaching:
   coa_02_min_fourth_downs: {spec_id: COA-02, value: 20, status: initial, source: '20 fourth downs'}

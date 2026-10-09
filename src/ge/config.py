@@ -259,6 +259,7 @@ class Player(_Group):
     ply_32_k: Param
     ply_33_min_targets_each: Param
     ply_33_k: Param
+    ply_35_min_games: Param
 
 
 class Coaching(_Group):
