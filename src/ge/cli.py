@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -256,22 +257,40 @@ def fit(
     ] = "all",
     fit_version: Annotated[str, typer.Option(help="Folder under config/params_fitted/.")] = "v1",
     fresh: Annotated[bool, typer.Option(help="Re-extract every season.")] = False,
+    compare_to: Annotated[
+        str | None, typer.Option(help="Earlier fit version to compare against in the report.")
+    ] = None,
+    data_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+    work_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+    out_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
 ) -> None:
     """Phase 3e (BT-02 core): fit k, half-lives, G6 penalty, role priors, p_go, availability
-    rates and the OL factor walk-forward; writes config/params_fitted/<version>/<window>.yaml."""
+    rates and the OL factor walk-forward; writes config/params_fitted/<version>/<window>.yaml.
+    The hidden root options (tests) only choose where to read and write: windows and every
+    read still go through the same holdout checks (BT-07b)."""
     import datetime as dt
 
-    from ge.config import ATTRIBUTION
-    from ge.fit.job import run_fit
+    from ge.config import ATTRIBUTION, FITTED_ROOT
+    from ge.fit.job import WORK_ROOT, run_fit
     from ge.fit.report import write_report
+    from ge.ingest.raw import DATA_ROOT
     from ge.store.holdout import Window
 
     when = dt.datetime.fromisoformat(as_of.replace("Z", "+00:00"))
     if when.tzinfo is None:
         raise typer.BadParameter("--as-of needs a time zone, e.g. 2026-10-08T00:00:00Z")
     windows = Window.walk_forward() if window == "all" else [Window.named(window)]
-    results = run_fit(windows, fit_version, when, fresh=fresh)
-    path = write_report(results, windows, fit_version)
+    fitted_root = out_root or FITTED_ROOT
+    results = run_fit(
+        windows,
+        fit_version,
+        when,
+        root=data_root or DATA_ROOT,
+        work_root=work_root or WORK_ROOT,
+        out_root=fitted_root,
+        fresh=fresh,
+    )
+    path = write_report(results, windows, fit_version, root=fitted_root, compare_to=compare_to)
     for name, out in results.items():
         print(
             f"{name}: {len(out.values)} fitted, {len(out.no_signal)} no detectable signal, "

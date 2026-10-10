@@ -248,6 +248,7 @@ projection:
   prj_02_tol_yards_per_pass_attempt: {spec_id: PRJ-02, value: 0.2, status: initial, source: 'yards per pass attempt ± 0.2'}
   prj_03_first_td_crosscheck_max_gap: {spec_id: PRJ-03, value: 0.03, status: initial, source: 'differ by more than 3 percentage points'}
   prj_06_season_runs: {spec_id: PRJ-06, value: 20000, status: initial, source: '20,000 season simulations'}
+  prj_06_qb_min_prev_dropback_share: {spec_id: PRJ-06, value: 0.5, status: initial, source: 'QBs with at least 50% of their team'}
   prj_07_bins: {spec_id: PRJ-07, value: 10, status: initial, source: '10 probability bins'}
   prj_07_min_forecasts_per_market_type: {spec_id: PRJ-07, value: 1000, status: initial, source: 'Minimum 1,000 forecasts per market type and 50 per bin'}
   prj_07_min_forecasts_per_bin: {spec_id: PRJ-07, value: 50, status: initial, source: 'Minimum 1,000 forecasts per market type and 50 per bin'}

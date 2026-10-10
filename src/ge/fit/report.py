@@ -10,6 +10,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from ge.config import ATTRIBUTION, FITTED_ROOT
 from ge.store.holdout import Window
 
@@ -41,8 +43,71 @@ def _seasons(s: list[int]) -> str:
     return f"{min(s)}-{max(s)}" if len(s) > 1 else str(s[0])
 
 
+def _load_version(root: Path, version: str, windows: list[Window]) -> dict[str, dict[str, Any]]:
+    out = {}
+    for w in windows:
+        p = root / version / f"{w.name}.yaml"
+        if p.exists():
+            out[w.name] = yaml.safe_load(p.read_text(encoding="utf-8"))
+    return out
+
+
+def _status(body: Mapping[str, Any], key: str) -> tuple[str, float | None]:
+    if key in body.get("values", {}):
+        return "fitted", float(body["values"][key]["value"])
+    if key in body.get("no_signal", {}):
+        return "no signal", None
+    if key in body.get("missing", {}):
+        return "missing", None
+    return "absent", None
+
+
+def _comparison(
+    results: Mapping[str, Any],
+    windows: list[Window],
+    old: Mapping[str, Mapping[str, Any]],
+    compare_to: str,
+    fit_version: str,
+) -> list[str]:
+    """Every key whose value or status differs between the two versions, per window."""
+    lines = [
+        f"## {compare_to} vs {fit_version}: every changed value or status",
+        "",
+        f"| window | key | {compare_to} | {fit_version} | change |",
+        "|---|---|---|---|---|",
+    ]
+    for w in windows:
+        prev = old.get(w.name)
+        if prev is None:
+            continue
+        cur = results[w.name]
+        now = {"values": cur.values, "no_signal": cur.no_signal, "missing": cur.missing}
+        keys = sorted(
+            set(prev.get("values", {})) | set(prev.get("no_signal", {}))
+            | set(prev.get("missing", {})) | set(cur.values) | set(cur.no_signal)
+            | set(cur.missing)
+        )  # fmt: skip
+        for k in keys:
+            (s0, v0), (s1, v1) = _status(prev, k), _status(now, k)
+            same = s0 == s1 and (
+                v0 is None or v1 is None or abs(v0 - v1) <= 1e-12 * max(1, abs(v0))
+            )
+            if same:
+                continue
+            a = _fmt(v0) if s0 == "fitted" else s0
+            b = _fmt(v1) if s1 == "fitted" else s1
+            ch = _change(v1, v0) if s0 == s1 == "fitted" and v1 is not None else None
+            lines.append(f"| {w.name} | `{k}` | {a} | {b} | {'' if ch is None else f'{ch:+.0%}'} |")
+    lines.append("")
+    return lines
+
+
 def write_report(
-    results: Mapping[str, Any], windows: list[Window], fit_version: str, root: Path = FITTED_ROOT
+    results: Mapping[str, Any],
+    windows: list[Window],
+    fit_version: str,
+    root: Path = FITTED_ROOT,
+    compare_to: str | None = None,
 ) -> Path:
     lines = [
         f"# Phase 3e fit report — {fit_version}",
@@ -88,10 +153,21 @@ def write_report(
         "## No detectable signal (BT-02): shrunk value = prior, matchup terms contribute zero",
         "",
     ]
+    old = _load_version(root, compare_to, windows) if compare_to else {}
     for w in windows:
         ns = results[w.name].no_signal
-        lines.append(f"**{w.name}** ({len(ns)}): " + (", ".join(f"`{k}`" for k in ns) or "none"))
+        prev = set(old.get(w.name, {}).get("no_signal", {}))
+        items = [f"`{k}`" + (" **(new)**" if compare_to and k not in prev else "") for k in ns]
+        lines.append(f"**{w.name}** ({len(ns)}): " + (", ".join(items) or "none"))
+        if compare_to:
+            gone = sorted(prev - set(ns))
+            lines.append(
+                f"  departed since {compare_to} ({len(gone)}): "
+                + (", ".join(f"`{k}`" for k in gone) or "none")
+            )
         lines.append("")
+    if compare_to:
+        lines += _comparison(results, windows, old, compare_to, fit_version)
     lines += ["## Left missing", ""]
     for w in windows:
         lines.append(f"### {w.name}")

@@ -35,7 +35,13 @@ import polars as pl
 import yaml
 
 from ge.config import ATTRIBUTION, FITTED_ROOT, REPO_ROOT, Fitting, load_params
-from ge.fit.availability import missed_game_rates, practice_base_rates, return_factor
+from ge.fit.availability import (
+    missed_game_rates,
+    practice_base_rates,
+    qb_starter_pool,
+    return_factor,
+)
+from ge.fit.centering import center_season_cell, residual
 from ge.fit.halflife import HLoss, choose_half_life, half_life_losses, merge
 from ge.fit.history import Reader
 from ge.fit.logistic import fit_logistic
@@ -56,7 +62,7 @@ from ge.fit.whole import (
     gap_value,
     ratio_value,
     whole_half_values,
-    wopr_value,
+    wopr_residual_value,
 )
 from ge.ingest.raw import DATA_ROOT
 from ge.metrics.coaching import P_GO_FEATURES, P_GO_TERMS, p_go_key
@@ -172,20 +178,22 @@ class Work:
 def prepare(
     work: Work, seasons: Iterable[int], root: Path, as_of: dt.datetime, fresh: bool
 ) -> None:
-    """Extract every needed season once (Reader limited to 2016-2024: the live window)."""
+    """Extract every needed season once (Reader limited to 2016-2024: the live window). A cached
+    season is reused only for the same data cut and the same store."""
+    store = str(Path(root).resolve())
     for s in sorted(set(seasons)):
         d = work.season_dir(s)
         done = d / "done.json"
         if done.exists() and not fresh:
             meta = json.loads(done.read_text())
-            if meta.get("data_as_of") == as_of.isoformat():
+            if meta.get("data_as_of") == as_of.isoformat() and meta.get("store") == store:
                 continue
         if d.exists():
             shutil.rmtree(d)
         reader = Reader(root, Window.live(), as_of)
         extract_season(reader, s, d)
         meta = json.loads(done.read_text())
-        meta.update({"data_as_of": as_of.isoformat(), "digest": reader.digest()})
+        meta.update({"data_as_of": as_of.isoformat(), "digest": reader.digest(), "store": store})
         done.write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
 
 
@@ -233,10 +241,18 @@ class Fitter:
         return pl.concat(got, how="diagonal_relaxed") if got else pl.DataFrame()
 
     # Each source gives one season's half values (window-independent, cached).
-    def _half(self, key: str, s: int, make: Callable[[str], pl.DataFrame]) -> pl.DataFrame:
+    def _half(
+        self,
+        key: str,
+        s: int,
+        make: Callable[[str], pl.DataFrame],
+        seed_key: str | None = None,
+    ) -> pl.DataFrame:
+        """Cached by `key` and season; seeded by `seed_key` (default `key`), so a stat's splits
+        are the same in every window."""
         k = (key, s)
         if k not in self._hv:
-            self._hv[k] = make(f"{self.fit_version}/{key}/{s}")
+            self._hv[k] = make(f"{self.fit_version}/{seed_key or key}/{s}")
         return self._hv[k]
 
     def unit_rows(self, sid: str, stat: str, cell: str | None, s: int) -> pl.DataFrame:
@@ -248,8 +264,108 @@ class Fitter:
             u = u.filter(pl.col("cell") == cell)
         return u.filter(pl.col("x").is_not_null())
 
+    # ---------------------------------------------------- v2: what k is measured around
+
+    def _slots(self, s: int) -> pl.DataFrame:
+        """(team, g, entity_id, slot) for every player-game with a section 4 slot."""
+        games = self.work.table("games", s)
+        slots = self.work.table("slots", s)
+        if games.is_empty() or slots.is_empty():
+            return pl.DataFrame(
+                schema={"team": pl.Utf8, "g": pl.Float64, "entity_id": pl.Utf8, "slot": pl.Utf8}
+            )
+        return (
+            games.select("team", "g", "game_id")
+            .join(
+                slots.select("team", "game_id", pl.col("gsis_id").alias("entity_id"), "slot"),
+                on=["team", "game_id"],
+                how="inner",
+            )
+            .select("team", "g", "entity_id", "slot")
+        )
+
+    @staticmethod
+    def _priors(sid: str, stat: str, out: Out) -> pl.DataFrame:
+        """The window's fitted slot priors for a stat: (cell, slot, p)."""
+        pre = f"fit:role/{sid}/{stat}/"
+        rows = [
+            (*k[len(pre) :].split("/"), float(v["value"]))
+            for k, v in sorted(out.values.items())
+            if k.startswith(pre)
+        ]
+        return pl.DataFrame(
+            rows, schema={"cell": pl.Utf8, "slot": pl.Utf8, "p": pl.Float64}, orient="row"
+        )
+
+    def stat_rows(
+        self, sid: str, sd: StatDef, cell: str | None, s: int, out: Out
+    ) -> tuple[pl.DataFrame, bool]:
+        """One season's split-half rows of a single-mean stat (entity, game, g, x, d, c, group)
+        and whether they are centred (so the half-life loss predicts toward 0):
+        - a stat with a slot or role prior: each unit minus the window's slot prior for its cell
+          and its game's slot (rule 1); units without a slot or a fitted prior are left out
+        - a multi-cell stat (one k over several cells): each unit minus its cell's league mean in
+          the same season (rule 2)
+        - group = the entity without its cell, so N counts distinct entities (rule 3)."""
+        u = self.unit_rows(sid, sd.stat, cell, s)
+        if u.is_empty():
+            return u, False
+        multi = cell is None and u["cell"].n_unique() > 1
+        u = u.with_columns(
+            _ent(u, ["entity_id", "team", "cell"]).alias("entity"),
+            pl.concat_str(["team", pl.col("g").cast(pl.Utf8)], separator="|").alias("game"),
+            (
+                _ent(u, ["entity_id", "team"]) if multi else _ent(u, ["entity_id", "team", "cell"])
+            ).alias("group"),
+        )
+        centred = False
+        if isinstance(sd.prior, Role):
+            u = (
+                u.join(self._slots(s), on=["team", "g", "entity_id"], how="inner")
+                .join(self._priors(sid, sd.stat, out), on=["cell", "slot"], how="inner")
+                .pipe(residual)
+            )
+            centred = True
+        elif multi:
+            u = center_season_cell(u)
+            centred = True
+        return u.select("entity", "game", "g", "x", "d", "c", "group"), centred
+
+    def residual_k_like_diagnostic(self, sid: str, stat: str, w: Window, out: Out) -> KFit:
+        """Acceptance aid: rule 1 exactly as the 2026-10-09 diagnostic ran it (its seed keys,
+        N = entity-cells, before ruling 3), on this fit's extracted seasons and slot priors."""
+        sd = REGISTRY[sid].stats[stat]
+        hvs = []
+        for s in w.seasons:
+            rows, _ = self.stat_rows(sid, sd, None, s, out)
+            if rows.height:
+                hvs.append(
+                    half_values(
+                        rows.drop("group"), self.cfg.split, f"diag/residual/{sid}/{stat}/{s}"
+                    )
+                )
+        return k_from_halves(pl.concat(hvs), self.cfg.split)
+
+    def _def04_center(self, r: pl.DataFrame, stat: str) -> pl.DataFrame:
+        """DEF-04 (cells RB / TE / WR): each cell's league value in the season (rule 2)."""
+        if stat == "epa_diff":
+            g = r.group_by("cell").agg(
+                (pl.col("a_epa").sum() / pl.col("a_targets").sum()
+                 - pl.col("e_epa").sum() / pl.col("e_targets").sum()).alias("mu")
+            )  # fmt: skip
+        else:
+            g = r.group_by("cell").agg(
+                (pl.col(f"a_{stat}").sum() / pl.col(f"e_{stat}").sum()).alias("mu")
+            )
+        return (
+            r.select(_ent(r, ["entity_id", "cell"]).alias("entity"), "cell")
+            .unique()
+            .join(g, on="cell")
+            .select("entity", "mu")
+        )
+
     def half_values(
-        self, sid: str, sd: StatDef, cell: str | None, s: int, key: str
+        self, sid: str, sd: StatDef, cell: str | None, s: int, key: str, w: Window, out: Out
     ) -> pl.DataFrame:
         stat = sd.stat
         sp = self.cfg.split
@@ -275,7 +391,9 @@ class Fitter:
                 _ent(r, ["entity_id", "cell"]).alias("entity"),
                 pl.col("game_id").alias("game"),
                 pl.col("a_targets").alias("c"),
+                _ent(r, ["entity_id"]).alias("group"),
             ]
+            mu = self._def04_center(r, stat)
             if stat == "epa_diff":
                 rows = r.select(
                     *base,
@@ -290,7 +408,7 @@ class Fitter:
                     *base, pl.col(f"a_{stat}").alias("num"), pl.col(f"e_{stat}").alias("den")
                 )
                 fn = ratio_value
-            return self._half(key, s, lambda seed: whole_half_values(rows, sp, seed, fn))
+            return self._half(key, s, lambda seed: whole_half_values(rows, sp, seed, fn, center=mu))
         if (sid, stat) == ("DEF-08", "on_off"):
             r = self.work.table("def08", s)
             if r.is_empty():
@@ -306,33 +424,41 @@ class Fitter:
                 key, s, lambda seed: whole_half_values(rows, sp, seed, gap_value, "arm")
             )
         if (sid, stat) == ("PLY-04", "wopr"):
+            # Rule 1: half WOPR minus the team-target-weighted slot-prior WOPR (window priors).
             r = self.work.table("wopr", s)
             if r.is_empty():
                 return r
             p = load_params().player
-            fn = wopr_value(
+            fn = wopr_residual_value(
                 float(p.ply_04_wopr_target_weight.value), float(p.ply_04_wopr_air_weight.value)
             )
-            rows = r.select(
-                _ent(r, ["entity_id", "team"]).alias("entity"),
-                pl.concat_str(["team", pl.col("g").cast(pl.Utf8)], separator="|").alias("game"),
-                "his_target",
-                "his_air",
-                "team_air",
-                pl.lit(1.0).alias("c"),
+            pri = self._priors(sid, stat, out).filter(pl.col("cell") == "all").drop("cell")
+            rows = (
+                r.join(self._slots(s), on=["team", "g", "entity_id"], how="inner")
+                .join(pri, on="slot", how="inner")
+                .select(
+                    _ent(r, ["entity_id", "team"]).alias("entity"),
+                    pl.concat_str(["team", pl.col("g").cast(pl.Utf8)], separator="|").alias("game"),
+                    "his_target",
+                    "his_air",
+                    "team_air",
+                    "p",
+                    pl.lit(1.0).alias("c"),
+                )
             )
-            return self._half(key, s, lambda seed: whole_half_values(rows, sp, seed, fn))
-        u = self.unit_rows(sid, stat, cell, s)
-        if u.is_empty():
-            return u
-        rows = u.select(
-            _ent(u, ["entity_id", "team", "cell"]).alias("entity"),
-            pl.concat_str(["team", pl.col("g").cast(pl.Utf8)], separator="|").alias("game"),
-            "x",
-            "d",
-            "c",
-        )
-        return self._half(key, s, lambda seed: half_values(rows, sp, seed))
+            return self._half(
+                f"{key}@{w.name}",
+                s,
+                lambda seed: whole_half_values(rows, sp, seed, fn),
+                seed_key=key,
+            )
+        rows, _ = self.stat_rows(sid, sd, cell, s, out)
+        if rows.is_empty():
+            return rows
+        rows = rows.drop("g")
+        # Slot priors differ by window, so rule 1 rows are cached per window.
+        ck = f"{key}@{w.name}" if isinstance(sd.prior, Role) else key
+        return self._half(ck, s, lambda seed: half_values(rows, sp, seed), seed_key=key)
 
     def fit_k(self, w: Window, out: Out) -> dict[str, float]:
         """Every k; returns the fitted k per key (for the half-life fit)."""
@@ -341,13 +467,16 @@ class Fitter:
             if (sid, sd.stat) == ("COA-02", "go_over_expected"):
                 continue  # needs the window's p_go: fit_coa02
             key = fit_k_key(sid, sd.stat, cell)
-            parts = [(s, self.half_values(sid, sd, cell, s, key)) for s in w.seasons]
+            parts = [(s, self.half_values(sid, sd, cell, s, key, w, out)) for s in w.seasons]
             used = [s for s, hv in parts if hv.height]
             hvs = [hv for _, hv in parts if hv.height]
             initial = _initial(pkey)
             if not hvs:
+                no_prior = isinstance(sd.prior, Role) and self._priors(sid, sd.stat, out).is_empty()
                 if max(w.seasons) < self.ftn_first and not self._has_rows(sid, sd, cell, w):
                     why = "no FTN training data"
+                elif no_prior:
+                    why = "no slot prior fitted in the window (rule 1 needs one)"
                 elif self._has_rows(sid, sd, cell, w):
                     m0 = min(self.cfg.split.m_grid)
                     why = (
@@ -371,7 +500,7 @@ class Fitter:
                     }
                     and sid != "DEF-04"
                 ):
-                    vk = self._variance_k(sid, sd.stat, cell, used)
+                    vk = self._variance_k(sid, sd, cell, used, out)
                     if vk is not None:
                         out.notes[key] = f"variance-components cross-check k = {vk:.1f}"
         return got
@@ -395,23 +524,14 @@ class Fitter:
         return False
 
     def _variance_k(
-        self, sid: str, stat: str, cell: str | None, seasons: list[int]
+        self, sid: str, sd: StatDef, cell: str | None, seasons: list[int], out: Out
     ) -> float | None:
+        """Report cross-check on the same rows the split-half used (residual or centred)."""
         frames = []
         for s in seasons:
-            u = self.unit_rows(sid, stat, cell, s)
-            if u.height:
-                frames.append(
-                    u.select(
-                        _ent(u, ["entity_id", "team", "cell"]).alias("entity"),
-                        pl.concat_str(["team", pl.col("g").cast(pl.Utf8)], separator="|").alias(
-                            "game"
-                        ),
-                        "x",
-                        "d",
-                        "c",
-                    )
-                )
+            rows, _ = self.stat_rows(sid, sd, cell, s, out)
+            if rows.height:
+                frames.append(rows.select("entity", "game", "x", "d", "c"))
         return variance_k(pl.concat(frames)) if frames else None
 
     def _record_k(
@@ -454,14 +574,19 @@ class Fitter:
                 continue
             losses = []
             for s in w.seasons:
-                u = self.unit_rows(sid, sd.stat, cell, s)
-                if u.is_empty():
+                rows, centred = self.stat_rows(sid, sd, cell, s, out)
+                if rows.is_empty():
                     continue
-                gu = u.with_columns(
-                    _ent(u, ["entity_id", "team", "cell"]).alias("entity"),
-                    (-pl.col("g")).rank("dense").over(["entity_id", "team", "cell"]).alias("gi"),
+                gu = rows.with_columns(
+                    (-pl.col("g")).rank("dense").over("entity").alias("gi")
                 ).select("entity", "gi", "x", "d", "c")
-                losses.append(half_life_losses(gu, ks[key], self.cfg.half_lives))
+                # v2 ruling 4: predict toward the prior the stat's k is measured around: 0 on
+                # residual / centred rows, else the season's league mean.
+                losses.append(
+                    half_life_losses(
+                        gu, ks[key], self.cfg.half_lives, prior=0.0 if centred else None
+                    )
+                )
             if losses:
                 m = merge(losses)
                 if all(v.base > 0 for v in m.values()):
@@ -601,8 +726,16 @@ class Fitter:
             else:
                 out.put(key, "PLY-14", rf.value, f"P(played | {status})", w.seasons, rf.n, None)
         miss = cat("missed")
+        qb_min = float(load_params().projection.prj_06_qb_min_prev_dropback_share.value)
+        if miss.height:
+            miss = qb_starter_pool(miss, qb_min)  # PRJ-06 (spec synced 2026-10-10)
         for pos, rf in missed_game_rates(miss, self.cfg.min_events).items():
             key = f"fit:PRJ-06/missed/{pos}"
+            pool = (
+                f"QBs with >= {qb_min:.0%} of team dropbacks in the previous game"
+                if pos == "QB"
+                else "played last game"
+            )
             if rf.value is None:
                 out.missing[key] = rf.reason or "missing"
             else:
@@ -610,7 +743,7 @@ class Fitter:
                     key,
                     "PRJ-06",
                     rf.value,
-                    f"P(no snap | played last game), {pos}",
+                    f"P(no snap | {pool}), {pos}",
                     w.seasons,
                     rf.n,
                     None,
@@ -640,8 +773,12 @@ class Fitter:
         recency-weighted snap share over his games played on the team before the run."""
         need = int(load_params().player.ply_14_return_min_missed_games.value)
         sh = self.work.table("shares", s)
+        rows: list[tuple[float, float]] = []
+        if sh.is_empty():  # a season the store doesn't hold
+            return pl.DataFrame(
+                rows, schema={"baseline": pl.Float64, "return_share": pl.Float64}, orient="row"
+            )
         listed = {tuple(r) for r in self.work.table("listed", s).iter_rows()}
-        rows = []
         for (pid, team), grp in sh.sort("gsis_id", "team", "t").group_by(
             ["gsis_id", "team"], maintain_order=True
         ):
@@ -772,6 +909,7 @@ class Fitter:
 
 def fit_window(fitter: Fitter, w: Window) -> Out:
     out = Out()
+    fitter.fit_roles(w, out)  # v2: k for slot-prior stats is measured around these priors
     ks = fitter.fit_k(w, out)
     hs = fitter.fit_half_lives(w, ks, out)
     fitter.fit_g6(w, hs.get("efficiency"), out)
@@ -779,7 +917,6 @@ def fit_window(fitter: Fitter, w: Window) -> Out:
     fitter.fit_coa02(w, coef, out)
     fitter.fit_ol(w, out)
     fitter.fit_availability(w, hs.get("usage"), out)
-    fitter.fit_roles(w, out)
     return out
 
 

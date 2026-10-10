@@ -89,10 +89,14 @@ def seeded(key: str) -> np.random.Generator:
 
 
 def _prep(units: pl.DataFrame) -> pl.DataFrame:
+    """Optional column `group`: the entity an entity-cell belongs to (v2 ruling 3: for a
+    multi-cell stat, N counts distinct entities). Absent, each entity is its own group."""
     u = units
     for col in ("d", "c"):
         if col not in u.columns:
             u = u.with_columns(pl.lit(1.0).alias(col))
+    if "group" not in u.columns:
+        u = u.with_columns(pl.col("entity").alias("group"))
     return (
         u.select(
             pl.col("entity").cast(pl.Utf8),
@@ -100,6 +104,7 @@ def _prep(units: pl.DataFrame) -> pl.DataFrame:
             pl.col("x").cast(pl.Float64),
             pl.col("d").cast(pl.Float64),
             pl.col("c").cast(pl.Float64),
+            pl.col("group").cast(pl.Utf8),
         )
         .filter(pl.col("x").is_not_null() & pl.col("d").is_not_null() & pl.col("c").is_not_null())
         .sort("entity", "game", "x", "d", "c")
@@ -114,6 +119,7 @@ _HV_SCHEMA = {
     "v_b": pl.Float64,
     "n_a": pl.Float64,
     "n_b": pl.Float64,
+    "group": pl.Utf8,
 }
 
 
@@ -133,6 +139,7 @@ def half_values(
     e0 = np.cumsum(new_ent) - 1
     pair = np.cumsum(new_pair) - 1
     ents = pl.Series("entity", ent_all[new_ent])
+    groups = pl.Series("group", u["group"].to_numpy()[new_ent])
     n_pairs = int(pair[-1]) + 1
     x0, d0, c0 = (u[col].to_numpy() for col in ("x", "d", "c"))
     games_all = game_all
@@ -172,6 +179,7 @@ def half_values(
                     "v_b": sx[sb][idx] / sd[sb][idx],
                     "n_a": sc[sa][idx],
                     "n_b": sc[sb][idx],
+                    "group": groups.gather(idx.tolist()),
                 },
                 schema=_HV_SCHEMA,
             )
@@ -200,24 +208,28 @@ def _corr(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def k_from_halves(hv: pl.DataFrame, cfg: SplitHalfConfig) -> KFit:
-    """G1: k per m from the mean split-half r; BT-02 no-signal gate; inverse-variance mean."""
+    """G1: k per m from the mean split-half r; BT-02 no-signal gate; inverse-variance mean.
+    With a `group` column (v2 ruling 3), N (the 30-entity minimum, the Fisher-z interval and
+    the inverse-variance weights) counts distinct groups; r is still taken over entity-cells."""
     zq = NormalDist().inv_cdf(0.5 + cfg.confidence / 2)
     per_m: list[MFit] = []
     smallest_entities = 0
+    key = "group" if "group" in hv.columns else "entity"
     for m in cfg.m_grid:
         sub = hv.filter(pl.col("m") == m)
         rs, ns, sizes = [], [], []
         for b in range(cfg.splits):
             s = sub.filter(pl.col("split") == b).sort("entity")
-            if s.height < cfg.min_entities:
+            n_b = s[key].n_unique()
+            if n_b < cfg.min_entities:
                 continue
             rs.append(_corr(s["v_a"].to_numpy(), s["v_b"].to_numpy()))
-            ns.append(s.height)
+            ns.append(n_b)
             sizes.append(float((s["n_a"] + s["n_b"]).mean()) / 2.0)  # type: ignore[arg-type]
         if not rs:
             continue
         if not smallest_entities:
-            smallest_entities = sub["entity"].n_unique()
+            smallest_entities = sub[key].n_unique()
         r = float(np.mean(rs))
         n_ent = float(np.mean(ns))
         m_eff = float(np.mean(sizes))

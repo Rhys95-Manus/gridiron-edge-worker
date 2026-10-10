@@ -56,6 +56,13 @@ def return_factor(rows: pl.DataFrame, min_events: int) -> RateFit:
     return RateFit(math.fsum(rows["return_share"].to_list()) / den, n)
 
 
+def qb_starter_pool(rows: pl.DataFrame, min_share: float) -> pl.DataFrame:
+    """PRJ-06 (spec synced 2026-10-10): the QB rows keep only QBs with at least `min_share` of
+    the team's dropbacks in the team's previous game (column prev_dropback_share); RB, WR and
+    TE rows are unchanged."""
+    return rows.filter((pl.col("position") != "QB") | (pl.col("prev_dropback_share") >= min_share))
+
+
 def missed_game_rates(rows: pl.DataFrame, min_events: int) -> dict[str, RateFit]:
     """rows: position, missed (bool)."""
     if rows.is_empty():

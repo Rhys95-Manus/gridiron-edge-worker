@@ -59,6 +59,14 @@ def extract_season(reader: Reader, season: int, out: Path) -> None:
     with use_params(ActiveParams(load_params(), None)):
         snap = season_view(reader, season)
         ctx = MetricContext(snap, season, None, load_registry())
+        if ctx.table("pbp").is_empty():
+            # A season the store doesn't hold (e.g. a fixture slice): nothing to fit from.
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "done.json").write_text(
+                json.dumps({"season": season, "window": reader.window.name, "empty": True}),
+                encoding="utf-8",
+            )
+            return
         with capture_units() as sink:
             for sid in sorted(REGISTRY):
                 try:
@@ -266,22 +274,63 @@ def _missed(ctx: MetricContext, shares: pl.DataFrame) -> pl.DataFrame:
     """PRJ-06 rows: per team game after its first, players who played the previous team game
     (an offensive snap) and are on the team's weekly roster that week (any status), at QB / RB /
     WR / TE by roster position; missed = no offensive snap in this game. Byes don't count as
-    games; a player cut or traded is off the roster and left out."""
+    games; a player cut or traded is off the roster and left out. prev_dropback_share: his share
+    of the team's dropbacks in that previous game (PRJ-06's QB pool, spec synced 2026-10-10:
+    plays from scrimmage, garbage time kept, credited to the dropback QB)."""
+    schema = {"position": pl.Utf8, "missed": pl.Boolean, "prev_dropback_share": pl.Float64}
     rw = ctx.table("rosters_weekly")
     if rw.is_empty() or shares.is_empty():
-        return pl.DataFrame(schema={"position": pl.Utf8, "missed": pl.Boolean})
+        return pl.DataFrame(schema=schema)
     roster = (
         rw.filter(pl.col("gsis_id").is_not_null() & pl.col("position").is_in(list(SLOT_COUNTS)))
         .select("gsis_id", "team", pl.col("week").cast(pl.Int64), "position")
         .unique(["gsis_id", "team", "week"], keep="first", maintain_order=True)
     )
-    prev = shares.filter(pl.col("played")).select("gsis_id", "team", (pl.col("t") + 1).alias("t"))
+    prev = shares.filter(pl.col("played")).select(
+        "gsis_id", "team", (pl.col("t") + 1).alias("t"), pl.col("game_id").alias("prev_game")
+    )
     now = shares.select("gsis_id", "team", "t", "week", "game_id", "played")
     return (
         prev.join(now, on=["gsis_id", "team", "t"], how="inner")
         .join(roster, on=["gsis_id", "team", "week"], how="inner")
-        .select("position", (~pl.col("played")).alias("missed"), "gsis_id", "team", "week")
+        .join(
+            _dropback_shares(ctx).rename({"game_id": "prev_game"}),
+            on=["team", "prev_game", "gsis_id"],
+            how="left",
+        )
+        .select(
+            "position",
+            (~pl.col("played")).alias("missed"),
+            pl.col("prev_dropback_share").fill_null(0.0),
+            "gsis_id",
+            "team",
+            "week",
+        )
         .sort("team", "week", "gsis_id")
+    )
+
+
+def _dropback_shares(ctx: MetricContext) -> pl.DataFrame:
+    """(team, game_id, gsis_id, prev_dropback_share): each QB's share of his team's dropbacks
+    in a game (qb_dropback on plays from scrimmage, garbage time kept, the dropback QB)."""
+    db = (
+        ctx.plays.filter(
+            (pl.col("qb_dropback") == 1).fill_null(False)
+            & pf.scrimmage()
+            & pl.col("posteam").is_not_null()
+        )
+        .with_columns(pf.dropback_qb().alias("gsis_id"))
+        .filter(pl.col("gsis_id").is_not_null())
+    )
+    return (
+        db.group_by(pl.col("posteam").alias("team"), "game_id", "gsis_id")
+        .len()
+        .with_columns(
+            (pl.col("len") / pl.col("len").sum().over("team", "game_id"))
+            .cast(pl.Float64)
+            .alias("prev_dropback_share")
+        )
+        .select("team", "game_id", "gsis_id", "prev_dropback_share")
     )
 
 

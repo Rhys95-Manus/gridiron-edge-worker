@@ -30,6 +30,7 @@ _HV = {
     "v_b": pl.Float64,
     "n_a": pl.Float64,
     "n_b": pl.Float64,
+    "group": pl.Utf8,
 }
 
 
@@ -89,13 +90,46 @@ def wopr_value(target_weight: float, air_weight: float) -> ValueFn:
     return fn
 
 
+def wopr_residual_value(target_weight: float, air_weight: float) -> ValueFn:
+    """PLY-04 WOPR's residual from its slot prior (v2 ruling 1): the half's WOPR minus the mean
+    slot-prior WOPR over the half's player-games, weighted by team targets (column `p` = his
+    slot's prior WOPR in that target's game; one row per team target)."""
+    wopr = wopr_value(target_weight, air_weight)
+
+    def fn(rows: pl.DataFrame) -> pl.DataFrame:
+        w = wopr(rows)
+        cp = _fsum_by(rows.with_columns((pl.col("c") * pl.col("p")).alias("_cp")), "_cp")
+        cc = _fsum_by(rows, "c")
+        prior = pl.DataFrame(
+            [(e, cp[e] / cc[e]) for e in sorted(cp) if cc.get(e)],
+            schema={"entity": pl.Utf8, "_p": pl.Float64},
+            orient="row",
+        )
+        return w.join(prior, on="entity").select(
+            "entity", (pl.col("value") - pl.col("_p")).alias("value")
+        )
+
+    return fn
+
+
 def whole_half_values(
     rows: pl.DataFrame,
     cfg: SplitHalfConfig,
     seed_key: str,
     value: ValueFn,
     arm: str | None = None,
+    center: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
+    """`center` (entity, mu): subtracted from both halves' values (v2 ruling 2: a multi-cell
+    stat minus its cell's league mean in the same season). Optional rows column `group`: the
+    entity each entity-cell belongs to (ruling 3: N counts distinct entities)."""
+    groups = (
+        rows.select(pl.col("entity").cast(pl.Utf8), pl.col("group").cast(pl.Utf8)).unique()
+        if "group" in rows.columns
+        else None
+    )
+    if groups is not None:
+        rows = rows.drop("group")
     r = rows.with_columns(
         pl.col("entity").cast(pl.Utf8),
         pl.col("game").cast(pl.Utf8),
@@ -148,10 +182,21 @@ def whole_half_values(
                 )
                 .filter(pl.col("v_a").is_finite() & pl.col("v_b").is_finite())
             )
+            if center is not None:
+                hv = (
+                    hv.join(center, on="entity", how="inner")
+                    .with_columns(pl.col("v_a") - pl.col("mu"), pl.col("v_b") - pl.col("mu"))
+                    .drop("mu")
+                )
             frames.append(hv)
     if not frames:
         return pl.DataFrame(schema=_HV)
-    return pl.concat(frames).sort("split", "m", "entity")
+    out = pl.concat(frames)
+    if groups is not None:
+        out = out.join(groups, on="entity", how="left")
+    else:
+        out = out.with_columns(pl.col("entity").alias("group"))
+    return out.sort("split", "m", "entity")
 
 
 def whole_split_half_k(

@@ -305,6 +305,7 @@ class Projection(_Group):
     prj_02_tol_yards_per_pass_attempt: Param
     prj_03_first_td_crosscheck_max_gap: Param
     prj_06_season_runs: Param
+    prj_06_qb_min_prev_dropback_share: Param
     prj_07_bins: Param
     prj_07_min_forecasts_per_market_type: Param
     prj_07_min_forecasts_per_bin: Param
