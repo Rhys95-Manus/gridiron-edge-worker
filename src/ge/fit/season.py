@@ -65,6 +65,7 @@ def extract_season(reader: Reader, season: int, out: Path) -> None:
             (out / "done.json").write_text(
                 json.dumps({"season": season, "window": reader.window.name, "empty": True}),
                 encoding="utf-8",
+                newline="\n",
             )
             return
         with capture_units() as sink:
@@ -88,7 +89,9 @@ def extract_season(reader: Reader, season: int, out: Path) -> None:
         _write(_wopr(ctx), out / "wopr.parquet")
         _write(_def08(ctx), out / "def08.parquet")
     (out / "done.json").write_text(
-        json.dumps({"season": season, "window": reader.window.name}), encoding="utf-8"
+        json.dumps({"season": season, "window": reader.window.name}),
+        encoding="utf-8",
+        newline="\n",
     )
 
 

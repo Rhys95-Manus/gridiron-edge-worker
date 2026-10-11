@@ -17,8 +17,10 @@ def test_null_air_target_is_left_out_of_air_share(ctx) -> None:  # type: ignore[
     c = build_context(ctx.snap)
     plays = c.plays
     tgt = (pl.col("pass") == 1) & pl.col("receiver_player_id").is_not_null()
-    first = plays.filter(tgt & pl.col("air_yards").is_not_null()).sort("game_id", "play_id").row(
-        0, named=True
+    first = (
+        plays.filter(tgt & pl.col("air_yards").is_not_null())
+        .sort("game_id", "play_id")
+        .row(0, named=True)
     )
     hit = (pl.col("game_id") == first["game_id"]) & (pl.col("play_id") == first["play_id"])
     c.__dict__["plays"] = plays.with_columns(

@@ -203,7 +203,7 @@ def prepare(
         extract_season(reader, s, d)
         meta = json.loads(done.read_text())
         meta.update({"data_as_of": as_of.isoformat(), "digest": reader.digest(), "store": store})
-        done.write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
+        done.write_text(json.dumps(meta, sort_keys=True), encoding="utf-8", newline="\n")
 
 
 # ---------------------------------------------------------------- k
