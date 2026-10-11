@@ -481,13 +481,20 @@ REGISTRY: dict[str, Entry] = {
             "PLY-32",
             sk.ply_32,
             _stats(
-                # Prior = his PLY-06 red-zone (inside the 20) share.
+                # Prior = his red-zone target share (spec synced 2026-10-10), which shrinks
+                # toward his PLY-03 target share with a fitted k (ruling 2026-10-10).
                 StatDef(
                     "end_zone_share",
                     U,
                     "player.ply_32_k",
-                    Parent("PLY-06", "opportunity_share", "inside_20", "stint"),
-                )
+                    Parent("PLY-32", "red_zone_target_share", "all", "stint"),
+                ),
+                StatDef(
+                    "red_zone_target_share",
+                    U,
+                    FIT_ONLY,
+                    Parent("PLY-03", "target_share", "all", "stint"),
+                ),
             ),
         ),
         Entry(

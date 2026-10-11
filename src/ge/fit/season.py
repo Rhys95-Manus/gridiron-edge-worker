@@ -277,7 +277,12 @@ def _missed(ctx: MetricContext, shares: pl.DataFrame) -> pl.DataFrame:
     games; a player cut or traded is off the roster and left out. prev_dropback_share: his share
     of the team's dropbacks in that previous game (PRJ-06's QB pool, spec synced 2026-10-10:
     plays from scrimmage, garbage time kept, credited to the dropback QB)."""
-    schema = {"position": pl.Utf8, "missed": pl.Boolean, "prev_dropback_share": pl.Float64}
+    schema = {
+        "position": pl.Utf8,
+        "missed": pl.Boolean,
+        "prev_dropback_share": pl.Float64,
+        "prev_snap_share": pl.Float64,
+    }
     rw = ctx.table("rosters_weekly")
     if rw.is_empty() or shares.is_empty():
         return pl.DataFrame(schema=schema)
@@ -287,7 +292,11 @@ def _missed(ctx: MetricContext, shares: pl.DataFrame) -> pl.DataFrame:
         .unique(["gsis_id", "team", "week"], keep="first", maintain_order=True)
     )
     prev = shares.filter(pl.col("played")).select(
-        "gsis_id", "team", (pl.col("t") + 1).alias("t"), pl.col("game_id").alias("prev_game")
+        "gsis_id",
+        "team",
+        (pl.col("t") + 1).alias("t"),
+        pl.col("game_id").alias("prev_game"),
+        pl.col("share").alias("prev_snap_share"),  # his offensive snap share there (PRJ-06)
     )
     now = shares.select("gsis_id", "team", "t", "week", "game_id", "played")
     return (
@@ -302,6 +311,7 @@ def _missed(ctx: MetricContext, shares: pl.DataFrame) -> pl.DataFrame:
             "position",
             (~pl.col("played")).alias("missed"),
             pl.col("prev_dropback_share").fill_null(0.0),
+            "prev_snap_share",
             "gsis_id",
             "team",
             "week",

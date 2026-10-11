@@ -38,7 +38,7 @@ from ge.config import ATTRIBUTION, FITTED_ROOT, REPO_ROOT, Fitting, load_params
 from ge.fit.availability import (
     missed_game_rates,
     practice_base_rates,
-    qb_starter_pool,
+    prj06_pool,
     return_factor,
 )
 from ge.fit.centering import center_season_cell, residual
@@ -46,6 +46,7 @@ from ge.fit.halflife import HLoss, choose_half_life, half_life_losses, merge
 from ge.fit.history import Reader
 from ge.fit.logistic import fit_logistic
 from ge.fit.ol_factor import ol_absence_factor
+from ge.fit.parent import parent_cell_fits, parent_half_values, season_parent_residual
 from ge.fit.ridge_cv import choose_penalty, g6_cv_losses
 from ge.fit.season import extract_season, unit_file
 from ge.fit.splithalf import (
@@ -88,6 +89,14 @@ GAPS = {
     ("PLY-19", "epa_gap"),
 }
 DEF04 = ("targets", "receptions", "yards", "tds", "epa_diff")
+# BT-02 v3 (spec synced 2026-10-10): stats tested on cell value minus the player's own parent.
+PARENTS = {
+    ("PLY-06", "opportunity_share"): ("PLY-06", "opportunity_share_overall"),
+    ("PLY-07", "opportunity_share"): ("PLY-06", "opportunity_share_overall"),
+    ("PLY-33", "target_share"): ("PLY-03", "target_share"),
+    ("PLY-32", "end_zone_share"): ("PLY-32", "red_zone_target_share"),
+    ("PLY-32", "red_zone_target_share"): ("PLY-03", "target_share"),  # ruling 2026-10-10
+}
 # BT-02 (ruling 2026-10-08): a redistribution rule, not a stabilizing skill.
 KEEP_INITIAL = {("PLY-15", "target_share"), ("PLY-15", "carry_share")}
 OVERLAY = {
@@ -252,7 +261,8 @@ class Fitter:
         are the same in every window."""
         k = (key, s)
         if k not in self._hv:
-            self._hv[k] = make(f"{self.fit_version}/{seed_key or key}/{s}")
+            # BT-02 (spec synced 2026-10-10): seeds keyed by stat key and season only.
+            self._hv[k] = make(f"{seed_key or key}/{s}")
         return self._hv[k]
 
     def unit_rows(self, sid: str, stat: str, cell: str | None, s: int) -> pl.DataFrame:
@@ -460,12 +470,71 @@ class Fitter:
         ck = f"{key}@{w.name}" if isinstance(sd.prior, Role) else key
         return self._half(ck, s, lambda seed: half_values(rows, sp, seed), seed_key=key)
 
+    # ---------------------------------------------------- v3: parent-residual stats
+
+    def parent_hv(self, sid: str, stat: str, s: int, seed_prefix: str = "") -> pl.DataFrame:
+        """One season's half values of (cell value - his parent value in the same half)."""
+        key = fit_k_key(sid, stat, None)
+        psid, pstat = PARENTS[(sid, stat)]
+        cu = self.unit_rows(sid, stat, None, s)
+        pu = self.unit_rows(psid, pstat, None, s)
+        if cu.is_empty() or pu.is_empty():
+            return pl.DataFrame()
+        return self._half(
+            f"{seed_prefix}{key}",
+            s,
+            lambda seed: parent_half_values(cu, pu, self.cfg.split, seed),
+        )
+
+    def parent_fits(
+        self, sid: str, stat: str, w: Window, seed_prefix: str = ""
+    ) -> tuple[KFit, dict[str, KFit]]:
+        """Pooled k and each cell's own k (cells meeting the minimum alone)."""
+        hvs = [h for s in w.seasons if (h := self.parent_hv(sid, stat, s, seed_prefix)).height]
+        if not hvs:
+            empty = KFit("missing", None, 0, (), "no units in the window")
+            return empty, {}
+        return parent_cell_fits(pl.concat(hvs), self.cfg.split)
+
+    def _fit_parent_k(
+        self, sid: str, sd: StatDef, pkey: str | None, w: Window, out: Out
+    ) -> float | None:
+        key = fit_k_key(sid, sd.stat, None)
+        initial = _initial(pkey)
+        used = [s for s in w.seasons if self.parent_hv(sid, sd.stat, s).height]
+        if not used:
+            why = (
+                "no FTN training data"
+                if max(w.seasons) < self.ftn_first and not self._has_rows(sid, sd, None, w)
+                else "no player reaches 2m units with a parent value (BT-02 minimum)"
+            )
+            out.missing[key] = why + ("" if initial is None else "; initial k kept")
+            return None
+        pooled, per_cell = self.parent_fits(sid, sd.stat, w)
+        self._record_k(out, key, sid, pooled, used, initial, sd, how="cell minus own parent")
+        cells = sorted({c for s in used for c in self.unit_rows(sid, sd.stat, None, s)["cell"]})
+        if len(cells) > 1:
+            for c in cells:
+                ckey = fit_k_key(sid, sd.stat, c)
+                if c in per_cell:
+                    self._record_k(
+                        out, ckey, sid, per_cell[c], used, initial, sd, how="cell minus own parent"
+                    )
+                else:
+                    out.missing[ckey] = "below BT-02's minimum alone; the pooled k applies"
+        return pooled.k if pooled.status == "fitted" else None
+
     def fit_k(self, w: Window, out: Out) -> dict[str, float]:
         """Every k; returns the fitted k per key (for the half-life fit)."""
         got: dict[str, float] = {}
         for sid, sd, cell, pkey in _k_targets():
             if (sid, sd.stat) == ("COA-02", "go_over_expected"):
                 continue  # needs the window's p_go: fit_coa02
+            if (sid, sd.stat) in PARENTS:
+                kp = self._fit_parent_k(sid, sd, pkey, w, out)
+                if kp is not None:
+                    got[fit_k_key(sid, sd.stat, None)] = kp
+                continue
             key = fit_k_key(sid, sd.stat, cell)
             parts = [(s, self.half_values(sid, sd, cell, s, key, w, out)) for s in w.seasons]
             used = [s for s, hv in parts if hv.height]
@@ -543,6 +612,7 @@ class Fitter:
         used: list[int],
         initial: float | None,
         sd: StatDef,
+        how: str = "split-half (BT-02)",
     ) -> None:
         if fit.status == "fitted" and fit.k is not None:
             used_m = ", ".join(f"{p.m}:{p.r:.3f}" for p in fit.per_m if p.signal)
@@ -550,7 +620,7 @@ class Fitter:
                 key,
                 sid,
                 fit.k,
-                f"split-half (BT-02), m:r = {used_m}",
+                f"{how}, m:r = {used_m}",
                 used,
                 fit.entities,
                 initial,
@@ -564,6 +634,34 @@ class Fitter:
 
     # ---------------------------------------------------------- G3 half-lives
 
+    def _parent_half_life(
+        self, sid: str, stat: str, w: Window, pooled_k: float, out: Out
+    ) -> dict[float, HLoss] | None:
+        """Ruling 2026-10-10: a parent-residual stat's half-life rows are each cell unit minus
+        his parent share over the same season, predicted toward 0, with each cell's own k (the
+        pooled k where the cell has none)."""
+        psid, pstat = PARENTS[(sid, stat)]
+        losses = []
+        for s in w.seasons:
+            cu = self.unit_rows(sid, stat, None, s)
+            pu = self.unit_rows(psid, pstat, None, s)
+            if cu.is_empty() or pu.is_empty():
+                continue
+            res = season_parent_residual(cu, pu)
+            for c in sorted(res["cell"].unique().to_list()):
+                ck = fit_k_key(sid, stat, c)
+                k = float(out.values[ck]["value"]) if ck in out.values else pooled_k
+                rc = res.filter(pl.col("cell") == c)
+                gu = rc.with_columns(
+                    _ent(rc, ["entity_id", "team", "cell"]).alias("entity"),
+                    (-pl.col("g")).rank("dense").over(["entity_id", "team"]).alias("gi"),
+                ).select("entity", "gi", "x", "d", "c")
+                losses.append(half_life_losses(gu, k, self.cfg.half_lives, prior=0.0))
+        if not losses:
+            return None
+        m = merge(losses)
+        return m if all(v.base > 0 for v in m.values()) else None
+
     def fit_half_lives(self, w: Window, ks: dict[str, float], out: Out) -> dict[str, float]:
         per_class: dict[str, list[dict[float, HLoss]]] = defaultdict(list)
         for sid, sd, cell, _ in _k_targets():
@@ -571,6 +669,11 @@ class Fitter:
             if key not in ks or (sid, sd.stat) in GAPS or sid in ("DEF-04", "DEF-08"):
                 continue
             if (sid, sd.stat) in (("PLY-04", "wopr"), *ALIASES):
+                continue
+            if (sid, sd.stat) in PARENTS:
+                m = self._parent_half_life(sid, sd.stat, w, ks[key], out)
+                if m is not None:
+                    per_class[sd.half_life].append(m)
                 continue
             losses = []
             for s in w.seasons:
@@ -682,7 +785,7 @@ class Fitter:
                     "x": r,
                 }
             )
-            hvs.append(half_values(rows, self.cfg.split, f"{self.fit_version}/{key}/{w.name}/{s}"))
+            hvs.append(half_values(rows, self.cfg.split, f"{key}/{s}"))  # stat + season seeds
             used.append(s)
         hv = [h for h in hvs if h.height]
         if not hv:
@@ -726,15 +829,17 @@ class Fitter:
             else:
                 out.put(key, "PLY-14", rf.value, f"P(played | {status})", w.seasons, rf.n, None)
         miss = cat("missed")
-        qb_min = float(load_params().projection.prj_06_qb_min_prev_dropback_share.value)
+        prj = load_params().projection
+        qb_min = float(prj.prj_06_qb_min_prev_dropback_share.value)
+        snap_min = float(prj.prj_06_min_prev_snap_share.value)
         if miss.height:
-            miss = qb_starter_pool(miss, qb_min)  # PRJ-06 (spec synced 2026-10-10)
+            miss = prj06_pool(miss, qb_min, snap_min)  # PRJ-06 (spec synced 2026-10-10)
         for pos, rf in missed_game_rates(miss, self.cfg.min_events).items():
             key = f"fit:PRJ-06/missed/{pos}"
             pool = (
                 f"QBs with >= {qb_min:.0%} of team dropbacks in the previous game"
                 if pos == "QB"
-                else "played last game"
+                else f">= {snap_min:.0%} of team offensive snaps in the previous game"
             )
             if rf.value is None:
                 out.missing[key] = rf.reason or "missing"

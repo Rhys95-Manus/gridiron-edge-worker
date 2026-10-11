@@ -856,19 +856,37 @@ def ply_31(ctx: MetricContext) -> pl.DataFrame:
 
 def ply_32(ctx: MetricContext) -> pl.DataFrame:
     """PLY-32: end-zone targets (air_yards >= yardline_100) as a share of team end-zone
-    targets in the games he played. Min 5 team end-zone targets. Prior = his PLY-06 share:
-    raises until Phase 3e."""
+    targets in the games he played. Min 5 team end-zone targets. Prior = his red-zone target
+    share (spec synced 2026-10-10): his targets inside the 20 as a share of team targets inside
+    the 20 in the games he played, emitted as `red_zone_target_share`, which shrinks toward his
+    PLY-03 target share (ruling 2026-10-10)."""
+    who = pl.col("receiver_player_id")
     ez = pf.usage_target() & (pl.col("air_yards") >= pl.col("yardline_100")).fill_null(False)
-    u = share_units(ctx, ez, pl.lit("all"), pl.col("receiver_player_id"))
-    return _rate(
-        ctx,
-        "PLY-32",
-        "end_zone_share",
-        u,
-        ["all"],
-        stints(ctx),
-        "usage",
-        _P.ply_32_min_team_end_zone_targets.value,
+    rz = pf.usage_target() & (
+        pl.col("yardline_100") <= _P.ply_06_zone_20_yardline_100.value
+    ).fill_null(False)
+    return pl.concat(
+        [
+            _rate(
+                ctx,
+                "PLY-32",
+                "end_zone_share",
+                share_units(ctx, ez, pl.lit("all"), who),
+                ["all"],
+                stints(ctx),
+                "usage",
+                _P.ply_32_min_team_end_zone_targets.value,
+            ),
+            _rate(
+                ctx,
+                "PLY-32",
+                "red_zone_target_share",
+                share_units(ctx, rz, pl.lit("all"), who),
+                ["all"],
+                stints(ctx),
+                "usage",
+            ),
+        ]
     )
 
 

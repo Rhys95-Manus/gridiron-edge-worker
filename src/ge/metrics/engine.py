@@ -374,7 +374,15 @@ class StatDef:
         key = self.k if isinstance(self.k, str) else self.k.get(cell)
         if key is None:
             raise KeyError(f"{spec_id} {self.stat}: no k for cell {cell!r}")
-        status, value, why = current_params().fit_status(fit_k_key(spec_id, self.stat, group))
+        a = current_params()
+        if group is None:
+            # Phase 3e v3: a cell that met BT-02's minimum alone has its own fitted k.
+            status, value, why = a.fit_status(fit_k_key(spec_id, self.stat, cell))
+            if status == "fitted" and value is not None:
+                return value, None
+            if status == "no_signal":
+                return math.inf, NO_SIGNAL
+        status, value, why = a.fit_status(fit_k_key(spec_id, self.stat, group))
         if status == "fitted" and value is not None:
             return value, None
         if status == "no_signal":

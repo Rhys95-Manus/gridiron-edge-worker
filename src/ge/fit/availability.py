@@ -63,6 +63,15 @@ def qb_starter_pool(rows: pl.DataFrame, min_share: float) -> pl.DataFrame:
     return rows.filter((pl.col("position") != "QB") | (pl.col("prev_dropback_share") >= min_share))
 
 
+def prj06_pool(rows: pl.DataFrame, qb_min: float, snap_min: float) -> pl.DataFrame:
+    """PRJ-06 pools (spec synced 2026-10-10): QBs with at least `qb_min` of the team's dropbacks
+    in its previous game; RB, WR and TE with at least `snap_min` of the team's offensive snaps
+    in its previous game (column prev_snap_share)."""
+    return qb_starter_pool(rows, qb_min).filter(
+        (pl.col("position") == "QB") | (pl.col("prev_snap_share") >= snap_min)
+    )
+
+
 def missed_game_rates(rows: pl.DataFrame, min_events: int) -> dict[str, RateFit]:
     """rows: position, missed (bool)."""
     if rows.is_empty():
