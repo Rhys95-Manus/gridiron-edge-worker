@@ -239,7 +239,6 @@ environment:
   env_fit_last_season: {spec_id: [ENV-01, ENV-02, ENV-03, ENV-04], value: 2024, status: initial, source: 'League-wide coefficients fit on 2016–2024 games'}
 
 projection:
-  prj_01_model_half_life_games: {spec_id: PRJ-01, value: 6, status: initial, source: 'recency-weighted with h = 6 games'}
   prj_01_anchor_tolerance_points: {spec_id: PRJ-01, value: 0.25, status: initial, source: 'within 0.25 points'}
   prj_02_runs_per_game: {spec_id: PRJ-02, value: 20000, status: initial, source: 'N = 20,000 runs per game'}
   prj_02_tol_points_per_team_game: {spec_id: PRJ-02, value: 0.7, status: initial, source: 'points per team-game ± 0.7'}

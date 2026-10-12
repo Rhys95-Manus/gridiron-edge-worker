@@ -296,7 +296,6 @@ class Environment(_Group):
 
 
 class Projection(_Group):
-    prj_01_model_half_life_games: Param
     prj_01_anchor_tolerance_points: Param
     prj_02_runs_per_game: Param
     prj_02_tol_points_per_team_game: Param

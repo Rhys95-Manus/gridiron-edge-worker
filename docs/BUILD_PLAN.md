@@ -283,6 +283,20 @@ and the seasons used; never overwrite the initial file. Nothing may read
 - [ ] Test: any read of 2025 data fails the run
 - [ ] Report: every fitted value beside its initial value, with the seasons used; you review the biggest changes
 
+### Phase 3f — Expected production metric (PLY-35)
+
+**Spec IDs:** PLY-35, DATA-04 (ff\_opportunity). **Done when:** ff\_opportunity is ingested for 2016 onward with the usual timestamps and attribution, PLY-35 computes from snapshots with a golden test, and its k comes from the Phase 3e method. Added 2026-10-08 from the fantasy-analyst review.
+
+```text
+Phase 3f. Add nflverse ff_opportunity (load_ff_opportunity, weekly) to
+ingest under DATA-04, tests first, cited, with its CC-BY-SA attribution.
+Confirm its columns from the real data and the nflverse data dictionary
+before writing PLY-35; never assume column names. Build PLY-35 (actual minus
+expected rushing and receiving yards, receptions and TDs per player-team
+stint) with a golden test against the independent oracle, and fit its k
+with the Phase 3e fitter for every window. Ask before guessing.
+```
+
 ### Phase 4 — Team ratings (model mode)
 
 **Spec IDs:** PRJ-01a, G6, COA-07. **Done when:** ratings recover planted effects on synthetic data and run walk-forward on real seasons.
@@ -290,8 +304,8 @@ and the seasons used; never overwrite the initial file. Nothing may read
 ```text
 Phase 4. Implement PRJ-01a in src/ge/models/ratings.py: weighted ridge
 ratings for offense and defense, pass and run separately, with home-field,
-rest, travel and time-zone terms (COA-07), recency half-life from
-params.yaml, and conversion to expected points per drive. Ratings for any
+rest, travel and time-zone terms (COA-07), the efficiency half-life from
+the active fit, and the points conversion defined in PRJ-01a. Ratings for any
 game must be built only from snapshot(game_id, as_of). Fit the ridge penalty
 from the Phase 3e fit for each walk-forward season (never refit here). Also write a
 synthetic-data generator that plants known team effects so the fitter can be
@@ -301,7 +315,7 @@ the simulator.
 
 - [ ] Test: on synthetic plays with planted effects, recovered ratings correlate above 0.9 with the truth and the home term is within 10% of the planted value
 - [ ] Test: ratings for a game change by zero when any later game is altered (reuses the Phase 2 leakage harness)
-- [ ] Report: for each week of 2022–2025, the rating-implied spread vs the closing `spread_line`, with mean absolute difference per season. You review it; no pass/fail, because beating the market is Phase 8's question
+- [ ] Report: for each week of 2021–2024 (walk-forward windows; never 2025), the rating-implied spread and total vs the closing `spread_line` and total\_line, with mean absolute difference and mean signed difference (bias) per season, plus each window's COA-07 coefficients and points-conversion slope c with standard errors. You review it; no pass/fail, because beating the market is Phase 8's question
 - [ ] Live check: `uv run ge ratings --season 2026 --through-week <last>` prints all 32 teams ranked, with each rating's standard error
 
 ### Phase 5 — Game simulation
@@ -420,7 +434,7 @@ feature and confirm the leakage guard stops the run. Tests first.
 
 ### Phase 8b — Historical Performance Report
 
-**Spec IDs:** BT-07a to BT-07e. **Done when:** one command produces the 2021–2024 report from production code, the 2025 holdout refuses to run without a frozen tag, and results reach Base44.
+**Spec IDs:** BT-07a to BT-07f. **Done when:** one command produces the 2021–2024 report from production code, the 2025 holdout refuses to run without a frozen tag, and results reach Base44.
 
 ```text
 Phase 8b. Implement BT-07 from MODEL_SPEC.md in src/ge/backtest/report.py
