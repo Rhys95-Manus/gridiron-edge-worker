@@ -318,6 +318,33 @@ the simulator.
 - [ ] Report: for each week of 2021–2024 (walk-forward windows; never 2025), the rating-implied spread and total vs the closing `spread_line` and total\_line, with mean absolute difference and mean signed difference (bias) per season, plus each window's COA-07 coefficients and points-conversion slope c with standard errors. You review it; no pass/fail, because beating the market is Phase 8's question
 - [ ] Live check: `uv run ge ratings --season 2026 --through-week <last>` prints all 32 teams ranked, with each rating's standard error
 
+### Phase 4b — Ratings calibration and week-1 quarterback
+
+```text
+Phase 4b. Implement the 2026-10-13 decisions in MODEL_SPEC.md.
+(1) PRJ-01a calibration: for each window, rate every training-season game
+that can be rated point-in-time, then fit actual home margin = a + b x raw
+spread and actual total = a_t + b_t x raw total by least squares, on actual
+results only, never closing lines. a applies only at non-neutral sites.
+Store a, b, a_t, b_t and their standard errors in the window's
+config/ratings_fitted file. Season S's calibration reads seasons 2016 to
+S - 1 only; never 2025.
+(2) G4 week-1 quarterback: before a team's first game of a season, use QB1
+on the latest depth chart available at decision time; same passer as last
+season = no change, anyone else = new quarterback, no chart = unrated.
+Tests first: synthetic games with a planted compression and home edge must
+recover b and a within 3 SE; a leakage test shows season S's calibration
+reads no game from S or later; week-1 tests cover same QB, new QB and no
+depth chart.
+Rerun the Phase 4 report for 2021-2024 with raw and calibrated columns side
+by side. Acceptance, every season: the 95% interval for the calibrated
+spread slope against actual results covers 1, the slope against closing
+lines is within 0.85-1.15, spread bias is within +/-0.5 points, and week-1
+games are rated except where no depth chart exists. If acceptance fails,
+stop and report; never tune on 2021-2024 results. Tag phase-4-verified only
+after CI is green on GitHub and Rhys has reviewed the report.
+```
+
 ### Phase 5 — Game simulation
 
 **Spec IDs:** PRJ-02, PRJ-01b, MTC-01 to MTC-05, MTC-07 (applied with every weight at zero until Phase 8 fits them), ENV-01 to ENV-04. **Done when:** the simulator reproduces a real season's league averages within the spec's tolerances, is fully reproducible, and the market-anchor solver works.
@@ -332,6 +359,12 @@ touchdowns. Store per-game results as compact arrays (not per-play logs).
 Then implement PRJ-01b: solve for team ratings, holding pass/run mix from
 01a, so the simulated median margin and median total match a given spread
 and total within 0.25 points. Tests first.
+Requirements from the Phase 4 report (decision 2026-10-13): simulate
+team-specific pace (plays and drives per team), never league drives per
+team-game; the Phase 5 report repeats the Phase 4 pace check and it must
+be flat; simulated margins and totals pass the same calibration check
+against actual results (slope near 1, home bias near 0) before any prop
+is priced.
 ```
 
 - [ ] Test: simulating all 2024 games from true pre-game snapshots reproduces league averages within PRJ-02 tolerances: points per team-game ±0.7, plays ±2, pass rate ±1.5 points, yards per attempt ±0.2
