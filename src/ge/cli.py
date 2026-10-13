@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 from typing import Annotated
 
@@ -296,6 +297,129 @@ def fit(
             f"{name}: {len(out.values)} fitted, {len(out.no_signal)} no detectable signal, "
             f"{len(out.missing)} missing"
         )
+    print(f"report: {path}")
+    print(ATTRIBUTION)
+
+
+def _when(as_of: str | None) -> dt.datetime | None:
+    if as_of is None:
+        return None
+    when = dt.datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+    if when.tzinfo is None:
+        raise typer.BadParameter("--as-of needs a time zone, e.g. 2026-10-03T17:00:00Z")
+    return when
+
+
+@app.command()
+def ratings(
+    season: Annotated[int, typer.Option(help="Season year, e.g. 2026.")],
+    through_week: Annotated[
+        int, typer.Option("--through-week", "--week", help="Last completed week to include.")
+    ],
+    as_of: AsOf = None,
+    data_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+    ratings_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+) -> None:
+    """PRJ-01a: all 32 teams ranked by rating-implied neutral-site margin, with each rating's
+    standard error. The hidden root options (tests) only choose where to read."""
+    from ge.config import ATTRIBUTION
+    from ge.ingest.raw import DATA_ROOT
+    from ge.metrics.job import anchor_game
+    from ge.models.ratings import (
+        RATING_TYPES,
+        RATINGS_FITTED_ROOT,
+        neutral_margins,
+        ratings_for_game,
+    )
+    from ge.store.holdout import refuse_holdout
+
+    refuse_holdout(season, "ge ratings")  # BT-07b: before any read
+    root = data_root or DATA_ROOT
+    game = anchor_game(season, through_week, root)
+    got = ratings_for_game(
+        game, _when(as_of), root=root, ratings_root=ratings_root or RATINGS_FITTED_ROOT
+    )
+    ranked = neutral_margins(got.table, got.pass_rate, got.consts)
+    print(
+        f"PRJ-01a ratings, season {season} through week {through_week} (as of "
+        f"{got.as_of.isoformat()}); fit {got.params.fit_version}/{got.params.window}, "
+        f"ratings constants {got.consts.version}/{got.consts.window}"
+    )
+    print("EPA/play ratings with approximate standard errors (penalty treated as known)")
+    header = ["rank", "team", "margin", "se", "pass_rate", *RATING_TYPES]
+    print("  ".join(header))
+    vals, ses = got.table.values, got.table.se
+    for i, r in enumerate(ranked.iter_rows(named=True), start=1):
+        t = r["team"]
+        cells = [f"{vals[(t, k)]:+.3f} ({ses[(t, k)]:.3f})" for k in RATING_TYPES]
+        print(
+            f"{i:>4}  {t:<4}  {r['margin']:+.2f}  {r['se']:.2f}  {got.pass_rate[t]:.3f}  "
+            + "  ".join(cells)
+        )
+    for note in got.notes:
+        print(f"note: {note}")
+    print(ATTRIBUTION)
+
+
+@app.command("ratings-fit")
+def ratings_fit(
+    as_of: Annotated[
+        str, typer.Option(help="Data cut: each dataset's latest pull at or before this time.")
+    ],
+    window: Annotated[
+        str, typer.Option(help="S2021, S2022, S2023, S2024, live, or all (default).")
+    ] = "all",
+    version: Annotated[str, typer.Option(help="Folder under config/ratings_fitted/.")] = "r1",
+    data_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+    out_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+) -> None:
+    """PRJ-01a / COA-07: fit each window's COA-07 coefficients, league constants and c;
+    writes config/ratings_fitted/<version>/<window>.yaml."""
+    from ge.config import ATTRIBUTION
+    from ge.ingest.raw import DATA_ROOT
+    from ge.models.ratings import RATINGS_FITTED_ROOT
+    from ge.models.ratings_window import run_ratings_fit
+    from ge.store.holdout import Window
+
+    when = _when(as_of)
+    assert when is not None
+    windows = Window.walk_forward() if window == "all" else [Window.named(window)]
+    paths = run_ratings_fit(
+        windows,
+        version,
+        when,
+        root=data_root or DATA_ROOT,
+        out_root=out_root or RATINGS_FITTED_ROOT,
+    )
+    for name, path in paths.items():
+        print(f"{name}: {path}")
+    print(ATTRIBUTION)
+
+
+@app.command("ratings-report")
+def ratings_report(
+    seasons: Annotated[str, typer.Option(help="Walk-forward seasons, e.g. 2021-2024.")],
+    data_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+    ratings_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
+    out_dir: Annotated[Path | None, typer.Option(hidden=True)] = None,
+) -> None:
+    """PRJ-01a: the Phase 4 walk-forward report (rating-implied lines vs closing lines)."""
+    from ge.config import ATTRIBUTION
+    from ge.ingest.raw import DATA_ROOT
+    from ge.models.ratings import RATINGS_FITTED_ROOT
+    from ge.models.ratings_report import REPORT_ROOT, report_settings, write_report
+    from ge.store.holdout import refuse_holdout
+
+    years = _seasons(seasons)
+    for s in years:
+        refuse_holdout(s, "ge ratings-report")  # BT-07b: before any read
+    path = write_report(
+        years,
+        report_settings(),
+        root=data_root or DATA_ROOT,
+        ratings_root=ratings_root or RATINGS_FITTED_ROOT,
+        out_dir=out_dir or REPORT_ROOT,
+    )
     print(f"report: {path}")
     print(ATTRIBUTION)
 

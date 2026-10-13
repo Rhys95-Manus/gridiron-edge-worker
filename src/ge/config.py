@@ -297,6 +297,11 @@ class Environment(_Group):
 
 class Projection(_Group):
     prj_01_anchor_tolerance_points: Param
+    prj_01_sensitivity_first_season: Param
+    prj_01_sensitivity_last_season: Param
+    prj_01_sensitivity_low_scale: Param
+    prj_01_sensitivity_high_scale: Param
+    prj_01_pace_bins: Param
     prj_02_runs_per_game: Param
     prj_02_tol_points_per_team_game: Param
     prj_02_tol_plays_per_team_game: Param
