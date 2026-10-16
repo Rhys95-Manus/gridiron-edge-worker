@@ -26,11 +26,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.phase3)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="package", autouse=True)
 def _no_repo_fit(tmp_path_factory: pytest.TempPathFactory):  # type: ignore[no-untyped-def]
     """Phase 3 tests run against the initial params unless a test points at its own fitted
     root (use_fitted_root); the repo's active Phase 3e fit (config/params_fitted) would
-    otherwise change which stats raise."""
+    otherwise change which stats raise. Package-scoped: one empty root shared by every
+    Phase 3 test (as before), torn down after the last test in tests/phase3, so later
+    phases in the same session see the repo's fits (fix 2026-10-16)."""
     from ge.config import use_fitted_root
 
     with use_fitted_root(tmp_path_factory.mktemp("no_fit")):
