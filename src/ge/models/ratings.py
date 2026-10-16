@@ -31,6 +31,7 @@ from ge.config import REPO_ROOT
 from ge.ingest.raw import DATA_ROOT
 
 if TYPE_CHECKING:
+    from ge.config import FittedFile
     from ge.metrics.coaching import CoachingRegistry
     from ge.metrics.context import MetricContext
 
@@ -65,8 +66,76 @@ LEAGUE_KEYS: Mapping[str, str] = {
     "league_drives": "fit:PRJ-01/league_drives_per_team_game",
 }
 SE_SUFFIX = "/se"
+# Phase 4b calibration (decision log 2026-10-13): actual home margin = a x 1[non-neutral] +
+# b x raw spread; actual total = a_t + b_t x raw total.
+CALIB_KEYS: Mapping[str, str] = {
+    "a": "fit:PRJ-01/calib_a",
+    "b": "fit:PRJ-01/calib_b",
+    "a_t": "fit:PRJ-01/calib_a_t",
+    "b_t": "fit:PRJ-01/calib_b_t",
+    "a_se": "fit:PRJ-01/calib_a/se",
+    "b_se": "fit:PRJ-01/calib_b/se",
+    "a_t_se": "fit:PRJ-01/calib_a_t/se",
+    "b_t_se": "fit:PRJ-01/calib_b_t/se",
+    "ab_cov": "fit:PRJ-01/calib_ab_cov",
+    "ab_t_cov": "fit:PRJ-01/calib_ab_t_cov",
+}
 
 FloatArray = npt.NDArray[np.float64]
+
+
+@dataclass(frozen=True)
+class Calibration:
+    """PRJ-01a calibration of one window: OLS coefficients, standard errors, the covariance
+    of each pair, and n (rated training games)."""
+
+    a: float
+    b: float
+    a_t: float
+    b_t: float
+    a_se: float
+    b_se: float
+    a_t_se: float
+    b_t_se: float
+    ab_cov: float
+    ab_t_cov: float
+    n: int
+
+
+def calibrate(games: pl.DataFrame) -> Calibration:
+    """PRJ-01a calibration (decision log 2026-10-13): least squares on actual results only.
+    margin = a x 1[non-neutral] + b x raw_spread (no other intercept: a is the home edge and
+    never applies at a neutral site); total = a_t + b_t x raw_total. Columns: raw_spread,
+    raw_total, neutral, margin, total. Standard errors are OLS, homoskedastic."""
+    d = games.select("raw_spread", "raw_total", "neutral", "margin", "total")
+    n = d.height
+    if n < 3:
+        raise ValueError(f"PRJ-01a: calibration needs at least 3 rated games, got {n}")
+    nn = (~d["neutral"].cast(pl.Boolean)).cast(pl.Float64).to_numpy()
+    xs = d["raw_spread"].cast(pl.Float64).to_numpy()
+    xt = d["raw_total"].cast(pl.Float64).to_numpy()
+
+    def ols(X: FloatArray, y: FloatArray) -> tuple[FloatArray, FloatArray]:
+        xtx = X.T @ X
+        b = np.linalg.solve(xtx, X.T @ y)
+        r = y - X @ b
+        return b, float(r @ r) / (n - X.shape[1]) * np.linalg.inv(xtx)
+
+    bs, cs = ols(np.column_stack([nn, xs]), d["margin"].cast(pl.Float64).to_numpy())
+    bt, ct = ols(np.column_stack([np.ones(n), xt]), d["total"].cast(pl.Float64).to_numpy())
+    return Calibration(
+        a=float(bs[0]),
+        b=float(bs[1]),
+        a_t=float(bt[0]),
+        b_t=float(bt[1]),
+        a_se=float(np.sqrt(cs[0, 0])),
+        b_se=float(np.sqrt(cs[1, 1])),
+        a_t_se=float(np.sqrt(ct[0, 0])),
+        b_t_se=float(np.sqrt(ct[1, 1])),
+        ab_cov=float(cs[0, 1]),
+        ab_t_cov=float(ct[0, 1]),
+        n=n,
+    )
 
 
 @dataclass(frozen=True)
@@ -94,6 +163,7 @@ class WindowConsts:
     league_ppd: float
     league_drives: float
     data_as_of: str | None = None  # the data cut the window file was fitted at
+    calib: Calibration | None = None  # Phase 4b; None in r1 (raw lines only)
 
 
 @dataclass(frozen=True)
@@ -150,6 +220,13 @@ class GameLines:
     total_se: float
     home_offset: float  # COA-07 offset in the home offense's expected EPA/play
     away_offset: float
+    # Phase 4b: `spread` and `total` above are calibrated when the window has a calibration;
+    # the raw rating-implied values are kept for diagnostics.
+    raw_spread: float
+    raw_total: float
+    raw_spread_se: float
+    raw_total_se: float
+    neutral: bool
 
 
 @dataclass(frozen=True)
@@ -232,7 +309,16 @@ def load_window_consts(season: int, root: Path = RATINGS_FITTED_ROOT) -> WindowC
         league_ppd=get(LEAGUE_KEYS["league_ppd"]),
         league_drives=get(LEAGUE_KEYS["league_drives"]),
         data_as_of=f.data_as_of,
+        calib=_calib_from(f, path) if CALIB_KEYS["a"] in f.values else None,
     )
+
+
+def _calib_from(f: FittedFile, path: Path) -> Calibration:
+    missing = [k for k in CALIB_KEYS.values() if k not in f.values]
+    if missing:
+        raise NotImplementedError(f"PRJ-01a: {path} has a partial calibration: {missing}")
+    v = {name: float(f.values[key].value) for name, key in CALIB_KEYS.items()}
+    return Calibration(**v, n=int(f.values[CALIB_KEYS["a"]].n))
 
 
 # ---- COA-07 terms ----
@@ -252,20 +338,28 @@ _SCHED_COLUMNS = (
 )
 
 
-def coa07_features(schedules: pl.DataFrame, game_ids: Sequence[str]) -> pl.DataFrame:
+def coa07_features(
+    schedules: pl.DataFrame,
+    game_ids: Sequence[str],
+    franchise: Callable[[str], str] | None = None,
+) -> pl.DataFrame:
     """COA-07: per (game_id, team) for `game_ids`: home (+1 home, -1 away, 0 neutral site),
-    rest_days, travel_km and tz_change_hours (signed), by coa_07's origin rules: the previous
-    game's stadium, or the home stadium after a bye. `schedules` holds the games before.
-    When no earlier home game is in `schedules` (the first season of data), the origin after
-    a bye is the team's next listed home stadium (schedules are published in advance)."""
+    rest_days, travel_km and tz_change_hours (signed). The travel origin comes from the same
+    function as coa_07 (coaching.travel_origin): the previous game's stadium, or the home
+    stadium after a bye, with games matched by `franchise` (nflverse teams table) so a
+    relocated team keeps its history; without `franchise`, abbreviations are matched as
+    they are. `schedules` holds the games before. When no earlier home game is in
+    `schedules` (the first season of data), the origin after a bye is the team's next listed
+    home stadium (schedules are published in advance)."""
     from bisect import bisect_left
     from collections import defaultdict
     from zoneinfo import ZoneInfo
 
     from ge.config import load_ingest
     from ge.ingest.stadiums import load_stadiums
-    from ge.metrics.coaching import _haversine_km
+    from ge.metrics.coaching import _haversine_km, travel_origin
 
+    fr_of: Callable[[str], str] = franchise or (lambda abbr: abbr)
     stadia = {str(s["stadium_id"]): s for s in load_stadiums()}
     radius = float(load_ingest().geo.earth_mean_radius_km.value)
     rows = (
@@ -275,11 +369,11 @@ def coa07_features(schedules: pl.DataFrame, game_ids: Sequence[str]) -> pl.DataF
         .to_dicts()
     )
     by_id = {r["game_id"]: r for r in rows}
-    games: dict[str, list[dict[str, object]]] = defaultdict(list)
+    games: dict[str, list[dict[str, object]]] = defaultdict(list)  # by franchise
     for r in rows:
-        for side in ("home_team", "away_team"):
-            games[str(r[side])].append(r)
-    keys = {t: [(g["gameday"], g["gametime"], g["game_id"]) for g in gs] for t, gs in games.items()}
+        for fr in {fr_of(str(r["home_team"])), fr_of(str(r["away_team"]))}:
+            games[fr].append(r)
+    keys = {f: [(g["gameday"], g["gametime"], g["game_id"]) for g in gs] for f, gs in games.items()}
 
     out: list[dict[str, object]] = []
     for gid in sorted(set(game_ids)):
@@ -298,18 +392,19 @@ def coa07_features(schedules: pl.DataFrame, game_ids: Sequence[str]) -> pl.DataF
 
         for side in ("home", "away"):
             team = str(t[f"{side}_team"])
-            i = bisect_left(keys[team], (t["gameday"], t["gametime"], gid))
-            before = games[team][:i]
-            cur = [g for g in before if g["season"] == t["season"]]
-            if not cur or int(str(cur[-1]["week"])) < int(str(t["week"])) - 1:
-                homes = [g for g in before if g["home_team"] == team]
-                if not homes:
-                    homes = [g for g in games[team][i + 1 :] if g["home_team"] == team][:1]
-                if not homes:
-                    raise ValueError(f"COA-07: no home stadium for {team} in the schedules")
-                origin_id = str(homes[-1]["stadium_id"])
-            else:
-                origin_id = str(cur[-1]["stadium_id"])
+            fr = fr_of(team)
+            i = bisect_left(keys[fr], (t["gameday"], t["gametime"], gid))
+            origin_id, _ = travel_origin(games[fr][:i], t, team, fr_of)
+            if origin_id is None:
+                later = [g for g in games[fr][i + 1 :] if fr_of(str(g["home_team"])) == fr][:1]
+                if not later:
+                    # Point-in-time, with no earlier season in the store: the travel origin
+                    # can't be known, so the game can't be rated (raise, don't guess).
+                    raise NotImplementedError(
+                        f"COA-07: no home stadium for {team} in the schedules visible to this "
+                        "game, so its travel origin is unknown"
+                    )
+                origin_id = str(later[0]["stadium_id"])
             origin = stadia[origin_id]
             neutral = t["location"] == "Neutral"
             out.append(
@@ -339,6 +434,25 @@ def coa07_features(schedules: pl.DataFrame, game_ids: Sequence[str]) -> pl.DataF
         "tz_change_hours": pl.Float64,
     }
     return pl.DataFrame(out, schema=schema)
+
+
+def franchise_of(ctx: MetricContext) -> Callable[[str], str]:
+    """A team abbreviation's franchise from the context's nflverse teams table (abbreviations
+    the table doesn't know stand for themselves)."""
+
+    def franchise(abbr: str) -> str:
+        try:
+            return ctx.franchise(abbr)
+        except KeyError:
+            return abbr
+
+    return franchise
+
+
+def franchise_map(teams: pl.DataFrame) -> Callable[[str], str]:
+    """The same lookup from an nflverse teams table (DATA-04: team_abbr -> team_id)."""
+    d = dict(teams.select("team_abbr", "team_id").iter_rows()) if teams.height else {}
+    return lambda abbr: str(d.get(abbr, abbr))
 
 
 def pbp_sides(pbp: pl.DataFrame) -> pl.DataFrame:
@@ -609,21 +723,41 @@ def game_lines(
     consts: WindowConsts,
 ) -> GameLines:
     """PRJ-01a: rating-implied spread (home minus away points) and total, with delta-method
-    standard errors from the ratings' covariance. `terms` holds the game's two offense rows."""
+    standard errors from the ratings' covariance. `terms` holds the game's two offense rows;
+    the home offense's home term is 0 at a neutral site. With a window calibration (Phase 4b)
+    the returned spread and total are calibrated: a x 1[non-neutral] + b x raw spread and
+    a_t + b_t x raw total, with variance b^2 Var(raw) + Var(calibration line at raw)."""
     import math
 
-    def offset(off: str, de: str) -> float:
-        row = terms.filter((pl.col("posteam") == off) & (pl.col("defteam") == de))
-        if row.height != 1:
+    def row(off: str, de: str) -> pl.DataFrame:
+        r = terms.filter((pl.col("posteam") == off) & (pl.col("defteam") == de))
+        if r.height != 1:
             raise ValueError(f"PRJ-01a: {game_id}: expected one COA-07 row for {off}")
-        return float(term_offset(row, consts.coa07)[0])
+        return r
 
-    oh, oa = offset(home, away), offset(away, home)
+    rh, ra = row(home, away), row(away, home)
+    oh, oa = float(term_offset(rh, consts.coa07)[0]), float(term_offset(ra, consts.coa07)[0])
+    neutral = float(rh["home"][0]) == 0.0
     eh, gh = expected_epa(table, home, away, pass_rate[home], oh)
     ea, ga = expected_epa(table, away, home, pass_rate[away], oa)
     ph, pa = expected_points(eh, consts), expected_points(ea, consts)
     k = consts.league_drives * consts.c
     gs, gt = k * (gh - ga), k * (gh + ga)
+    raw_s, raw_t = ph - pa, ph + pa
+    se_s, se_t = math.sqrt(float(gs @ table.cov @ gs)), math.sqrt(float(gt @ table.cov @ gt))
+    spread, total, spread_se, total_se = raw_s, raw_t, se_s, se_t
+    cal = consts.calib
+    if cal is not None:
+        ind = 0.0 if neutral else 1.0
+        spread = ind * cal.a + cal.b * raw_s
+        total = cal.a_t + cal.b_t * raw_t
+        var_s = cal.b**2 * se_s**2 + (
+            ind * ind * cal.a_se**2 + raw_s**2 * cal.b_se**2 + 2 * ind * raw_s * cal.ab_cov
+        )
+        var_t = cal.b_t**2 * se_t**2 + (
+            cal.a_t_se**2 + raw_t**2 * cal.b_t_se**2 + 2 * raw_t * cal.ab_t_cov
+        )
+        spread_se, total_se = math.sqrt(var_s), math.sqrt(var_t)
     return GameLines(
         game_id,
         home,
@@ -632,12 +766,17 @@ def game_lines(
         ea,
         ph,
         pa,
-        ph - pa,
-        ph + pa,
-        math.sqrt(float(gs @ table.cov @ gs)),
-        math.sqrt(float(gt @ table.cov @ gt)),
+        spread,
+        total,
+        spread_se,
+        total_se,
         oh,
         oa,
+        raw_s,
+        raw_t,
+        se_s,
+        se_t,
+        neutral,
     )
 
 
@@ -646,7 +785,8 @@ def neutral_margins(
 ) -> pl.DataFrame:
     """PRJ-01a ranking (decision log 2026-10-12): each team's implied neutral-site point
     margin against a league-average opponent (ratings 0, mean pass rate), with its standard
-    error; sorted best first."""
+    error; sorted best first. With a window calibration the margin is b x raw (a never
+    applies at a neutral site) and the error adds b's uncertainty."""
     import math
 
     p_avg = math.fsum(pass_rate[t] for t in table.teams) / len(table.teams)
@@ -670,7 +810,12 @@ def neutral_margins(
         g[col[(t, "def_pass")]] -= k * p_avg
         g[col[(t, "def_run")]] -= k * (1 - p_avg)
         margin = expected_points(e_off, consts) - expected_points(e_def, consts)
-        rows.append({"team": t, "margin": margin, "se": math.sqrt(float(g @ table.cov @ g))})
+        se = math.sqrt(float(g @ table.cov @ g))
+        cal = consts.calib
+        if cal is not None:
+            se = math.sqrt(cal.b**2 * se**2 + margin**2 * cal.b_se**2)
+            margin = cal.b * margin
+        rows.append({"team": t, "margin": margin, "se": se})
     return pl.DataFrame(rows).sort(["margin", "team"], descending=[True, False])
 
 
@@ -717,7 +862,7 @@ def season_plays(ctx: MetricContext, season: int, consts: WindowConsts) -> pl.Da
     if p.is_empty():
         return pl.DataFrame(schema=_PLAY_SCHEMA)
     sched = _schedules_with_target(ctx)
-    feats = coa07_features(sched, p["game_id"].unique().to_list())
+    feats = coa07_features(sched, p["game_id"].unique().to_list(), franchise_of(ctx))
     terms = offense_terms(align_to_pbp(feats, pbp_sides(p)))
     kick = sched.select("game_id", "kickoff_utc").unique("game_id", keep="first")
     out = (
@@ -757,11 +902,30 @@ def carry_by_franchise(
     return out
 
 
-def build_prior(ctx: MetricContext, params: RatingsParams, consts: WindowConsts) -> Prior | None:
+def rated_teams(ctx: MetricContext, cur: pl.DataFrame) -> list[str]:
+    """PRJ-01a (ruling 2026-10-14): the teams that can affect the target game's lines, under
+    play-by-play names: its two teams plus every team with plays this season so far. Other
+    teams are left out of that game's rating table (they share no plays with it), so G4's
+    unknown-change rule never blocks a game over a team that doesn't touch it. From week 2
+    every team has played, so the table holds all teams."""
+    name = team_names(ctx)
+    tg = ctx.snap.collect("target_game").row(0, named=True)
+    teams = {name(str(tg["home_team"])), name(str(tg["away_team"]))}
+    teams |= set(cur["posteam"].to_list()) | set(cur["defteam"].to_list())
+    return sorted(teams)
+
+
+def build_prior(
+    ctx: MetricContext,
+    params: RatingsParams,
+    consts: WindowConsts,
+    teams: Sequence[str] | None = None,
+) -> Prior | None:
     """G4 for PRJ-01a: None after week 4. In weeks 1-4, last season's final ratings (a full
     fit of last season's plays, same penalty and half-life), regressed a further 1/3 toward
     0 per side for a team with a new play-caller or QB (MetricContext.g4_changed), and last
-    season's final intercepts. An unknown change raises NotImplementedError (G4)."""
+    season's final intercepts, for `teams` (default: rated_teams). An unknown change for one
+    of them raises NotImplementedError (G4) with the reason."""
     from ge.metrics.conventions import carryover_prior, in_carryover_window
 
     if ctx.week is None or not in_carryover_window(ctx.week):
@@ -775,12 +939,19 @@ def build_prior(ctx: MetricContext, params: RatingsParams, consts: WindowConsts)
         )
     teams_then = sorted(set(last["posteam"].to_list()) | set(last["defteam"].to_list()))
     base = fit_ratings(last, teams_then, penalty=params.penalty, h=params.h_efficiency, prior=None)
-    teams_now = sorted(ctx.teams["team"].to_list())
+    if teams is None:
+        teams = rated_teams(ctx, season_plays(ctx, ctx.season, consts))
+    teams_now = sorted(teams)
     carried = carry_by_franchise(base.values, teams_now, ctx.franchise)
     ratings: dict[tuple[str, str], float] = {}
     for t in teams_now:
         for side in ("offense", "defense"):
-            changed, _ = ctx.g4_changed(t, side)
+            changed, note = ctx.g4_changed(t, side)
+            if changed is None:
+                raise NotImplementedError(
+                    f"G4: {t} {side}: whether the play-caller or quarterback changed is "
+                    f"unknown{note}"
+                )
             for k in RATING_TYPES:
                 if k.startswith(side[:3]):
                     ratings[(t, k)] = carryover_prior(
@@ -789,27 +960,55 @@ def build_prior(ctx: MetricContext, params: RatingsParams, consts: WindowConsts)
     return Prior(ratings, base.int_pass, base.int_run, base.sigma2)
 
 
+def team_names(ctx: MetricContext) -> Callable[[str], str]:
+    """Each franchise under its play-by-play abbreviation. nflverse play-by-play names a
+    relocated franchise by its current abbreviation in earlier seasons while the schedules
+    keep the abbreviation of the time; ratings are keyed by play-by-play's names (this
+    season's where it has plays, else last season's). Matched by franchise (teams table)."""
+    pbp = ctx.snap.collect("pbp")
+    names: dict[str, str] = {}
+    if pbp.height:
+        for season in sorted(set(pbp["season"].to_list())):
+            s = pbp.filter(pl.col("season") == season)
+            for t in sorted(set(s["home_team"].to_list()) | set(s["away_team"].to_list())):
+                try:
+                    names[ctx.franchise(t)] = t
+                except KeyError:
+                    continue
+
+    def name(abbr: str) -> str:
+        try:
+            return names.get(ctx.franchise(abbr), abbr)
+        except KeyError:
+            return abbr
+
+    return name
+
+
 def rate_context(
     ctx: MetricContext,
     *,
     ratings_root: Path = RATINGS_FITTED_ROOT,
     run_penalty_scale: float = 1.0,
+    params: RatingsParams | None = None,
+    consts: WindowConsts | None = None,
 ) -> GameRatings:
     """PRJ-01a for the context's target game (ratings_for_game without building the
-    snapshot; the walk-forward report reuses the context for pace)."""
+    snapshot; the walk-forward report reuses the context for pace). `params` and `consts`
+    default to the season's own window; the Phase 4b calibration passes its window's values
+    to rate that window's training seasons."""
     from ge.config import use_season
     from ge.store.holdout import refuse_holdout
 
     season = ctx.season
     refuse_holdout(season, "PRJ-01a ratings")
-    params = ratings_params(season)
-    consts = load_window_consts(season, ratings_root)
-    with use_season(season):
-        prior = build_prior(ctx, params, consts)
+    params = params or ratings_params(season)
+    consts = consts or load_window_consts(season, ratings_root)
     cur = season_plays(ctx, season, consts)
-    teams = sorted(
-        set(ctx.teams["team"].to_list()) | set(cur["posteam"].to_list()) | set(cur["defteam"])
-    )
+    name = team_names(ctx)
+    teams = rated_teams(ctx, cur)
+    with use_season(season):
+        prior = build_prior(ctx, params, consts, teams)
     table = fit_ratings(
         cur,
         teams,
@@ -822,8 +1021,13 @@ def rate_context(
     both = pl.concat([last, cur]).select("posteam", "game_id", "kickoff_utc", "is_pass")
     rates = pass_rates(both, params.h_usage)
     tg = ctx.snap.collect("target_game").row(0, named=True)
-    gid, home, away = str(tg["game_id"]), str(tg["home_team"]), str(tg["away_team"])
-    terms = offense_terms(coa07_features(_schedules_with_target(ctx), [gid]))
+    gid = str(tg["game_id"])
+    home, away = name(str(tg["home_team"])), name(str(tg["away_team"]))
+    feats = coa07_features(_schedules_with_target(ctx), [gid], franchise_of(ctx))
+    feats = feats.with_columns(
+        pl.col("team").map_elements(name, return_dtype=pl.Utf8).alias("team")
+    )
+    terms = offense_terms(feats)
     lines = game_lines(table, gid, home, away, rates, terms, consts)
     notes: list[str] = []
     if prior is not None:

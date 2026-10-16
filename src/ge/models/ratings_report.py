@@ -139,6 +139,12 @@ def walk_forward(
                     "total_se": g.lines.total_se,
                     "home_offset": g.lines.home_offset,
                     "away_offset": g.lines.away_offset,
+                    "raw_spread": g.lines.raw_spread,
+                    "raw_spread_se": g.lines.raw_spread_se,
+                    "raw_total": g.lines.raw_total,
+                    "raw_total_se": g.lines.raw_total_se,
+                    "neutral": g.lines.neutral,
+                    "calibrated": g.consts.calib is not None,
                     "window": g.params.window,
                     "fit_version": g.params.fit_version,
                     "penalty": g.params.penalty,
@@ -171,6 +177,12 @@ _RATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "total_se": pl.Float64,
     "home_offset": pl.Float64,
     "away_offset": pl.Float64,
+    "raw_spread": pl.Float64,
+    "raw_spread_se": pl.Float64,
+    "raw_total": pl.Float64,
+    "raw_total_se": pl.Float64,
+    "neutral": pl.Boolean,
+    "calibrated": pl.Boolean,
     "window": pl.Utf8,
     "fit_version": pl.Utf8,
     "penalty": pl.Float64,
@@ -231,12 +243,79 @@ def compare_to_lines(rated: pl.DataFrame, schedules: pl.DataFrame) -> pl.DataFra
     ).unique("game_id", keep="first")
     margin = (pl.col("home_score") - pl.col("away_score")).cast(pl.Float64)
     points = (pl.col("home_score") + pl.col("away_score")).cast(pl.Float64)
-    return rated.join(lines, on="game_id", how="left").with_columns(
+    out = rated.join(lines, on="game_id", how="left").with_columns(
         (pl.col("spread") - pl.col("spread_line")).alias("spread_diff"),
         (pl.col("total") - pl.col("total_line")).alias("total_diff"),
         (pl.col("spread") - margin).alias("spread_vs_actual"),
         (pl.col("total") - points).alias("total_vs_actual"),
     )
+    if "raw_spread" in out.columns:  # Phase 4b: the raw (uncalibrated) values alongside
+        out = out.with_columns(
+            (pl.col("raw_spread") - pl.col("spread_line")).alias("raw_spread_diff"),
+            (pl.col("raw_total") - pl.col("total_line")).alias("raw_total_diff"),
+            (pl.col("raw_spread") - margin).alias("raw_spread_vs_actual"),
+            (pl.col("raw_total") - points).alias("raw_total_vs_actual"),
+        )
+    return out
+
+
+def raw_view(compared: pl.DataFrame) -> pl.DataFrame:
+    """The compared rows with the raw (uncalibrated) values in the model columns, so the same
+    summaries run on raw and calibrated lines."""
+    return compared.with_columns(
+        pl.col("raw_spread").alias("spread"),
+        pl.col("raw_total").alias("total"),
+        pl.col("raw_spread_diff").alias("spread_diff"),
+        pl.col("raw_total_diff").alias("total_diff"),
+        pl.col("raw_spread_vs_actual").alias("spread_vs_actual"),
+        pl.col("raw_total_vs_actual").alias("total_vs_actual"),
+    )
+
+
+def acceptance_stats(compared: pl.DataFrame) -> pl.DataFrame:
+    """Phase 4b acceptance quantities per season (thresholds are the Build Plan's and are
+    asserted in tests/phase4/test_realdata_acceptance.py): the calibrated spread slope against
+    actual results with its standard error, the slope against closing lines, the spread bias
+    against closing lines for regular-season and postseason games separately (only REG
+    counts; ruling 2026-10-14), and week-1 games rated / unrated without a depth chart /
+    unrated for another reason."""
+    ok = compared.filter(pl.col("skip_reason").is_null())
+    cal = calibration(ok)
+    rows = []
+    for season in sorted(set(compared["season"].to_list())):
+
+        def pick(target: str, season: int = season) -> dict[str, object]:
+            return cal.filter(
+                (pl.col("season") == season)
+                & (pl.col("model") == "spread")
+                & (pl.col("target") == target)
+            ).row(0, named=True)
+
+        act, close = pick("actual"), pick("closing_line")
+        s = ok.filter(pl.col("season") == season).drop_nulls(["spread_diff"])
+        reg = s.filter(pl.col("game_type") == "REG")
+        post = s.filter(pl.col("game_type") != "REG")
+        w1 = compared.filter((pl.col("season") == season) & (pl.col("week") == 1))
+        un = w1.filter(pl.col("skip_reason").is_not_null())
+        no_chart = un.filter(pl.col("skip_reason").str.contains("depth chart")).height
+        rows.append(
+            {
+                "season": int(season),
+                "slope_vs_actual": act["slope"],
+                "slope_vs_actual_se": act["slope_se"],
+                "slope_vs_closing": close["slope"],
+                "slope_vs_closing_se": close["slope_se"],
+                "reg_n": reg.height,
+                "reg_spread_bias": float(reg["spread_diff"].mean()) if reg.height else None,  # type: ignore[arg-type]
+                "post_n": post.height,
+                "post_spread_bias": float(post["spread_diff"].mean()) if post.height else None,  # type: ignore[arg-type]
+                "week1_games": w1.height,
+                "week1_rated": w1.height - un.height,
+                "week1_unrated_no_chart": no_chart,
+                "week1_unrated_other": un.height - no_chart,
+            }
+        )
+    return pl.DataFrame(rows)
 
 
 def _phase() -> pl.Expr:
@@ -365,6 +444,31 @@ def home_edge(compared: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def unrated_training_games(
+    ratings_root: Path, version: str, windows: Sequence[str]
+) -> pl.DataFrame:
+    """Phase 4b: per window, the training games its calibration rated and those it left
+    unrated, by reason, as recorded in the window file (calibration method text)."""
+    from ge.config import FittedFile, _read_yaml
+    from ge.models.ratings import CALIB_KEYS
+
+    rows = []
+    for w in windows:
+        f = FittedFile.model_validate(_read_yaml(ratings_root / version / f"{w}.yaml"))
+        v = f.values.get(CALIB_KEYS["a"])
+        if v is None:
+            continue
+        tail = v.method.split("Unrated training games: ", 1)[1]
+        pieces = [] if tail == "none" else tail.split(", ")
+        rows.append({"window": w, "rated": v.n, "reason": "(rated)", "games": v.n})
+        for p in pieces:
+            reason, n = p.rsplit(": ", 1)
+            rows.append({"window": w, "rated": v.n, "reason": reason, "games": int(n)})
+    return pl.DataFrame(
+        rows, schema={"window": pl.Utf8, "rated": pl.Int64, "reason": pl.Utf8, "games": pl.Int64}
+    )
+
+
 def diagnostic_window(season: int) -> Window:
     """The window whose training seasons the c diagnostic reads for a walk-forward season."""
     from ge.store.holdout import Window
@@ -490,9 +594,10 @@ def _sensitivity_plays(season: int, root: Path, coefs: dict[str, float]) -> pl.D
     """One walk-forward season's qualifying plays with COA-07 offsets, for the sensitivity
     check (read after the fact; each week is predicted only from earlier weeks)."""
     from ge.config import window_for
+    from ge.ingest.nflverse import SEASONLESS
     from ge.ingest.raw import read_latest
     from ge.metrics import plays as pf
-    from ge.models.ratings import coa07_features, offense_terms, term_offset
+    from ge.models.ratings import coa07_features, franchise_map, offense_terms, term_offset
     from ge.store.known_at import with_kickoff
 
     window = window_for(season)
@@ -508,7 +613,9 @@ def _sensitivity_plays(season: int, root: Path, coefs: dict[str, float]) -> pl.D
     except FileNotFoundError:
         both = sched
     q = pbp.filter(pf.qualifying() & pl.col("epa").is_not_null())
-    terms = offense_terms(coa07_features(both, q["game_id"].unique().to_list()))
+    teams = read_latest(root, "teams", SEASONLESS)
+    feats = coa07_features(both, q["game_id"].unique().to_list(), franchise_map(teams))
+    terms = offense_terms(feats)
     kick = with_kickoff(sched).select("game_id", "kickoff_utc")
     out = (
         q.select(
@@ -584,7 +691,46 @@ def write_report(
         .sort(["season", "phase"], descending=[False, True])
     )
 
-    calib = calibration(ok)
+    has_raw = "raw_spread" in ok.columns and ok["calibrated"].any()
+    calib = calibration(ok).with_columns(pl.lit("calibrated" if has_raw else "raw").alias("lines"))
+    if has_raw:
+        summary_raw = summarise(raw_view(ok))
+        calib = pl.concat(
+            [calibration(raw_view(ok)).with_columns(pl.lit("raw").alias("lines")), calib]
+        )
+        calib = calib.select("lines", *[c for c in calib.columns if c != "lines"]).sort(
+            "season", "model", "target", "lines", descending=[False, False, False, True]
+        )
+        season_summary = (
+            summary_raw.filter(pl.col("week").is_null())
+            .drop("week")
+            .join(
+                summary.filter(pl.col("week").is_null()).drop("week", "n"),
+                on=["season", "phase"],
+                suffix="_cal",
+            )
+            .rename(
+                {
+                    "spread_mad": "spread_mad_raw",
+                    "spread_bias": "spread_bias_raw",
+                    "total_mad": "total_mad_raw",
+                    "total_bias": "total_bias_raw",
+                    "spread_mad_cal": "spread_mad_cal",
+                }
+            )
+            .sort(["season", "phase"], descending=[False, True])
+        )
+    else:
+        season_summary = summary.filter(pl.col("week").is_null()).drop("week")
+    accept = acceptance_stats(compared) if has_raw else None
+    unrated = None
+    if has_raw:
+        first = load_window_consts(seasons[0], ratings_root)
+        unrated = unrated_training_games(
+            ratings_root,
+            first.version,
+            [load_window_consts(s, ratings_root).window for s in seasons],
+        )
     edge = home_edge(ok)
     c_rows = []
     for s in seasons:
@@ -623,6 +769,21 @@ def write_report(
                 "league_epa_per_play": c.league_epa,
                 "league_points_per_drive": c.league_ppd,
                 "league_drives_per_team_game": c.league_drives,
+                **(
+                    {
+                        "calib_a": c.calib.a,
+                        "calib_a_se": c.calib.a_se,
+                        "calib_b": c.calib.b,
+                        "calib_b_se": c.calib.b_se,
+                        "calib_a_t": c.calib.a_t,
+                        "calib_a_t_se": c.calib.a_t_se,
+                        "calib_b_t": c.calib.b_t,
+                        "calib_b_t_se": c.calib.b_t_se,
+                        "calib_n_games": c.calib.n,
+                    }
+                    if c.calib is not None
+                    else {}
+                ),
             }
         )
     sens_parts = []
@@ -677,12 +838,17 @@ def write_report(
         "",
         "## Differences by season",
         "",
-        "Mean absolute difference (mad) and mean signed difference (bias); regular season "
-        "(REG) and postseason (POST) separately.",
+        "Mean absolute difference (mad) and mean signed difference (bias) against the closing "
+        "lines; regular season (REG) and postseason (POST) separately."
+        + (
+            " Raw (rating-implied) and calibrated (Phase 4b, PRJ-01a's output) side by side."
+            if has_raw
+            else ""
+        ),
         "",
-        _md(summary.filter(pl.col("week").is_null()).drop("week")),
+        _md(season_summary),
         "",
-        "## Differences by week",
+        "## Differences by week" + (" (calibrated)" if has_raw else ""),
         "",
         _md(summary.filter(pl.col("week").is_not_null())),
         "",
@@ -691,11 +857,41 @@ def write_report(
         "Per season, the closing line and the actual result regressed on the model spread "
         "(home minus away) and on the model total, with approximate standard errors. Slope 1 "
         "and intercept 0 would mean the model's numbers sit on the target's scale; a slope "
-        "below 1 against the actual result means the model's spreads or totals are too spread "
-        "out.",
+        "above 1 means the model's spreads or totals are too compressed."
+        + (" Rows for raw and calibrated lines." if has_raw else ""),
         "",
         _md(calib, digits=4),
         "",
+        *(
+            [
+                "## Phase 4b acceptance quantities",
+                "",
+                "Per season: calibrated spread slope against actual results and against closing "
+                "lines (with standard errors), calibrated spread bias against closing lines for "
+                "regular-season games (counts toward acceptance) and postseason games "
+                "(reported only), and week-1 games rated or unrated. The Build Plan's "
+                "thresholds are checked by tests/phase4/test_realdata_acceptance.py; nothing is "
+                "tuned on these seasons.",
+                "",
+                _md(accept, digits=4),
+                "",
+            ]
+            if accept is not None
+            else []
+        ),
+        *(
+            [
+                "## Calibration training games",
+                "",
+                "Per window, the training-season games its calibration rated point-in-time and "
+                "those it left unrated, by reason (from the window file).",
+                "",
+                _md(unrated),
+                "",
+            ]
+            if unrated is not None
+            else []
+        ),
         "## Window constants",
         "",
         "COA-07 coefficients (home +1/-1/0; rest days, travel km and |time-zone hours| as "

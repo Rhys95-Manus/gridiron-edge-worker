@@ -12,6 +12,7 @@ import csv
 import datetime as dt
 import math
 import re
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -496,17 +497,22 @@ def coa_07(ctx: MetricContext) -> pl.DataFrame:
         assert off is not None
         return off.total_seconds() / 3600
 
+    def franchise(abbr: str) -> str:
+        try:
+            return ctx.franchise(abbr)
+        except KeyError:
+            return abbr
+
+    before = sched.to_dicts()
     rows: list[dict[str, object]] = []
     for side in ("home", "away"):
         team = t[f"{side}_team"]
-        mine = sched.filter((pl.col("home_team") == team) | (pl.col("away_team") == team))
-        cur = mine.filter(pl.col("season") == ctx.season)
-        if cur.is_empty() or cur["week"][-1] < t["week"] - 1:
-            origin_id = str(mine.filter(pl.col("home_team") == team)["stadium_id"][-1])
-            why = "home stadium after a bye"
-        else:
-            origin_id = str(cur["stadium_id"][-1])
-            why = "previous game's stadium"
+        origin_id, why = travel_origin(before, t, team, franchise)
+        if origin_id is None:
+            raise NotImplementedError(
+                f"COA-07: no home stadium for {team} in the schedules visible to this game, so "
+                "its travel origin is unknown"
+            )
         origin = stadia[origin_id]
         km = _haversine_km(origin["lat"], origin["lon"], dest["lat"], dest["lon"], radius)
         base = {"entity_type": "team", "entity_id": team, "team": team, "cell": t["game_id"]}
@@ -529,6 +535,34 @@ def coa_07(ctx: MetricContext) -> pl.DataFrame:
         pl.lit("COA-07").alias("spec_id")
     )
     return finish(df).sort("entity_id", "stat")
+
+
+def travel_origin(
+    before: Sequence[Mapping[str, Any]],
+    target: Mapping[str, Any],
+    team: str,
+    franchise: Callable[[str], str],
+) -> tuple[str | None, str]:
+    """COA-07: the stadium `team` travels to `target` from: its previous game's stadium, or
+    its home stadium (its latest earlier home game) after a bye or before its first game of the
+    season (A22; ruling 2026-10-05). Games are matched by franchise (nflverse teams table), so
+    a relocated team keeps its history under its old abbreviation (bug fix 2026-10-15; G4
+    matches relocated teams the same way). `before` is the schedule rows played before the
+    target, in kickoff order. Returns (stadium_id, why), or (None, why) when no earlier home
+    game is known. Shared by coa_07 and PRJ-01a's coa07_features."""
+    fr = franchise(team)
+    mine = [
+        g
+        for g in before
+        if franchise(str(g["home_team"])) == fr or franchise(str(g["away_team"])) == fr
+    ]
+    cur = [g for g in mine if g["season"] == target["season"]]
+    if not cur or int(cur[-1]["week"]) < int(target["week"]) - 1:
+        homes = [g for g in mine if franchise(str(g["home_team"])) == fr]
+        if not homes:
+            return None, "no earlier home game"
+        return str(homes[-1]["stadium_id"]), "home stadium after a bye"
+    return str(cur[-1]["stadium_id"]), "previous game's stadium"
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float, radius: float) -> float:

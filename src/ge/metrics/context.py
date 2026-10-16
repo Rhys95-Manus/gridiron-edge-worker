@@ -294,8 +294,36 @@ class MetricContext:
         return {self.franchise(t): v for t, v in values.items()}
 
     @cached_property
+    def _qb_chart(self) -> dict[str, str | None]:
+        """G4 week 1 (decision log 2026-10-13): franchise -> QB1 on the latest depth chart
+        visible at decision time (the snapshot's chart, BT-01); None when the chart names more
+        than one QB1. Only the target season's chart; teams the teams table doesn't know are
+        left out."""
+        if self.season != self.snap.season:
+            return {}
+        out: dict[str, str | None] = {}
+        for team, qb in qb1_from_chart(self.snap.collect("depth_charts")).items():
+            if team in self._franchises:
+                out[self.franchise(team)] = qb
+        return out
+
+    @cached_property
     def _qb_now(self) -> dict[str, str]:
-        return self.by_franchise(self._top_qb(self.season))
+        """This season's most-dropback passer; before a team's first dropback, QB1 on the
+        latest visible depth chart (G4, decision log 2026-10-13)."""
+        out = self.by_franchise(self._top_qb(self.season))
+        for fr, qb in self._qb_chart.items():
+            if fr not in out and qb is not None:
+                out[fr] = qb
+        return out
+
+    def _qb_unknown(self, fr: str) -> str:
+        """Why the new-QB check can't be decided (for the G4 error and the report)."""
+        if fr not in self._qb_now:
+            if fr in self._qb_chart:
+                return "QB unknown: more than one depth-chart QB1"
+            return "QB unknown: no depth chart QB1 visible at decision time"
+        return "QB unknown: no last-season dropbacks"
 
     @cached_property
     def _qb_then(self) -> dict[str, str]:
@@ -349,20 +377,24 @@ class MetricContext:
 
     def g4_changed(self, team: str, side: Side) -> tuple[bool | None, str]:
         """G4: (changed, note). Offense: new offensive play-caller or new QB (most dropbacks
-        this season vs last); defense: new defensive play-caller. Any known change -> True;
-        all known and unchanged -> False; otherwise None (user decision 2026-10-02)."""
+        this season vs last; before the first dropback, depth-chart QB1); defense: new
+        defensive play-caller. Any known change -> True; all known and unchanged -> False;
+        otherwise None, with the note saying what is unknown (user decision 2026-10-02)."""
         caller, label = self._caller_changed(team, side)
         checks: dict[str, bool | None] = {label or "new play-caller": caller}
+        unknown = [] if caller is not None else ["play-caller unknown"]
         if side == "offense":
             fr = self.franchise(team)
             q_now, q_then = self._qb_now.get(fr), self._qb_then.get(fr)
             checks["new QB"] = None if q_now is None or q_then is None else q_now != q_then
+            if checks["new QB"] is None:
+                unknown.append(self._qb_unknown(fr))
         hits = [k for k, v in checks.items() if v]
         if hits:
             return True, "; " + ", ".join(hits)
         if all(v is False for v in checks.values()):
             return False, ""
-        return None, ""
+        return None, "; " + ", ".join(unknown)
 
     # ---- COA-01: mid-season play-caller change ----
 
@@ -470,6 +502,31 @@ def _reset_from(
             break
         run.append(g)
     return Reset(team, max(run) if run else None, basis, caller)
+
+
+def qb1_from_chart(depth: pl.DataFrame) -> dict[str, str | None]:
+    """G4 week 1: team -> QB1's gsis_id on a depth chart, in either nflverse format: week-
+    numbered (before 2025: depth_position QB, offense formation, depth_team 1, the team's
+    latest week in the frame) or ESPN daily (2025 on: pos_abb QB, pos_rank 1). A team whose
+    chart names more than one QB1 maps to None (ambiguous); a team with none is left out."""
+    if depth.is_empty():
+        return {}
+    if "pos_rank" in depth.columns:
+        team = "team"
+        d = depth.filter(
+            (pl.col("pos_abb") == "QB") & (pl.col("pos_rank").cast(pl.Int64, strict=False) == 1)
+        )
+    else:
+        team = "club_code"
+        d = depth.filter(
+            (pl.col("depth_position") == "QB")
+            & (pl.col("formation") == "Offense")
+            & (pl.col("depth_team").cast(pl.Int64, strict=False) == 1)
+        )
+        if "week" in d.columns:
+            d = d.filter(pl.col("week") == pl.col("week").max().over(team))
+    ids = d.drop_nulls("gsis_id").group_by(team).agg(pl.col("gsis_id").unique().sort()).sort(team)
+    return {str(t): (str(g[0]) if len(g) == 1 else None) for t, g in ids.iter_rows() if len(g) > 0}
 
 
 def build_context(snap: Snapshot, registry: CoachingRegistry | None = None) -> MetricContext:

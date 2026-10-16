@@ -25,6 +25,7 @@ from ge.metrics.coaching import coa_07
 from ge.metrics.context import build_context
 from ge.models.ratings import (
     C_KEY,
+    CALIB_KEYS,
     COA07_KEYS,
     LEAGUE_KEYS,
     RATINGS_FITTED_ROOT,
@@ -141,21 +142,27 @@ def test_window_file_round_trip(tmp_path: Path) -> None:
 
 
 def test_committed_window_files() -> None:
-    """The ratings constants the walk-forward and live ratings read: one file per window of
-    the active version, each with every constant, its standard error and full provenance."""
+    """The ratings constants the walk-forward and live ratings read: one file per window in
+    every committed version, each with every constant, its standard error and full
+    provenance. r1 (Phase 4) holds the base keys; r2 on (Phase 4b) also holds the calibration
+    keys (change approved 2026-10-14)."""
     active = RATINGS_FITTED_ROOT / "active.yaml"
     assert active.exists(), "run `ge ratings-fit` and commit config/ratings_fitted"
     version = yaml.safe_load(active.read_text(encoding="utf-8"))["fit_version"]
+    versions = sorted(p.name for p in RATINGS_FITTED_ROOT.iterdir() if p.is_dir())
+    assert version in versions
     bt = load_params().backtest
     first, last = int(bt.bt_01_first_test_season.value), int(bt.bt_01_last_test_season.value)
     holdout = int(bt.bt_01_holdout_season.value)
-    keys = {*COA07_KEYS.values(), C_KEY, *LEAGUE_KEYS.values()}
-    keys |= {k + SE_SUFFIX for k in (*COA07_KEYS.values(), C_KEY)}
-    for window in [f"S{s}" for s in range(first, last + 1)] + ["live"]:
-        path = RATINGS_FITTED_ROOT / version / f"{window}.yaml"
-        f = FittedFile.model_validate(_read_yaml(path))
-        _check_fitted(f, path, load_params())
-        assert holdout not in f.seasons
-        assert set(f.values) == keys, window
-        for key, v in f.values.items():
-            assert v.method.strip() and v.n > 0 and set(v.seasons) <= set(f.seasons), key
+    base = {*COA07_KEYS.values(), C_KEY, *LEAGUE_KEYS.values()}
+    base |= {k + SE_SUFFIX for k in (*COA07_KEYS.values(), C_KEY)}
+    for ver in versions:
+        keys = base if ver == "r1" else base | set(CALIB_KEYS.values())
+        for window in [f"S{s}" for s in range(first, last + 1)] + ["live"]:
+            path = RATINGS_FITTED_ROOT / ver / f"{window}.yaml"
+            f = FittedFile.model_validate(_read_yaml(path))
+            _check_fitted(f, path, load_params())
+            assert holdout not in f.seasons
+            assert set(f.values) == keys, (ver, window)
+            for key, v in f.values.items():
+                assert v.method.strip() and v.n > 0 and set(v.seasons) <= set(f.seasons), key

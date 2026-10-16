@@ -124,14 +124,36 @@ def test_registry_callers_replace_head_coach(g4_snap, tmp_path: Path) -> None:  
     assert any(changed for _, changed in want.values()), "fixture should contain a QB change"
 
 
-def test_week_1_qb_unknown_raises() -> None:
-    """Week 1: a team that hasn't played has no current-season dropbacks, so unless its head
-    coach changed its QB change is unknown and the carryover raises. Every team still gets
-    raw rows; teams yet to play have n = 0."""
+def test_week_1_qb_unknown_raises(tmp_path: Path) -> None:
+    """Week 1: a team that hasn't played has no current-season dropbacks, so its quarterback
+    is QB1 on the latest depth chart visible at decision time (G4, decision log 2026-10-13).
+    With the chart visible every team's quarterback is settled (no "QB unknown"); with the
+    chart removed the carryover raises and the reason G4 gives names the missing depth
+    chart. The metric engine still raises in week 1 for teams yet to play, whose play-caller
+    is unknown (rulings 2026-10-14). Every team still gets raw rows; teams yet to play have
+    n = 0."""
     snap = snapshot(first_game(1), root=STORE)
     ctx = build_context(snap)
+    # Teams whose week-1 chart is visible at decision time (BT-01: a later game's chart, e.g.
+    # Monday night's, is known only the day before that game).
+    teams = sorted(set(snap.collect("depth_charts")["club_code"].to_list()))
+    assert teams
+    for t in teams:
+        _, note = ctx.g4_changed(t, "offense")
+        assert "QB unknown" not in note, (t, note)
+    no_chart = tmp_path / "store"
+    shutil.copytree(STORE, no_chart, ignore=shutil.ignore_patterns("depth_charts"))
+    blind = build_context(snapshot(first_game(1), root=no_chart))
     with pytest.raises(NotImplementedError, match="G4"):
-        shrunk(ctx, "OFF-01", "epa")
+        shrunk(blind, "OFF-01", "epa")
+    yet_to_play = [
+        t
+        for t in teams
+        if t not in set(snap.collect("pbp").filter(pl.col("season") == snap.season)["posteam"])
+    ]
+    for t in yet_to_play:
+        changed, note = blind.g4_changed(t, "offense")
+        assert changed is None and "depth chart" in note, (t, note)
     rows = raw(ctx, "OFF-01").filter((pl.col("entity_type") == "team") & (pl.col("cell") == "all"))
     assert rows.height == 32
     played = set(

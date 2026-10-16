@@ -20,8 +20,9 @@ from __future__ import annotations
 import datetime as dt
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import polars as pl
@@ -29,6 +30,7 @@ import polars as pl
 from ge.ingest.raw import DATA_ROOT
 from ge.models.ratings import (
     C_KEY,
+    CALIB_KEYS,
     COA07_KEYS,
     COA07_TERMS,
     LEAGUE_KEYS,
@@ -36,14 +38,21 @@ from ge.models.ratings import (
     RATINGS_FITTED_ROOT,
     SE_SUFFIX,
     TERM_COLUMNS,
+    Calibration,
     GroupRow,
+    WindowConsts,
     align_to_pbp,
+    calibrate,
     coa07_features,
     grouped_ridge,
     offense_terms,
     pbp_sides,
+    ratings_params,
 )
 from ge.store.holdout import Window
+
+if TYPE_CHECKING:
+    from ge.metrics.coaching import CoachingRegistry
 
 
 class MissingTrainingData(ValueError):
@@ -82,6 +91,124 @@ class WindowFit:
     based_on_fit: str
     data_as_of: dt.datetime
     data_digest: str
+    calib: Calibration | None = None  # Phase 4b
+    calib_skipped: Mapping[str, int] = field(default_factory=dict)  # reason -> games
+
+
+def consts_of(fit: WindowFit) -> WindowConsts:
+    """The window constants a fit describes (in memory, before its file is written)."""
+    return WindowConsts(
+        window=fit.window,
+        version="in-memory",
+        coa07=dict(fit.coa07.coefs),
+        coa07_se=dict(fit.coa07.se),
+        c=fit.c.c,
+        c_se=fit.c.c_se,
+        league_epa=fit.c.league_epa,
+        league_ppd=fit.c.league_ppd,
+        league_drives=fit.c.league_drives,
+        data_as_of=fit.data_as_of.isoformat(),
+        calib=fit.calib,
+    )
+
+
+_RATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
+    "season": pl.Int64,
+    "week": pl.Int64,
+    "game_id": pl.Utf8,
+    "game_type": pl.Utf8,
+    "neutral": pl.Boolean,
+    "raw_spread": pl.Float64,
+    "raw_total": pl.Float64,
+    "margin": pl.Float64,
+    "total": pl.Float64,
+    "skip_reason": pl.Utf8,
+}
+
+
+def fit_calibration(
+    window: Window,
+    fit: WindowFit,
+    *,
+    root: Path = DATA_ROOT,
+    registry: CoachingRegistry | None = None,
+    weeks: Sequence[int] | None = None,
+) -> tuple[Calibration, pl.DataFrame]:
+    """PRJ-01a calibration (decision log 2026-10-13): rate every game of the window's training
+    seasons that can be rated point-in-time (its own snapshot at decision time), with this
+    window's G6 penalty, half-lives, COA-07 coefficients and c, then fit actual home margin
+    = a x 1[non-neutral] + b x raw spread and actual total = a_t + b_t x raw total on actual
+    results only. Games that raise (G4 unknown, no prior season) are kept with their reason
+    and left out of the fit. Schedules are read through the window's Reader; each snapshot
+    reads only its game's season and the one before. `weeks` narrows the games (tests)."""
+    import ge.store.snapshot as snapshot_module
+    from ge.config import params_for, use_params
+    from ge.fit.history import Reader
+    from ge.metrics.context import build_context
+    from ge.models.ratings import rate_context
+    from ge.store.holdout import holdout_season, refuse_holdout
+
+    if window.test_season is not None:
+        refuse_holdout(window.test_season, "PRJ-01a calibration")
+    season = window.test_season if window.test_season is not None else holdout_season() + 1
+    params = ratings_params(season)
+    consts = consts_of(fit)
+    reader = Reader(root, window, fit.data_as_of)
+    rows: list[dict[str, object]] = []
+    with use_params(params_for(season)):
+        for s in window.seasons:
+            sched = reader.frame("schedules", s)
+            if sched.is_empty():
+                raise MissingTrainingData(f"PRJ-01a: window {window.name} has no {s} schedules")
+            sched = sched.filter(
+                pl.col("home_score").is_not_null() & pl.col("away_score").is_not_null()
+            )
+            if weeks is not None:
+                sched = sched.filter(pl.col("week").is_in(list(weeks)))
+            for r in sched.sort("gameday", "gametime", "game_id").iter_rows(named=True):
+                base: dict[str, object] = {
+                    "season": s,
+                    "week": int(r["week"]),
+                    "game_id": r["game_id"],
+                    "game_type": r["game_type"],
+                    "margin": float(r["home_score"] - r["away_score"]),
+                    "total": float(r["home_score"] + r["away_score"]),
+                }
+                try:
+                    ctx = build_context(snapshot_module.snapshot(r["game_id"], root=root), registry)
+                    g = rate_context(ctx, params=params, consts=consts)
+                except NotImplementedError as exc:
+                    rows.append({**base, "skip_reason": str(exc)})
+                    continue
+                rows.append(
+                    {
+                        **base,
+                        "neutral": g.lines.neutral,
+                        "raw_spread": g.lines.raw_spread,
+                        "raw_total": g.lines.raw_total,
+                    }
+                )
+    rated = pl.DataFrame(rows, schema=_RATED_SCHEMA)
+    ok = rated.filter(pl.col("skip_reason").is_null())
+    return calibrate(ok.select("raw_spread", "raw_total", "neutral", "margin", "total")), rated
+
+
+def skip_summary(rated: pl.DataFrame) -> dict[str, int]:
+    """Unrated training games by reason category (for the window file and the report)."""
+    out: dict[str, int] = {}
+    for reason in rated["skip_reason"].drop_nulls().to_list():
+        if "depth chart" in reason:
+            key = "G4: no depth-chart QB1 at decision time"
+        elif "has no plays in the snapshot" in reason:
+            key = "G4: no prior season in the store"
+        elif reason.startswith("G4"):
+            key = "G4: other unknown change"
+        elif reason.startswith("COA-07"):
+            key = "COA-07: travel origin unknown (no earlier season in the store)"
+        else:
+            key = "other"
+        out[key] = out.get(key, 0) + 1
+    return dict(sorted(out.items()))
 
 
 def pooled_coa07(plays: pl.DataFrame, penalty: float) -> Coa07Fit:
@@ -261,8 +388,9 @@ def fit_window(
 
     from ge.config import use_fitted_root
     from ge.fit.history import Reader
+    from ge.ingest.nflverse import SEASONLESS
     from ge.metrics import plays as pf
-    from ge.models.ratings import ratings_params
+    from ge.models.ratings import franchise_map, ratings_params
     from ge.store.holdout import holdout_season, refuse_holdout
 
     if window.test_season is not None:
@@ -271,6 +399,8 @@ def fit_window(
     with use_fitted_root(fitted_root) if fitted_root is not None else nullcontext():
         params = ratings_params(season)
     reader = Reader(root, window, as_of)
+    # COA-07 travel origins match games by franchise (nflverse teams table, DATA-04).
+    fr = franchise_map(reader.frame("teams", SEASONLESS, ["team_abbr", "team_id"]))
     play_frames, game_frames = [], []
     for s in window.seasons:
         pbp = reader.frame("pbp", s)
@@ -282,7 +412,7 @@ def fit_window(
         prev = reader.frame("schedules", s - 1) if s - 1 in window.seasons else pl.DataFrame()
         both = pl.concat([prev, sched], how="diagonal_relaxed") if prev.height else sched
         q = pbp.filter(pf.qualifying() & pl.col("epa").is_not_null())
-        feats = coa07_features(both, q["game_id"].unique().to_list())
+        feats = coa07_features(both, q["game_id"].unique().to_list(), fr)
         terms = offense_terms(align_to_pbp(feats, pbp_sides(pbp)))
         plays = q.select(
             pl.lit(s).cast(pl.Int64).alias("season"),
@@ -363,6 +493,16 @@ def write_window_file(fit: WindowFit, version: str, out_root: Path = RATINGS_FIT
     for name, key in LEAGUE_KEYS.items():
         v, method = league[name]
         values[key] = value("PRJ-01", v, method, n_games)
+    if fit.calib is not None:
+        skipped = ", ".join(f"{k}: {n}" for k, n in fit.calib_skipped.items()) or "none"
+        cal_method = (
+            f"Phase 4b calibration over {fit.calib.n} games of {span} rated point-in-time with "
+            "this window's penalty, half-lives, COA-07 and c: least squares of actual home "
+            "margin on 1[non-neutral] and raw spread, and of actual total on 1 and raw total; "
+            f"actual results only (decision log 2026-10-13). Unrated training games: {skipped}"
+        )
+        for name, key in CALIB_KEYS.items():
+            values[key] = value("PRJ-01", getattr(fit.calib, name), cal_method, fit.calib.n)
     test_season = None if fit.window == "live" else int(fit.window[1:])
     body = {
         "fit_version": version,
@@ -395,10 +535,17 @@ def run_ratings_fit(
     *,
     root: Path = DATA_ROOT,
     out_root: Path = RATINGS_FITTED_ROOT,
+    calibrate_lines: bool = True,
 ) -> dict[str, Path]:
-    """PRJ-01a: fit and write every window. config/ratings_fitted/active.yaml is set by hand
-    (as for the Phase 3e fit)."""
-    return {
-        w.name: write_window_file(fit_window(w, as_of, root=root), version, out_root)
-        for w in windows
-    }
+    """PRJ-01a: fit and write every window (with the Phase 4b calibration unless turned
+    off). config/ratings_fitted/active.yaml is set by hand (as for the Phase 3e fit)."""
+    from dataclasses import replace
+
+    out: dict[str, Path] = {}
+    for w in windows:
+        fit = fit_window(w, as_of, root=root)
+        if calibrate_lines:
+            cal, rated = fit_calibration(w, fit, root=root)
+            fit = replace(fit, calib=cal, calib_skipped=skip_summary(rated))
+        out[w.name] = write_window_file(fit, version, out_root)
+    return out

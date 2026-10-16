@@ -370,11 +370,14 @@ def ratings_fit(
         str, typer.Option(help="S2021, S2022, S2023, S2024, live, or all (default).")
     ] = "all",
     version: Annotated[str, typer.Option(help="Folder under config/ratings_fitted/.")] = "r1",
+    calibrate: Annotated[
+        bool, typer.Option(help="Also fit the Phase 4b calibration (a, b, a_t, b_t).")
+    ] = True,
     data_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
     out_root: Annotated[Path | None, typer.Option(hidden=True)] = None,
 ) -> None:
-    """PRJ-01a / COA-07: fit each window's COA-07 coefficients, league constants and c;
-    writes config/ratings_fitted/<version>/<window>.yaml."""
+    """PRJ-01a / COA-07: fit each window's COA-07 coefficients, league constants and c, and
+    (Phase 4b) the calibration; writes config/ratings_fitted/<version>/<window>.yaml."""
     from ge.config import ATTRIBUTION
     from ge.ingest.raw import DATA_ROOT
     from ge.models.ratings import RATINGS_FITTED_ROOT
@@ -390,6 +393,7 @@ def ratings_fit(
         when,
         root=data_root or DATA_ROOT,
         out_root=out_root or RATINGS_FITTED_ROOT,
+        calibrate_lines=calibrate,
     )
     for name, path in paths.items():
         print(f"{name}: {path}")
