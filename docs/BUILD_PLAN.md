@@ -363,7 +363,7 @@ Requirements from the Phase 4 report (decision 2026-10-13): simulate
 team-specific pace (plays and drives per team), never league drives per
 team-game; the Phase 5 report repeats the Phase 4 pace check and it must
 be flat; simulated margins and totals pass the same calibration check
-against actual results (slope near 1, home bias near 0) before any prop
+against actual results (slope near 1, home bias near 0), and totals use a recency-weighted league scoring level (decision 2026-10-14), before any prop
 is priced.
 ```
 
