@@ -2294,6 +2294,24 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNCAAFCFPEXPAND:
+    decision: exclude
+    first_seen: '2026-10-15'
+    title: College Football Playoff expansion
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: exclude
+    proposed_rules:
+    - other_league
+    - fee_schedule_nfl not run (no saved PDF)
+    decided_by: user
+    decided_on: '2026-10-16'
+    decision_basis: rule proposal approved by user
   KXNCAAFCFPPOLL:
     decision: exclude
     first_seen: '2026-09-29'
@@ -2564,6 +2582,25 @@ series:
     decided_by: user
     decided_on: '2026-10-04'
     decision_basis: college football market
+  KXNCAAFDRAFTDECLARE:
+    decision: exclude
+    first_seen: '2026-10-13'
+    title: Players to Declare for the NFL Draft
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - title:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: exclude
+    proposed_rules:
+    - other_league
+    - fee_schedule_nfl not run (no saved PDF)
+    decided_by: user
+    decided_on: '2026-10-16'
+    decision_basis: rule proposal approved by user
   KXNCAAFDSTTD:
     decision: exclude
     first_seen: '2026-09-29'
@@ -2614,6 +2651,25 @@ series:
     - other_league
     decided_by: user
     decided_on: '2026-09-29'
+    decision_basis: rule proposal approved by user
+  KXNCAAFFFFF:
+    decision: exclude
+    first_seen: '2026-10-13'
+    title: NFL Draft Declare
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - title:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: exclude
+    proposed_rules:
+    - other_league
+    - fee_schedule_nfl not run (no saved PDF)
+    decided_by: user
+    decided_on: '2026-10-16'
     decision_basis: rule proposal approved by user
   KXNCAAFFINALIST:
     decision: exclude
@@ -7833,6 +7889,28 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLNBA:
+    decision: exclude
+    first_seen: '2026-10-15'
+    title: NFL and NBA Champion Combo
+    category: Sports
+    tags:
+    - Football
+    - Basketball
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    - title:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: undecided
+    proposed_rules:
+    - nfl_prefix
+    - other_league
+    - fee_schedule_nfl not run (no saved PDF)
+    decided_by: user
+    decided_on: '2026-10-16'
+    decision_basis: explicit exclude by user (undecided list)
   KXNFLNEXTCOACHOUT:
     decision: include
     first_seen: '2026-09-29'
@@ -8786,14 +8864,14 @@ series:
   KXNFLRETIRE:
     decision: include
     first_seen: '2026-09-29'
-    title: Pro Football Retirement
+    title: NFL Retirement
     category: Sports
     tags:
     - Football
     reasons:
     - tag:Football
     - ticker:NFL
-    - title:Pro Football
+    - title:NFL
     fee_type: quadratic
     fee_multiplier: 1
     proposed: include
@@ -9098,6 +9176,26 @@ series:
     - nfl_prefix
     decided_by: user
     decided_on: '2026-09-29'
+    decision_basis: rule proposal approved by user
+  KXNFLSBOUTCOME:
+    decision: include
+    first_seen: '2026-10-13'
+    title: NFL Championship Outcome
+    category: Sports
+    tags:
+    - Football
+    reasons:
+    - tag:Football
+    - ticker:NFL
+    - title:NFL
+    fee_type: quadratic
+    fee_multiplier: 1
+    proposed: include
+    proposed_rules:
+    - nfl_prefix
+    - fee_schedule_nfl not run (no saved PDF)
+    decided_by: user
+    decided_on: '2026-10-16'
     decision_basis: rule proposal approved by user
   KXNFLSDRAFTTOP:
     decision: include
