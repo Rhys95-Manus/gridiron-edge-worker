@@ -31,8 +31,9 @@ The build order is docs/BUILD_PLAN.md. Work on ONE phase per session.
 8. No trading, ever. Never add Kalshi authentication, API keys, or any order,
   portfolio or account endpoint. Public market-data endpoints only.
 9. Data sources are only those listed as DATA-01 to DATA-13. No scraping.
-  Show "Data: nflverse; charting: FTN Data via nflverse" wherever data is
-  exported.
+  Show "Data: nflverse; charting: FTN Data via nflverse; expected points:
+  ffopportunity (ffverse) via nflverse; data license not stated by the source"
+  wherever data is exported.
 10. Secrets come from .env via pydantic settings. Never print or log them.
 11. Stay in the current phase. Do not refactor other phases without asking.
 

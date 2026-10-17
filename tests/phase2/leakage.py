@@ -31,6 +31,7 @@ GAME_KEY = {
     "participation": "nflverse_game_id",
     "snap_counts": "game_id",
     "player_stats": "game_id",
+    "ff_opportunity": "game_id",
 }
 TEAM_WEEK_KEY = {
     "injuries": "team",

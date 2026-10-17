@@ -8,8 +8,10 @@ from typing import Annotated
 
 import typer
 
+from ge.config import ATTRIBUTION
+
 app = typer.Typer(
-    help="Gridiron Edge worker. Data: nflverse; charting: FTN Data via nflverse.",
+    help=f"Gridiron Edge worker. {ATTRIBUTION}.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -70,7 +72,7 @@ def ingest_nflverse_cmd(
             for s in ("written", "unchanged", "not_published", "error")
         )
     )
-    print("Data: nflverse; charting: FTN Data via nflverse")
+    print(ATTRIBUTION)
     raise typer.Exit(1 if errors else 0)
 
 
@@ -117,7 +119,7 @@ def ingest_collect_cmd() -> None:
 
     code = collect.run_collect(collect.default_steps(), collect.LOG_PATH)
     print(f"\ncollect exit {code}; log: {collect.LOG_PATH}")
-    print("Data: nflverse; charting: FTN Data via nflverse")
+    print(ATTRIBUTION)
     raise typer.Exit(code)
 
 
@@ -158,7 +160,7 @@ def store_build_cmd() -> None:
     for name, n in counts.items():
         print(f"{name:<22} {n:>10}")
     print(f"\nwrote {DB_PATH}")
-    print("Data: nflverse; charting: FTN Data via nflverse")
+    print(ATTRIBUTION)
 
 
 @store.command("snapshot")
@@ -291,7 +293,18 @@ def fit(
         out_root=fitted_root,
         fresh=fresh,
     )
-    path = write_report(results, windows, fit_version, root=fitted_root, compare_to=compare_to)
+    from ge.config import load_params
+    from ge.fit.ply35_check import report_lines
+    from ge.ingest.nflverse import current_season
+
+    gap = report_lines(
+        data_root or DATA_ROOT,
+        int(load_params().backtest.bt_01_last_test_season.value),
+        current_season(),
+    )
+    path = write_report(
+        results, windows, fit_version, root=fitted_root, compare_to=compare_to, extra=gap
+    )
     for name, out in results.items():
         print(
             f"{name}: {len(out.values)} fitted, {len(out.no_signal)} no detectable signal, "

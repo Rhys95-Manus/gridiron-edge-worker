@@ -1,6 +1,6 @@
 """Cut the real-data fixture store the phase3 metric tests read. Run once, by hand:
 
-    uv run python tests/phase3/fixtures/capture_fixtures.py [main] [teams] [pre_ftn]
+    uv run python tests/phase3/fixtures/capture_fixtures.py [main] [teams] [pre_ftn] [combine] [ff]
 
 It copies a slice of the local raw store (data/raw, downloaded in Phase 1) into
 tests/phase3/fixtures/store/, in the same dataset/season=/pulled_at= layout, keeping each
@@ -72,6 +72,14 @@ PRIOR_ONLY = {"rosters"}  # seasonal rosters are end-of-season state: snapshots 
 TARGET_ONLY = {"depth_charts"}  # snapshots read the target season's depth chart only
 # DATA-04 ID crosswalk, stored for all seasons under season=0; ID columns only.
 PLAYERS_COLUMNS = ["gsis_id", "pfr_id", "pulled_at", "source"]
+# DATA-04 ff_opportunity (PLY-35, spec synced 2026-10-16): the spec's data fields plus season and
+# week; player names and fantasy points are not kept.
+FF_COLUMNS = [
+    "season", "week", "game_id", "player_id", "posteam", "position", "rec_attempt",
+    "rush_attempt", "receptions", "receptions_exp", "rec_yards_gained", "rec_yards_gained_exp",
+    "rush_yards_gained", "rush_yards_gained_exp", "rec_touchdown", "rec_touchdown_exp",
+    "rush_touchdown", "rush_touchdown_exp", "pulled_at", "source",
+]  # fmt: skip
 TEAMS_COLUMNS = ["team_abbr", "team_id", "pulled_at", "source"]
 PRE_FTN_SEASON, PRE_FTN_LAST_WEEK = 2021, 6  # FTN charting starts in 2022 (DATA-02)
 
@@ -85,9 +93,14 @@ def _latest(dataset: str, season: int) -> Path:
 
 def _cut(dataset: str, season: int) -> None:
     src = _latest(dataset, season)
-    cols = {"pbp": PBP_COLUMNS, "players": PLAYERS_COLUMNS, "teams": TEAMS_COLUMNS}.get(dataset)
+    cols = {
+        "pbp": PBP_COLUMNS,
+        "players": PLAYERS_COLUMNS,
+        "teams": TEAMS_COLUMNS,
+        "ff_opportunity": FF_COLUMNS,
+    }.get(dataset)
     df = pl.read_parquet(src, columns=cols)
-    wk = WEEKED.get(dataset)
+    wk = WEEKED.get(dataset, "week" if dataset == "ff_opportunity" else None)
     note = f"every {season} row"
     last = {SEASON: LAST_WEEK, PRE_FTN_SEASON: PRE_FTN_LAST_WEEK}.get(season)
     if last is not None and wk is not None:
@@ -103,6 +116,8 @@ def _cut(dataset: str, season: int) -> None:
         note = "every player (seasonless crosswalk); gsis_id and pfr_id only"
     if dataset == "teams":
         note = "every team abbreviation (seasonless); team_abbr and team_id only"
+    if dataset == "ff_opportunity":
+        note += f"; {len(FF_COLUMNS)} columns kept (no names or fantasy points)"
     out_dir = STORE / dataset / f"season={season}" / src.parent.name
     out_dir.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_dir / "part.parquet")
@@ -154,7 +169,20 @@ def combine() -> None:
         _cut("combine", s)
 
 
-STEPS = {"main": main_slices, "teams": teams, "pre_ftn": pre_ftn, "combine": combine}
+def ff_opportunity() -> None:
+    """DATA-04 ff_opportunity (PLY-35): every 2023 row (the previous season's centring mean)
+    and 2024 weeks 1-LAST_WEEK, as pulled (after these games, so BT-01's history rule applies)."""
+    for s in (PRIOR, SEASON):
+        _cut("ff_opportunity", s)
+
+
+STEPS = {
+    "main": main_slices,
+    "teams": teams,
+    "pre_ftn": pre_ftn,
+    "combine": combine,
+    "ff": ff_opportunity,
+}
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from ge.config import IngestConfig, load_fees
+from ge.config import ATTRIBUTION, IngestConfig, load_fees
 from ge.ingest.fees_check import check_fee_schedule, fee_check, parse_effective_date
 from ge.ingest.http import PublicClient
 from ge.ingest.kalshi import (
@@ -43,7 +43,6 @@ from ge.ingest.wikidata import WikidataClient
 from ge.store.known_at import week_window
 
 EASTERN = ZoneInfo("America/New_York")  # nflverse gametime is Eastern (schedules dictionary)
-ATTRIBUTION = "Data: nflverse; charting: FTN Data via nflverse"
 
 
 def _now() -> dt.datetime:

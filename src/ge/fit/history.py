@@ -28,6 +28,8 @@ from ge.store.holdout import Window
 from ge.store.snapshot import (
     COMBINE_COLUMNS,
     CROSSWALK_COLUMNS,
+    FF,
+    FF_OPPORTUNITY_COLUMNS,
     FRANCHISE_COLUMNS,
     GAME_KEYED,
     NGS,
@@ -36,6 +38,7 @@ from ge.store.snapshot import (
     WEEKLY_REPORTS,
     Loader,
     Snapshot,
+    empty_ff_schema,
 )
 from ge.store.vintage import Version, choose_version
 
@@ -102,6 +105,14 @@ def season_view(reader: Reader, season: int) -> Snapshot:
         loaders[ds] = frames(ds, upto)
     for ds in PRIOR_SEASON_ONLY:
         loaders[ds] = frames(ds, [season])
+
+    def ff() -> pl.DataFrame:
+        """PLY-35's ff_opportunity columns for s - 1 and s, every game (end of season)."""
+        cols = list(FF_OPPORTUNITY_COLUMNS)
+        got = [f for s in seasons if (f := reader.frame(FF, s, cols)).height]
+        return pl.concat(got, how="diagonal_relaxed") if got else pl.DataFrame(empty_ff_schema())
+
+    loaders[FF] = ff
 
     def ids(ds: str, cols: tuple[str, ...]) -> pl.DataFrame:
         f = reader.frame(ds, SEASONLESS, list(cols))

@@ -111,6 +111,36 @@ def report_known_at(kickoff: dt.datetime, bt: Backtest) -> dt.datetime:
     return dt.datetime.combine(day, dt.time(int(hour)), EASTERN).astimezone(dt.UTC)
 
 
+def ff_opportunity_known_at(game_end: dt.datetime, bt: Backtest) -> dt.datetime:
+    """BT-01 (spec synced 2026-10-16): for data older than our own pulls, a game's
+    ff_opportunity rows count as known at 12 noon ET on the day after the game's last play
+    (its ET date)."""
+    day = game_end.astimezone(EASTERN).date() + dt.timedelta(days=1)
+    hour = int(bt.bt_01_ff_opportunity_known_hour_et.value)
+    return dt.datetime.combine(day, dt.time(hour), EASTERN).astimezone(dt.UTC)
+
+
+def ff_opportunity_label(bt: Backtest) -> str:
+    """The stated assumption, as snapshots label it."""
+    hour = int(bt.bt_01_ff_opportunity_known_hour_et.value)
+    when = "12 noon" if hour == 12 else f"{hour}:00"
+    return f"a game's rows count as known at {when} ET on the day after the game's last play"
+
+
+def ff_opportunity_visible(
+    df: pl.DataFrame, ends: pl.DataFrame, as_of: dt.datetime, bt: Backtest
+) -> pl.DataFrame:
+    """BT-01: ff_opportunity rows of games whose assumed publish time is <= as_of. `ends` has
+    game_id and game_end_utc; a game without an end time is left out."""
+    known = {
+        g: ff_opportunity_known_at(e, bt)
+        for g, e in ends.select("game_id", "game_end_utc").iter_rows()
+        if e is not None
+    }
+    ok = sorted(g for g, k in known.items() if k <= as_of)
+    return df.filter(pl.col("game_id").is_in(ok))
+
+
 def default_as_of(kickoff: dt.datetime, pass_: Pass, bt: Backtest) -> dt.datetime:
     """BT-01: decision time is kickoff minus 24 h; the second pass is kickoff minus 90 min."""
     if pass_ == "decision":

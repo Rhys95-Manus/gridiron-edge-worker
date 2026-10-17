@@ -208,6 +208,8 @@ player:
   ply_33_min_targets_each: {spec_id: PLY-33, value: 15, status: initial, source: '15 targets each'}
   ply_33_k: {spec_id: PLY-33, value: 40, status: initial, source: 'k = 40; prior = his overall target share'}
   ply_35_min_games: {spec_id: PLY-35, value: 3, status: initial, source: '3 games'}
+  ply_35_model_training_last_season: {spec_id: PLY-35, value: 2020, status: initial, source: 'Seasons 2016–2020 lie inside that training data'}
+  ply_35_centring_min_weeks: {spec_id: PLY-35, value: 3, status: initial, source: 'until the target season has visible games in 3 distinct weeks, the previous season''s full-season mean is used instead'}
 
 coaching:
   coa_02_min_fourth_downs: {spec_id: COA-02, value: 20, status: initial, source: '20 fourth downs'}
@@ -296,6 +298,7 @@ backtest:
   bt_01_ftn_first_season: {spec_id: BT-01, value: 2022, status: initial, source: 'FTN charting starts in 2022'}
   bt_01_assumed_report_hour_et: {spec_id: BT-01, value: 12, status: initial, source: 'counts as known at 12 noon ET'}
   bt_01_assumed_report_days_before_kickoff: {spec_id: BT-01, value: 1, status: initial, source: '1 day before kickoff'}
+  bt_01_ff_opportunity_known_hour_et: {spec_id: BT-01, value: 12, status: initial, source: 'count as known at 12 noon ET on the day after the game''s last play (ET date)'}
   bt_05_min_calibration_slope: {spec_id: BT-05, value: 0.90, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
   bt_05_max_calibration_slope: {spec_id: BT-05, value: 1.10, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
   bt_05_min_calibration_forecasts: {spec_id: BT-05, value: 1000, status: initial, source: 'Calibration slope between 0.90 and 1.10 on held-out seasons, 1,000+ forecasts'}
@@ -320,6 +323,9 @@ fitting:
   bt_02_k_m_3: {spec_id: BT-02, value: 100, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
   bt_02_k_m_4: {spec_id: BT-02, value: 200, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
   bt_02_k_m_5: {spec_id: BT-02, value: 400, status: initial, source: 'm ∈ {25, 50, 100, 200, 400}'}
+  bt_02_ply35_m_1: {spec_id: [BT-02, PLY-35], value: 4, status: initial, source: 'm ∈ {4, 6, 8}, because no stint-season reaches 25 games a half'}
+  bt_02_ply35_m_2: {spec_id: [BT-02, PLY-35], value: 6, status: initial, source: 'm ∈ {4, 6, 8}, because no stint-season reaches 25 games a half'}
+  bt_02_ply35_m_3: {spec_id: [BT-02, PLY-35], value: 8, status: initial, source: 'm ∈ {4, 6, 8}, because no stint-season reaches 25 games a half'}
   bt_02_k_min_entities_per_m: {spec_id: BT-02, value: 30, status: initial, source: 'using only m with at least 30 qualifying entities'}
   bt_02_k_splits: {spec_id: BT-02, value: 50, status: initial, source: 'averaged over 50 seeded splits'}
   bt_02_g6_penalty_log10_min: {spec_id: BT-02, value: 1, status: initial, source: 'chosen from 10^x for x = 1 to 5 in steps of 0.25'}

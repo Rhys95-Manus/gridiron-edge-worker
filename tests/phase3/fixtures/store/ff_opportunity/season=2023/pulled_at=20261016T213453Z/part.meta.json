@@ -1,0 +1,12 @@
+{
+ "source": "data/raw/ff_opportunity/season=2023/pulled_at=20261016T213453Z/part.parquet",
+ "source_column": [
+  "nflverse (DATA-04) via nflreadpy 0.1.5: ff_opportunity(2023)"
+ ],
+ "pulled_at": [
+  "2026-10-16 21:34:53.267563+00:00"
+ ],
+ "cut_at": "2026-10-16T21:36:16+00:00",
+ "rows": 6081,
+ "note": "every 2023 row; 20 columns kept (no names or fantasy points)"
+}

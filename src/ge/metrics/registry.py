@@ -16,6 +16,7 @@ import polars as pl
 from ge.config import use_season
 from ge.metrics import coaching as co
 from ge.metrics import defense as d
+from ge.metrics import expected as ex
 from ge.metrics import offense as o
 from ge.metrics import player as pl_
 from ge.metrics import skills as sk
@@ -511,6 +512,16 @@ REGISTRY: dict[str, Entry] = {
             ),
         ),
         Entry("PLY-34", sk.ply_34),
+        # PLY-35 (spec synced 2026-10-16): centred gaps shrink toward 0 with Phase 3e's k;
+        # the raw gaps are reported alongside, not shrunk.
+        Entry(
+            "PLY-35",
+            ex.ply_35,
+            _stats(
+                *[StatDef(s, E, FIT_ONLY, Fixed(0.0)) for s in ex.STATS],
+                *[StatDef(f"{s}_raw", E) for s in ex.STATS],
+            ),
+        ),
         # ---- section 6b: defensive counterparts ----
         Entry(
             "DEF-09",

@@ -57,9 +57,32 @@ COMBINE_COLUMNS = (
     "shuttle",
 )
 PRESEASON = ("combine",)
+# DATA-04 ff_opportunity (PLY-35; spec synced 2026-10-16): only PLY-35's data fields. Names and
+# fantasy points aren't exposed. Game-keyed, with BT-01's publish-time assumption on history.
+FF = "ff_opportunity"
+FF_OPPORTUNITY_COLUMNS = (
+    "game_id",
+    "player_id",
+    "posteam",
+    "position",
+    "rec_attempt",
+    "rush_attempt",
+    "receptions",
+    "receptions_exp",
+    "rec_yards_gained",
+    "rec_yards_gained_exp",
+    "rush_yards_gained",
+    "rush_yards_gained_exp",
+    "rec_touchdown",
+    "rec_touchdown_exp",
+    "rush_touchdown",
+    "rush_touchdown_exp",
+)
+FF_STRING_COLUMNS = ("game_id", "player_id", "posteam", "position")
 SNAPSHOT_DATASETS = (
     "schedules",
     *GAME_KEYED,
+    FF,
     *NGS,
     *WEEKLY_REPORTS,
     *PRIOR_SEASON_ONLY,
@@ -75,6 +98,7 @@ TABLES = (
     "target_game",
     "schedules",
     *GAME_KEYED,
+    FF,
     *NGS,
     "participation",
     "injuries",
@@ -141,6 +165,11 @@ class Snapshot:
         return h.hexdigest()
 
 
+def empty_ff_schema() -> dict[str, pl.DataType | type[pl.DataType]]:
+    """ff_opportunity's exposed columns with their stored types (confirmed 2026-10-16)."""
+    return {c: pl.Utf8 if c in FF_STRING_COLUMNS else pl.Float64 for c in FF_OPPORTUNITY_COLUMNS}
+
+
 def _canonical_bytes(df: pl.DataFrame) -> bytes:
     """Uncompressed Parquet without statistics. Not Arrow IPC: IPC copies whatever bytes sit
     under null slots and in string-view buffers, which depend on the file the data came from,
@@ -196,6 +225,7 @@ def snapshot(
         for ds in (
             "schedules",
             *GAME_KEYED,
+            FF,
             *NGS,
             *WEEKLY_REPORTS,
             *PRIOR_SEASON_ONLY,
@@ -256,6 +286,34 @@ def snapshot(
 
     for ds, key in GAME_KEYED.items():
         loaders[ds] = game_keyed(ds, key)
+
+    def ff() -> pl.DataFrame:
+        """BT-01: finished games only; on history older than our own pulls, only games whose
+        assumed publish time (12 noon ET the day after the last play) is <= as_of."""
+        cols = list(FF_OPPORTUNITY_COLUMNS)
+        done = games.filter(pl.col("game_id").is_in(finished))
+        parts = []
+        for s in seasons:
+            v = versions[(FF, s)]
+            lf = _read(v, cols)
+            if lf is None or v is None:
+                continue
+            df = lf.filter(pl.col("game_id").is_in(finished)).collect()
+            parts.append(ka.ff_opportunity_visible(df, done, as_of, bt) if v.after_as_of else df)
+        if not parts:
+            return pl.DataFrame(empty_ff_schema())
+        return pl.concat(parts, how="diagonal_relaxed").select(cols)
+
+    loaders[FF] = ff
+    for s in seasons:
+        v = versions[(FF, s)]
+        if v is not None and v.after_as_of:
+            labels.append(
+                f"{FF} {s}: no per-game publish time before our own pulls; "
+                f"{ka.ff_opportunity_label(bt)} (ET date), a stated assumption (BT-01)"
+            )
+        elif v is not None:
+            labels.append(f"{FF} {s}: our own pull at {v.pulled_at.isoformat()} decides")
 
     def ngs(ds: str) -> Loader:
         return lambda: ka.ngs_visible(

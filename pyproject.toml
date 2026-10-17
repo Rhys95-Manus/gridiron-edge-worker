@@ -29,10 +29,16 @@ dev = [
     "hypothesis>=6.168.3",
     "mypy>=1.11",
     "pre-commit>=3.8",
+    "pyreadr==0.5.7",
     "pytest>=8.3",
     "ruff>=0.6",
     "types-PyYAML>=6.0",
 ]
+
+[tool.uv]
+# pyreadr (dev, decision log 2026-10-16) pulls in narwhals; pinned to a release at least 14 days
+# old, the same rule as pyreadr's own pin (2.26.0, uploaded 2026-09-08).
+constraint-dependencies = ["narwhals==2.26.0"]
 
 [build-system]
 requires = ["hatchling"]

@@ -260,6 +260,8 @@ class Player(_Group):
     ply_33_min_targets_each: Param
     ply_33_k: Param
     ply_35_min_games: Param
+    ply_35_centring_min_weeks: Param
+    ply_35_model_training_last_season: Param
 
 
 class Coaching(_Group):
@@ -355,6 +357,7 @@ class Backtest(_Group):
     bt_01_ftn_first_season: Param
     bt_01_assumed_report_hour_et: Param
     bt_01_assumed_report_days_before_kickoff: Param
+    bt_01_ff_opportunity_known_hour_et: Param
     bt_05_min_calibration_slope: Param
     bt_05_max_calibration_slope: Param
     bt_05_min_calibration_forecasts: Param
@@ -384,6 +387,9 @@ class Fitting(_Group):
     bt_02_k_m_3: Param
     bt_02_k_m_4: Param
     bt_02_k_m_5: Param
+    bt_02_ply35_m_1: Param
+    bt_02_ply35_m_2: Param
+    bt_02_ply35_m_3: Param
     bt_02_k_min_entities_per_m: Param
     bt_02_k_splits: Param
     bt_02_g6_penalty_log10_min: Param
@@ -403,6 +409,10 @@ class Fitting(_Group):
 
     def m_grid(self) -> tuple[int, ...]:
         return tuple(int(getattr(self, f"bt_02_k_m_{i}").value) for i in range(1, 6))
+
+    def ply35_m_grid(self) -> tuple[int, ...]:
+        """PLY-35's split-half m grid, in player-games (spec synced 2026-10-16)."""
+        return tuple(int(getattr(self, f"bt_02_ply35_m_{i}").value) for i in range(1, 4))
 
     def half_life_grid(self) -> tuple[float, ...]:
         return tuple(float(getattr(self, f"bt_02_half_life_{i}").value) for i in range(1, 9))
@@ -498,6 +508,7 @@ class NflverseSettings(_Group):
     first_season: IntSetting
     ftn_first_season: IntSetting
     combine_first_season: IntSetting
+    ff_opportunity_model_version: StrSetting
 
 
 class KalshiSettings(_Group):
@@ -580,8 +591,27 @@ def _load_params(path: Path, mtime_ns: int, size: int) -> Params:
 # ActiveParams.extra and raises NotImplementedError when the season has no fit for it.
 
 FITTED_ROOT = REPO_ROOT / "config" / "params_fitted"
-ATTRIBUTION = "Data: nflverse; charting: FTN Data via nflverse"
+# MODEL_SPEC section 1 Rules (attribution line extended 2026-10-16 for ff_opportunity, DATA-04).
+ATTRIBUTION = (
+    "Data: nflverse; charting: FTN Data via nflverse; expected points: ffopportunity (ffverse) "
+    "via nflverse; data license not stated by the source"
+)
 FIT_KEY_PREFIX = "fit:"
+
+
+@dataclass(frozen=True)
+class LegacyAttribution:
+    """Decision log 2026-10-16: the previous line, accepted only on the fitted files written
+    before 2026-10-16 (params fits v1-v3, ratings fits r1-r2), which hold no ff_opportunity
+    data."""
+
+    line: str
+    fit_versions: tuple[str, ...]
+
+
+LEGACY_ATTRIBUTION = LegacyAttribution(
+    "Data: nflverse; charting: FTN Data via nflverse", ("v1", "v2", "v3", "r1", "r2")
+)
 
 
 class FitVersionMissing(FileNotFoundError):
@@ -620,7 +650,11 @@ class _ActiveVersion(_Strict):
 def _check_fitted(f: FittedFile, path: Path, initial: Params) -> None:
     from ge.store.holdout import Window
 
-    if f.attribution != ATTRIBUTION:
+    legacy = (
+        f.attribution == LEGACY_ATTRIBUTION.line
+        and f.fit_version in LEGACY_ATTRIBUTION.fit_versions
+    )
+    if f.attribution != ATTRIBUTION and not legacy:
         raise ValueError(f"{path}: attribution must be {ATTRIBUTION!r}")
     if f.window != path.stem:
         raise ValueError(f"{path}: window {f.window!r} does not match the file name")

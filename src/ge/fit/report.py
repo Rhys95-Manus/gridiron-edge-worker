@@ -102,12 +102,44 @@ def _comparison(
     return lines
 
 
+PLY35_STATS = ("receptions", "receiving_yards", "rushing_yards", "tds")
+
+
+def _ply35_section(results: Mapping[str, Any], windows: list[Window]) -> list[str]:
+    """PLY-35 (spec synced 2026-10-16): k per window and stat, with split-half r for the seasons
+    inside ffopportunity's stated training data and after."""
+    lines = [
+        "## PLY-35 (expected production): k per window",
+        "",
+        "k is in player-games (PLY-35's own m grid); r by period is in the last column.",
+        "",
+        "| window | stat | k | n | seasons | split-half r by period |",
+        "|---|---|---|---|---|---|",
+    ]
+    for w in windows:
+        out = results[w.name]
+        for stat in PLY35_STATS:
+            key = f"fit:k/PLY-35/{stat}"
+            note = out.notes.get(key, "")
+            if key in out.values:
+                v = out.values[key]
+                row = f"{_fmt(v['value'])} | {v['n']} | {_seasons(v['seasons'])}"
+            elif key in out.no_signal:
+                row = f"no signal | — | {out.no_signal[key]}"
+            else:
+                row = f"missing | — | {out.missing.get(key, 'absent')}"
+            lines.append(f"| {w.name} | {stat} | {row} | {note} |")
+    lines.append("")
+    return lines
+
+
 def write_report(
     results: Mapping[str, Any],
     windows: list[Window],
     fit_version: str,
     root: Path = FITTED_ROOT,
     compare_to: str | None = None,
+    extra: list[str] | None = None,
 ) -> Path:
     lines = [
         f"# Phase 3e fit report — {fit_version}",
@@ -168,6 +200,9 @@ def write_report(
         lines.append("")
     if compare_to:
         lines += _comparison(results, windows, old, compare_to, fit_version)
+    lines += _ply35_section(results, windows)
+    if extra:
+        lines += [*extra, ""]
     lines += ["## Left missing", ""]
     for w in windows:
         lines.append(f"### {w.name}")

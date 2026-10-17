@@ -197,6 +197,8 @@ def test_nflverse_step_pulls_injuries_depth_charts_and_schedules_for_current_sea
                 "nextgen_rushing",
                 "nextgen_receiving",
                 "rosters_weekly",
+                # BT-01 (spec synced 2026-10-16): our own pulls set ff_opportunity's pulled_at.
+                "ff_opportunity",
             ],
         )
     ]

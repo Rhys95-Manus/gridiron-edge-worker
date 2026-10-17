@@ -65,6 +65,14 @@ DATASETS: dict[str, Dataset] = {
         lambda s: nfl.load_combine([s]),
         first_season=load_ingest().nflverse.combine_first_season.value,
     ),
+    # PLY-35's expected production (spec synced 2026-10-16): weekly, one pinned model version;
+    # ffverse rebuilds the whole season's file after games.
+    "ff_opportunity": Dataset(
+        "DATA-04",
+        lambda s: nfl.load_ff_opportunity(
+            s, "weekly", load_ingest().nflverse.ff_opportunity_model_version.value
+        ),
+    ),
 }
 
 

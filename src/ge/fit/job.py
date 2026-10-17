@@ -26,7 +26,7 @@ import shutil
 import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +99,9 @@ PARENTS = {
 }
 # BT-02 (ruling 2026-10-08): a redistribution rule, not a stabilizing skill.
 KEEP_INITIAL = {("PLY-15", "target_share"), ("PLY-15", "carry_share")}
+# PLY-35 (rulings 2026-10-16): split-half in player-games on its own m grid (no stint-season
+# reaches BT-02's 25 games a half), and left out of the G3 half-life fit.
+PLY35 = "PLY-35"
 OVERLAY = {
     "usage_h": "conventions.g3_usage_half_life_games",
     "efficiency_h": "conventions.g3_efficiency_half_life_games",
@@ -114,6 +117,8 @@ class FitConfig:
     half_lives: tuple[float, ...]
     min_entities: int
     min_events: int
+    # PLY-35's m grid in player-games (BT-02, spec synced 2026-10-16); None leaves its k missing.
+    ply35_m_grid: tuple[int, ...] | None = None
 
     @staticmethod
     def from_params(f: Fitting) -> FitConfig:
@@ -123,6 +128,7 @@ class FitConfig:
             f.half_life_grid(),
             int(f.bt_02_min_entities.value),
             int(f.bt_02_min_events.value),
+            f.ply35_m_grid(),
         )
 
 
@@ -243,6 +249,9 @@ class Fitter:
         self.cfg = cfg
         self.fit_version = fit_version
         self.ftn_first = int(load_params().backtest.bt_01_ftn_first_season.value)
+        self.ply35_trained_through = int(
+            load_params().player.ply_35_model_training_last_season.value
+        )
         self._hv: dict[tuple[str, int], pl.DataFrame] = {}
 
     def _cat(self, name: str, w: Window) -> pl.DataFrame:
@@ -535,6 +544,11 @@ class Fitter:
                 if kp is not None:
                     got[fit_k_key(sid, sd.stat, None)] = kp
                 continue
+            if sid == PLY35:
+                kp = self._fit_ply35_k(sd, w, out)
+                if kp is not None:
+                    got[fit_k_key(sid, sd.stat, None)] = kp
+                continue
             key = fit_k_key(sid, sd.stat, cell)
             parts = [(s, self.half_values(sid, sd, cell, s, key, w, out)) for s in w.seasons]
             used = [s for s, hv in parts if hv.height]
@@ -573,6 +587,64 @@ class Fitter:
                     if vk is not None:
                         out.notes[key] = f"variance-components cross-check k = {vk:.1f}"
         return got
+
+    def _fit_ply35_k(self, sd: StatDef, w: Window, out: Out) -> float | None:
+        """PLY-35: split-half on per-game centred gaps (unit player-game, entity player-team
+        stint in a season, prior 0) on PLY-35's own m grid in games. The note gives r per m for
+        the seasons inside ffopportunity's stated training data and for the seasons after."""
+        key = fit_k_key(PLY35, sd.stat, None)
+        grid = self.cfg.ply35_m_grid
+        if grid is None:
+            out.missing[key] = "no PLY-35 game m grid configured"
+            return None
+        sp = replace(self.cfg.split, m_grid=grid)
+        parts: list[tuple[int, pl.DataFrame]] = []
+        for s in w.seasons:
+            rows, _ = self.stat_rows(PLY35, sd, None, s, out)
+            if rows.is_empty():
+                continue
+            u = rows.drop("g")
+
+            def make(seed: str, u: pl.DataFrame = u) -> pl.DataFrame:
+                return half_values(u, sp, seed)
+
+            hv = self._half(key, s, make)
+            if hv.height:
+                parts.append((s, hv))
+        if not parts:
+            out.missing[key] = (
+                "no units in the window"
+                if not self._has_rows(PLY35, sd, None, w)
+                else f"fewer than {sp.min_entities} stints reach 2m games at any m in {grid}"
+            )
+            return None
+        used = [s for s, _ in parts]
+        fit = k_from_halves(pl.concat([h for _, h in parts], how="diagonal_relaxed"), sp)
+        self._record_k(out, key, PLY35, fit, used, None, sd, how="split-half in player-games")
+        out.notes[key] = self._ply35_periods(parts, sp)
+        return fit.k if fit.status == "fitted" else None
+
+    def _ply35_periods(self, parts: list[tuple[int, pl.DataFrame]], sp: SplitHalfConfig) -> str:
+        """Split-half r per m for seasons <= the model's last training season and after."""
+        last = self.ply35_trained_through
+        out = []
+        for inside in (True, False):
+            hv = [h for s, h in parts if (s <= last) is inside]
+            seasons = [s for s, _ in parts if (s <= last) is inside]
+            name = (
+                f"{min(seasons)}-{max(seasons)}"
+                if seasons
+                else ("<=" if inside else ">") + str(last)
+            )
+            tag = "inside model training data" if inside else "after model training data"
+            if not hv:
+                out.append(f"r {name} ({tag}): no seasons in window")
+                continue
+            f = k_from_halves(pl.concat(hv, how="diagonal_relaxed"), sp)
+            rs = ", ".join(f"{p.m}:{p.r:.3f}" for p in f.per_m) or "no m with enough stints"
+            k = f"k {f.k:.1f}" if f.k is not None else f.status
+            out.append(f"r {name} ({tag}): m:r = {rs}; {k}")
+        return "; ".join(out)
 
     def _has_rows(self, sid: str, sd: StatDef, cell: str | None, w: Window) -> bool:
         """Whether the stat has any input rows in the window (before the m minimum)."""
@@ -666,7 +738,7 @@ class Fitter:
         per_class: dict[str, list[dict[float, HLoss]]] = defaultdict(list)
         for sid, sd, cell, _ in _k_targets():
             key = fit_k_key(sid, sd.stat, cell)
-            if key not in ks or (sid, sd.stat) in GAPS or sid in ("DEF-04", "DEF-08"):
+            if key not in ks or (sid, sd.stat) in GAPS or sid in ("DEF-04", "DEF-08", PLY35):
                 continue
             if (sid, sd.stat) in (("PLY-04", "wopr"), *ALIASES):
                 continue

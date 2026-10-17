@@ -35,6 +35,8 @@ NFLVERSE_DATASETS = [
     "nextgen_rushing",
     "nextgen_receiving",
     "rosters_weekly",
+    # BT-01 (spec synced 2026-10-16): from our own pulls on, pulled_at decides ff_opportunity.
+    "ff_opportunity",
 ]
 
 StepFn = Callable[[], tuple[bool, str]]
