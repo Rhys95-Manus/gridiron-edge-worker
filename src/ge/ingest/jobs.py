@@ -14,6 +14,7 @@ from ge.config import ATTRIBUTION, IngestConfig, load_fees
 from ge.ingest.fees_check import check_fee_schedule, fee_check, parse_effective_date
 from ge.ingest.http import PublicClient
 from ge.ingest.kalshi import (
+    DECISIONS_PATH,
     REVIEW_PATH,
     KalshiPublic,
     approved_series,
@@ -235,7 +236,7 @@ def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
     with PublicClient(cfg.http) as http:
         k = KalshiPublic(http, cfg.kalshi)
         all_series = k.series_list()
-        cands, new = refresh_review(REVIEW_PATH, all_series, _team_names())
+        cands, new = refresh_review(REVIEW_PATH, DECISIONS_PATH, all_series, _team_names())
         write_raw(
             pl.DataFrame(
                 [
@@ -254,14 +255,17 @@ def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
             source="Kalshi GET /series (DATA-08)",
             pulled_at=pulled_at,
         )
-        approved = sorted(approved_series(REVIEW_PATH))
-        pending = pending_series(REVIEW_PATH)
+        approved = sorted(approved_series(DECISIONS_PATH))
+        pending = pending_series(REVIEW_PATH, DECISIONS_PATH)
         print(
             f"NFL series candidates: {len(cands)} ({new} new); approved: {len(approved)}; "
-            f"pending review: {len(pending)} -> {REVIEW_PATH}"
+            f"awaiting a decision: {len(pending)} (proposals in {REVIEW_PATH}; decide in "
+            f"{DECISIONS_PATH})"
         )
         if not approved:
-            print("No approved series yet. Mark series `include` in the review file, then rerun.")
+            print(
+                "No approved series yet. Decide series `include` in the decisions file, then rerun."
+            )
             return 2
         if history:
             return _run_kalshi_history(k, season, week, approved)
@@ -332,9 +336,9 @@ def run_fees_check(cfg: IngestConfig, pdf_path: str | None) -> int:
     else:
         print("PDF check not run (pass --pdf <saved fee schedule PDF> to run it)")
 
-    included = approved_series(REVIEW_PATH)
+    included = approved_series(DECISIONS_PATH)
     if not included:
-        print(f"API check: no series are marked include in {REVIEW_PATH}; nothing to compare")
+        print(f"API check: no series are decided include in {DECISIONS_PATH}; nothing to compare")
         return 0 if ok else 1
     with PublicClient(cfg.http) as http:
         listed = {s["ticker"]: s for s in KalshiPublic(http, cfg.kalshi).series_list()}

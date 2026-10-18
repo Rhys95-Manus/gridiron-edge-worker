@@ -132,10 +132,11 @@ def test_conflicting_rules_leave_it_undecided() -> None:
 
 
 def test_writing_proposals_never_approves_anything(tmp_path: Path) -> None:
-    review = tmp_path / "kalshi_nfl_series.yaml"
+    review, decisions = tmp_path / "review.yaml", tmp_path / "decisions.yaml"
     update_review_file(review, nfl_candidates(_series()))
     write_proposals(review, _proposals())
     data = yaml.safe_load(review.read_text(encoding="utf-8"))
-    assert {r["decision"] for r in data["series"].values()} == {"pending"}
+    assert all("decision" not in r for r in data["series"].values())
     assert all("proposed" in r and r["proposed_rules"] for r in data["series"].values())
-    assert approved_series(review) == set()
+    assert not decisions.exists()
+    assert approved_series(decisions) == set()

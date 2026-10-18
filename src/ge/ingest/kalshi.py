@@ -1,8 +1,10 @@
 """DATA-08 Kalshi public market data. GET-only, no auth, no order/portfolio/account endpoints
 (CLAUDE.md rule 8). Endpoint paths are from docs.kalshi.com (see config/ingest.yaml sources).
 
-NFL series discovery proposes candidates with reasons into config/kalshi_nfl_series.yaml;
-only series you mark `include` are ingested (approved 2026-09-29)."""
+NFL series discovery writes candidates, their metadata and rule-based proposals to an untracked
+review file under data/; the tracked config/kalshi_nfl_series.yaml holds only the user's
+decisions, so the scheduled collector never modifies it (split approved 2026-10-17). Only series
+decided `include` are ingested (approved 2026-09-29)."""
 
 from __future__ import annotations
 
@@ -18,8 +20,10 @@ import yaml
 from ge.config import REPO_ROOT, KalshiSettings
 from ge.ingest.http import PublicClient
 
-REVIEW_PATH = REPO_ROOT / "config" / "kalshi_nfl_series.yaml"
-DECISIONS = ("pending", "include", "exclude")
+DECISIONS_PATH = REPO_ROOT / "config" / "kalshi_nfl_series.yaml"
+REVIEW_PATH = REPO_ROOT / "data" / "kalshi" / "series_review.yaml"
+DECISIONS = ("include", "exclude")
+DECISION_FIELDS = ("decision", "decided_by", "decided_on", "decision_basis")
 
 _NFL_IN_TICKER = re.compile(r"NFL(?!X)")  # KXNFL... but not ...NFLX (Netflix)
 _NFL_IN_TITLE = re.compile(r"\bNFL\b")
@@ -69,29 +73,59 @@ def nfl_candidates(series: list[dict[str, Any]]) -> list[Candidate]:
     return sorted(out, key=lambda c: c.ticker)
 
 
+def _dump(path: Path, body: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(body, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
+    )
+
+
 def _read_review(path: Path) -> dict[str, Any]:
+    """The discovery file: {ticker: metadata and proposal}. No decisions live here."""
     if not path.exists():
-        return {"series": {}}
+        return {}
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    rows = data.get("series") or {}
+    return dict(data.get("series") or {})
+
+
+def read_decisions(path: Path = DECISIONS_PATH) -> dict[str, dict[str, Any]]:
+    """DATA-08: the user's decisions, {ticker: decision, decided_by, decided_on,
+    decision_basis}. Every row must have exactly those fields, decision include or exclude."""
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    rows = dict(data.get("series") or {})
     for ticker, row in rows.items():
-        if row.get("decision") not in DECISIONS:
+        if not isinstance(row, dict) or set(row) != set(DECISION_FIELDS):
+            raise ValueError(f"{path}: {ticker} must have exactly {DECISION_FIELDS}")
+        if row["decision"] not in DECISIONS:
             raise ValueError(f"{path}: {ticker} decision must be one of {DECISIONS}")
-    return {"series": rows}
+    return rows
+
+
+def _write_decisions(path: Path, rows: dict[str, dict[str, Any]]) -> None:
+    _dump(
+        path,
+        {
+            "how_to_decide": "One row per decided series: decision include or exclude, with "
+            "decided_by, decided_on and decision_basis. Undecided series are listed with "
+            "their proposals in data/kalshi/series_review.yaml (written by ge ingest kalshi).",
+            "series": {t: {f: rows[t][f] for f in DECISION_FIELDS} for t in sorted(rows)},
+        },
+    )
 
 
 def update_review_file(path: Path, candidates: list[Candidate]) -> int:
-    """Add new candidates as `pending`, refresh metadata, keep every existing decision.
-    Returns how many candidates were new."""
-    data = _read_review(path)
-    rows = data["series"]
+    """Add new candidates with the date first seen and refresh every candidate's metadata in
+    the discovery file. Returns how many candidates were new."""
+    rows = _read_review(path)
     today = dt.datetime.now(dt.UTC).date().isoformat()
     new = 0
     for c in candidates:
         row = rows.get(c.ticker)
         if row is None:
             new += 1
-            row = {"decision": "pending", "first_seen": today}
+            row = {"first_seen": today}
         row.update(
             title=c.title,
             category=c.category,
@@ -101,14 +135,14 @@ def update_review_file(path: Path, candidates: list[Candidate]) -> int:
             fee_multiplier=c.fee_multiplier,
         )
         rows[c.ticker] = row
-    body = {
-        "generated_by": "ge ingest kalshi",
-        "how_to_review": "Set each decision to include or exclude. Only include is ingested; "
-        "new candidates arrive as pending and are reported, never auto-included.",
-        "series": dict(sorted(rows.items())),
-    }
-    path.write_text(
-        yaml.safe_dump(body, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
+    _dump(
+        path,
+        {
+            "generated_by": "ge ingest kalshi",
+            "how_to_review": "Discovery metadata and rule-based proposals, rewritten on every "
+            "run. Decide a series in config/kalshi_nfl_series.yaml; only include is ingested.",
+            "series": dict(sorted(rows.items())),
+        },
     )
     return new
 
@@ -174,36 +208,31 @@ def propose(
 
 
 def write_proposals(path: Path, proposals: dict[str, tuple[str, list[str]]]) -> None:
-    """Record proposals next to each decision. Decisions are never changed here."""
+    """Record proposals in the discovery file. Decisions are never changed here."""
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     for ticker, (proposal, rules) in proposals.items():
         row = data["series"].get(ticker)
         if row is not None:
             row["proposed"] = proposal
             row["proposed_rules"] = rules
-    path.write_text(
-        yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
-    )
+    _dump(path, data)
 
 
 FEE_RULE_SKIPPED = "fee_schedule_nfl not run (no saved PDF)"
 
 
 def refresh_review(
-    path: Path, all_series: list[dict[str, Any]], team_names: list[str]
+    path: Path, decisions: Path, all_series: list[dict[str, Any]], team_names: list[str]
 ) -> tuple[list[Candidate], int]:
-    """DATA-08: add new NFL candidates as pending and propose include/exclude for every
-    pending row that has no proposal yet (user request 2026-10-04). Live runs have no
-    fee-schedule PDF (it sits behind a bot check), so that rule is skipped and the skip is
-    recorded in proposed_rules (user decision 2026-10-04). Decisions are never changed."""
+    """DATA-08: record NFL candidates in the discovery file and propose include/exclude for
+    every undecided candidate that has no proposal yet (user request 2026-10-04). Live runs
+    have no fee-schedule PDF (it sits behind a bot check), so that rule is skipped and the skip
+    is recorded in proposed_rules (user decision 2026-10-04). The decisions file is only read."""
     cands = nfl_candidates(all_series)
     new = update_review_file(path, cands)
-    rows = _read_review(path)["series"]
-    todo = [
-        c
-        for c in cands
-        if rows[c.ticker]["decision"] == "pending" and "proposed" not in rows[c.ticker]
-    ]
+    rows = _read_review(path)
+    decided = read_decisions(decisions)
+    todo = [c for c in cands if c.ticker not in decided and "proposed" not in rows[c.ticker]]
     if todo:
         props = {
             t: (p, [*rules, FEE_RULE_SKIPPED])
@@ -214,39 +243,61 @@ def refresh_review(
 
 
 def apply_decisions(
-    path: Path,
+    decisions: Path,
+    review: Path,
     include: dict[str, str],
     exclude: dict[str, str],
     *,
     decided_by: str,
     decided_on: str,
 ) -> None:
-    """Record the user's decisions ({ticker: basis}) with who decided and when."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    rows = data["series"]
+    """Record the user's decisions ({ticker: basis}) with who decided and when. A ticker must
+    be in the discovery file or already decided."""
+    rows = read_decisions(decisions)
+    known = set(_read_review(review)) | set(rows)
     both = sorted(set(include) & set(exclude))
-    unknown = sorted((set(include) | set(exclude)) - set(rows))
+    unknown = sorted((set(include) | set(exclude)) - known)
     if both or unknown:
-        raise ValueError(f"listed as both include and exclude: {both}; not in file: {unknown}")
+        raise ValueError(f"listed as both include and exclude: {both}; not discovered: {unknown}")
     for decision, picks in (("include", include), ("exclude", exclude)):
         for ticker, basis in picks.items():
-            rows[ticker].update(
-                decision=decision,
-                decided_by=decided_by,
-                decided_on=decided_on,
-                decision_basis=basis,
-            )
-    path.write_text(
-        yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n"
+            rows[ticker] = {
+                "decision": decision,
+                "decided_by": decided_by,
+                "decided_on": decided_on,
+                "decision_basis": basis,
+            }
+    _write_decisions(decisions, rows)
+
+
+def approved_series(decisions: Path = DECISIONS_PATH) -> set[str]:
+    return {t for t, row in read_decisions(decisions).items() if row["decision"] == "include"}
+
+
+def pending_series(review: Path = REVIEW_PATH, decisions: Path = DECISIONS_PATH) -> set[str]:
+    """Discovered series with no decision yet."""
+    return set(_read_review(review)) - set(read_decisions(decisions))
+
+
+def split_combined(combined: Path, decisions: Path, review: Path) -> None:
+    """One-time migration (2026-10-17) of the old combined file: decided rows' decision fields
+    to the decisions file; every row's metadata and proposal to the discovery file."""
+    rows = (yaml.safe_load(combined.read_text(encoding="utf-8")) or {}).get("series") or {}
+    dec = {
+        t: {f: r[f] for f in DECISION_FIELDS} for t, r in rows.items() if r["decision"] != "pending"
+    }
+    meta = {t: {k: v for k, v in r.items() if k not in DECISION_FIELDS} for t, r in rows.items()}
+    _write_decisions(decisions, dec)
+    _dump(
+        review,
+        {
+            "generated_by": "ge ingest kalshi",
+            "how_to_review": "Discovery metadata and rule-based proposals, rewritten on every "
+            "run. Decide a series in config/kalshi_nfl_series.yaml; only include is ingested.",
+            "series": dict(sorted(meta.items())),
+        },
     )
-
-
-def approved_series(path: Path = REVIEW_PATH) -> set[str]:
-    return {t for t, row in _read_review(path)["series"].items() if row["decision"] == "include"}
-
-
-def pending_series(path: Path = REVIEW_PATH) -> set[str]:
-    return {t for t, row in _read_review(path)["series"].items() if row["decision"] == "pending"}
+    read_decisions(decisions)  # validates what was written
 
 
 _EVENT_DATE = re.compile(r"-(\d{2}[A-Z]{3}\d{2})")

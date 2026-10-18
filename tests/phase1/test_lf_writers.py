@@ -28,7 +28,7 @@ def _assert_lf(path: Path) -> None:
 
 
 def test_kalshi_review_file_writers_use_lf(tmp_path: Path) -> None:
-    path = tmp_path / "kalshi_nfl_series.yaml"
+    path, decisions = tmp_path / "review.yaml", tmp_path / "kalshi_nfl_series.yaml"
     cands = nfl_candidates(_series())
     assert cands
     update_review_file(path, cands)
@@ -36,13 +36,14 @@ def test_kalshi_review_file_writers_use_lf(tmp_path: Path) -> None:
     write_proposals(path, {c.ticker: ("include", ["nfl_prefix"]) for c in cands[:2]})
     _assert_lf(path)
     apply_decisions(
+        decisions,
         path,
         {cands[0].ticker: "test"},
         {},
         decided_by="test",
         decided_on="2026-10-02",
     )
-    _assert_lf(path)
+    _assert_lf(decisions)
 
 
 def test_stadiums_writer_uses_lf(tmp_path: Path) -> None:

@@ -4,7 +4,13 @@ from pathlib import Path
 
 import yaml
 
-from ge.ingest.kalshi import approved_series, nfl_candidates, update_review_file
+from ge.ingest.kalshi import (
+    apply_decisions,
+    approved_series,
+    nfl_candidates,
+    pending_series,
+    update_review_file,
+)
 from tests.phase1.conftest import load_fixture
 
 
@@ -47,67 +53,57 @@ def test_football_tagged_without_nfl_in_name_is_a_candidate() -> None:
 
 
 def test_review_file_keeps_decisions_and_marks_new_as_pending(tmp_path: Path) -> None:
-    review = tmp_path / "kalshi_nfl_series.yaml"
+    review, decisions = tmp_path / "review.yaml", tmp_path / "decisions.yaml"
     cands = nfl_candidates(_series())
     update_review_file(review, cands)
     data = yaml.safe_load(review.read_text(encoding="utf-8"))
-    assert {row["decision"] for row in data["series"].values()} == {"pending"}
-    assert approved_series(review) == set()
+    assert pending_series(review, decisions) == set(data["series"])
+    assert approved_series(decisions) == set()
 
     first, second = sorted(data["series"])[:2]
-    data["series"][first]["decision"] = "include"
-    data["series"][second]["decision"] = "exclude"
-    review.write_text(yaml.safe_dump(data, sort_keys=True), encoding="utf-8")
-
+    apply_decisions(
+        decisions, review, {first: "t"}, {second: "t"}, decided_by="user", decided_on="2026-09-29"
+    )
     new_count = update_review_file(review, cands)  # rerun: nothing new
     assert new_count == 0
-    again = yaml.safe_load(review.read_text(encoding="utf-8"))
-    assert again["series"][first]["decision"] == "include"
-    assert again["series"][second]["decision"] == "exclude"
-    assert approved_series(review) == {first}
+    assert approved_series(decisions) == {first}
+    assert {first, second}.isdisjoint(pending_series(review, decisions))
 
 
 def test_apply_decisions_records_who_and_when(tmp_path: Path) -> None:
-    from ge.ingest.kalshi import apply_decisions
-
-    review = tmp_path / "kalshi_nfl_series.yaml"
+    review, decisions = tmp_path / "review.yaml", tmp_path / "decisions.yaml"
     update_review_file(review, nfl_candidates(_series()))
     tickers = sorted(yaml.safe_load(review.read_text(encoding="utf-8"))["series"])
     inc, exc = {tickers[0]: "rule"}, {tickers[1]: "explicit"}
-    apply_decisions(review, inc, exc, decided_by="user", decided_on="2026-09-29")
-    rows = yaml.safe_load(review.read_text(encoding="utf-8"))["series"]
+    apply_decisions(decisions, review, inc, exc, decided_by="user", decided_on="2026-09-29")
+    rows = yaml.safe_load(decisions.read_text(encoding="utf-8"))["series"]
     assert rows[tickers[0]]["decision"] == "include"
     assert rows[tickers[1]]["decision"] == "exclude"
     assert rows[tickers[0]]["decided_by"] == "user"
     assert rows[tickers[0]]["decided_on"] == "2026-09-29"
     assert rows[tickers[1]]["decision_basis"] == "explicit"
-    assert rows[tickers[2]]["decision"] == "pending"
-    assert approved_series(review) == {tickers[0]}
+    assert tickers[2] not in rows and tickers[2] in pending_series(review, decisions)
+    assert approved_series(decisions) == {tickers[0]}
 
 
 def test_apply_decisions_rejects_unknown_or_double_listed(tmp_path: Path) -> None:
-    from ge.ingest.kalshi import apply_decisions
-
-    review = tmp_path / "kalshi_nfl_series.yaml"
+    review, decisions = tmp_path / "review.yaml", tmp_path / "decisions.yaml"
     update_review_file(review, nfl_candidates(_series()))
     first = sorted(yaml.safe_load(review.read_text(encoding="utf-8"))["series"])[0]
     for inc, exc in (({"KXNOTASERIES": "x"}, {}), ({first: "x"}, {first: "y"})):
         try:
-            apply_decisions(review, inc, exc, decided_by="user", decided_on="2026-09-29")
+            apply_decisions(decisions, review, inc, exc, decided_by="user", decided_on="2026-09-29")
         except ValueError:
             continue
         raise AssertionError(f"should reject include={inc} exclude={exc}")
 
 
 def test_bad_decision_value_is_rejected(tmp_path: Path) -> None:
-    review = tmp_path / "kalshi_nfl_series.yaml"
-    update_review_file(review, nfl_candidates(_series()))
-    data = yaml.safe_load(review.read_text(encoding="utf-8"))
-    key = sorted(data["series"])[0]
-    data["series"][key]["decision"] = "yes"
-    review.write_text(yaml.safe_dump(data), encoding="utf-8")
+    decisions = tmp_path / "decisions.yaml"
+    row = {"decision": "yes", "decided_by": "u", "decided_on": "d", "decision_basis": "b"}
+    decisions.write_text(yaml.safe_dump({"series": {"KXNFLX": row}}), encoding="utf-8")
     try:
-        approved_series(review)
+        approved_series(decisions)
     except ValueError:
         return
-    raise AssertionError("decision 'yes' should be rejected; only include/exclude/pending")
+    raise AssertionError("decision 'yes' should be rejected; only include/exclude")
