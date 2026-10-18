@@ -2782,6 +2782,16 @@ series:
     decided_by: user
     decided_on: '2026-09-29'
     decision_basis: rule proposal approved by user
+  KXNFLWEEKGAMEHIGH:
+    decision: include
+    decided_by: user
+    decided_on: '2026-10-18'
+    decision_basis: tracked, not modelled in v1
+  KXNFLWEEKHIGH:
+    decision: include
+    decided_by: user
+    decided_on: '2026-10-18'
+    decision_basis: tracked, not modelled in v1
   KXNFLWEEKHIGHSCORE:
     decision: include
     decided_by: user
