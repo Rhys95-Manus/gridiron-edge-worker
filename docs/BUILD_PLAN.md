@@ -410,6 +410,27 @@ Phase 6. Implement src/ge/models/pricing.py and calibration.py.
 
 Phase 7 turns probabilities into sized recommendations, Phase 8 decides whether any market type deserves real money, and Phases 9–10 run it every week without you babysitting it. **Nothing reaches you as a live recommendation until Phase 8's go-live report says that market type passed.**
 
+### Phase 6b — Shadow log (no money)
+
+```text
+Phase 6b. As soon as Phase 6 prices any market type, start a shadow log on
+live 2026 games. No money, no recommendations shown as live. A scheduled
+job records, at each decision time (kickoff - 24 h and kickoff - 90 min),
+for every priced Kalshi market: our probability, the model and data
+versions, best bid and best ask with their sizes, and what we would have
+done (buy YES, buy NO, or nothing) if the edge over the ask cleared the
+fee estimate. After kickoff it records the last trade before kickoff and
+the closing mid, and after settlement the result. Weekly report per market
+type: number of logged positions, mean closing line value (closing price
+minus our would-be entry) with a 95% interval, fees included, and results
+shown separately and labelled as noise. Rules: append-only, every row
+timestamped; the model is never tuned on shadow results; any model change
+starts a new shadow version, reported separately. The shadow log is
+evidence alongside Phase 8, never a replacement for its go-live test.
+Tests first, including that a row written before kickoff can never be
+changed afterwards.
+```
+
 ### Phase 7 — Edge and decision layer
 
 **Spec IDs:** EDG-01 to EDG-08. **Done when:** fees, sizing, exposure, stops and CLV are pure functions that pass property tests and reproduce Kalshi's published fee table.
@@ -430,6 +451,15 @@ ignore books with a spread over 20 cents. clv.py: closing price = last trade
 before kickoff from the trades endpoint, plus closing mid. Recommendations
 for a team are withdrawn when injury news for that team arrives. Tests first,
 including hypothesis property tests.
+exit.py (early exit): for an open position, hold value = our probability
+that it settles YES (for a combo, of the legs not yet settled), sell value
+= best bid minus the taker fee. Flag a sale only when sell value beats hold
+value by more than a margin for model uncertainty (params.yaml, initial 3
+cents). Pregame legs only: positions whose remaining legs are in progress
+are out of scope until an in-game model exists. Confirm from Kalshi's rules
+whether combo positions can be sold before settlement, and record bid depth,
+since bid sides are often thin. Log every flag and, after settlement,
+what selling returned versus holding.
 ```
 
 - [ ] Test (rounding = cent): taker fees for 100 contracts reproduce every row of the official table, for example $0.05 → $0.34, $0.10 → $0.63, $0.50 → $1.75, $0.99 → $0.07

@@ -287,6 +287,7 @@ edge:
   edg_06_combo_stake_cap: {spec_id: EDG-06, value: 0.005, status: initial, source: 'Combos: cap 0.5%'}
   edg_07_max_stake_per_game: {spec_id: EDG-07, value: 0.06, status: initial, source: '≤ 6% of bankroll'}
   edg_07_weekly_stop: {spec_id: EDG-07, value: -0.10, status: initial, source: 'reaches −10% of start-of-week bankroll'}
+  edg_exit_margin_cc: {spec_id: EDG-09, value: 300, status: initial, source: 'uncertainty margin (initial 3 cents)'}
 
 backtest:
   bt_01_decision_hours_before_kickoff: {spec_id: BT-01, value: 24, status: initial, source: 'default: 24 hours before kickoff'}

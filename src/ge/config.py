@@ -345,6 +345,7 @@ class Edge(_Group):
     edg_06_combo_stake_cap: Param
     edg_07_max_stake_per_game: Param
     edg_07_weekly_stop: Param
+    edg_exit_margin_cc: CenticentParam
 
 
 class Backtest(_Group):
