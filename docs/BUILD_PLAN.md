@@ -359,21 +359,37 @@ touchdowns. Store per-game results as compact arrays (not per-play logs).
 Then implement PRJ-01b: solve for team ratings, holding pass/run mix from
 01a, so the simulated median margin and median total match a given spread
 and total within 0.25 points. Tests first.
-Requirements from the Phase 4 report (decision 2026-10-13): simulate
-team-specific pace (plays and drives per team), never league drives per
-team-game; the Phase 5 report repeats the Phase 4 pace check and it must
-be flat; simulated margins and totals pass the same calibration check
-against actual results (slope near 1, home bias near 0), and totals use a recency-weighted league scoring level (decision 2026-10-14), before any prop
-is priced.
+Requirements from the Phase 4 report (decisions 2026-10-13, 2026-10-14,
+2026-10-20): simulate team-specific pace (plays and drives per team), never
+league drives per team-game; apply the PRJ-02 rating tilt, league level,
+overtime and weather rules as written in MODEL_SPEC.md; ingest Open-Meteo
+ERA5 game-window weather (DATA-07; 2016-2024 and 2026, never 2025) before
+the v5 weather fit; the report runs every PRJ-02 calibration check per
+season for 2021-2024 (never 2025). If any check fails, stop and report,
+including how long a simulator-level calibration fitted on training seasons
+would take for all windows; never tune on 2021-2024. Add numba, pinned.
+Tests first.
 ```
 
-- [ ] Test: simulating all 2024 games from true pre-game snapshots reproduces league averages within PRJ-02 tolerances: points per team-game ±0.7, plays ±2, pass rate ±1.5 points, yards per attempt ±0.2
-- [ ] Test: the standard deviation of simulated margins is within 1 point of the actual 2016–2024 margin standard deviation (2025 is the holdout), which the test computes from schedules (not from memory)
-- [ ] Test: in every run, player receiving yards sum to team passing yards, and player TDs sum to team offensive TDs
-- [ ] Test: same game, same seed → identical output; different seed → different output
-- [ ] Test: PRJ-01b hits a target spread and total within 0.25 points for 20 real games
-- [ ] Test: with λ = 0 the matchup layer changes nothing
-- [ ] Timing: 20,000 runs of one game completes on the VM in a time you record in the report (target under 60 seconds)
+**Phase 5 checklist**
+
+- [ ] Test: with every rating-tilt slope at zero, team ratings change nothing; with a planted slope on synthetic plays, the fitter recovers it within 3 SE
+- [ ] Test: a season with no overtime entry raises; the 2026 entry quotes the current rulebook
+- [ ] Test: a Questionable player's runs split into played and not played at the fitted rate (within Monte Carlo error), and his shares are redistributed in runs where he sits
+- [ ] Test: the interpolated median of a known integer distribution equals its hand-computed value; PRJ-01b reaches 0.25 points on half-point lines
+- [ ] Test: ERA5 ingest (DATA-07): requests only outdoor stadiums and only seasons 2016-2024 and 2026 (a 2025 request raises HoldoutReadError before any call); stays under the configured rate; every row carries pulled\_at, source URL and model; game-window aggregation (total, mean, max) matches a hand-computed fixture from a real saved response
+- [ ] Test: v5 weather fit: planted effects on synthetic plays are recovered within 3 SE; a planted zero effect comes out no-signal; every non-ENV value in v5 equals v4
+- [ ] Test: weather-risk flag (fallback): no NWS forecast flags an outdoor or unknown-roof game; a no-signal effect plus forecast weather at or above its threshold in the window flags; a fitted (signal) effect never flags; a dome never; a flagged game's passing and receiving props (and combos with such a leg) are excluded, and every market in the game carries the flag
+- [ ] Report: ERA5 vs schedules `temp` and `wind` agreement per season (correlation, mean difference, spread)
+- [ ] Report: every PRJ-02 calibration check per season 2021-2024, and xpass/cp agreement with nflverse on training plays
+
+* [ ] Test: simulating all 2024 games from true pre-game snapshots reproduces league averages within PRJ-02 tolerances: points per team-game ±0.7, plays ±2, pass rate ±1.5 points, yards per attempt ±0.2
+* [ ] Test: the standard deviation of simulated margins is within 1 point of the actual 2016–2024 margin standard deviation (2025 is the holdout), which the test computes from schedules (not from memory)
+* [ ] Test: in every run, player receiving yards sum to team passing yards, and player TDs sum to team offensive TDs
+* [ ] Test: same game, same seed → identical output; different seed → different output
+* [ ] Test: PRJ-01b hits a target spread and total within 0.25 points for 20 real games
+* [ ] Test: with λ = 0 the matchup layer changes nothing
+* [ ] Timing: 20,000 runs of one game completes on the VM in a time you record in the report (target under 60 seconds)
 
 ### Phase 6 — Market pricing
 

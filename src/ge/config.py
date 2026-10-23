@@ -295,6 +295,9 @@ class Matchup(_Group):
 class Environment(_Group):
     env_fit_first_season: Param
     env_fit_last_season: Param
+    mtc_05_game_window_hours: Param
+    mtc_05_flag_precip_probability_pct: Param
+    mtc_05_flag_gust_kmh: Param
 
 
 class Projection(_Group):
