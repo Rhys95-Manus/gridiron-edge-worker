@@ -270,6 +270,64 @@ def test_week_pull_books_only_qualifying_markets_and_reports_progress() -> None:
     assert lines and all(dt.datetime.fromisoformat(ln.split()[0]).tzinfo for ln in lines)
 
 
+def test_next_weeks_priced_markets_inside_the_window_are_pulled_too() -> None:
+    """Thursday gap (ruling 2026-10-23): a week starts at 00:00 ET on its first game date, so
+    a Thursday game's -24 h decision time falls in the previous week. Next week's priced
+    markets inside the order-book window are pulled (with their book) and stored under next
+    week; its other markets wait for their own week."""
+    fx = load_fixture("kalshi_orderbook.json")
+    sched = _sched()
+    kick = kickoffs_by_date(sched)
+    lead = orderbook_lead(KALSHI)
+    start6, end6 = week_window(sched, 6)
+    start7, end7 = week_window(sched, 7)
+    g7 = _game(sched, 7)
+    day7 = dt.date.fromisoformat(g7["gameday"])
+    first7 = min(kick[day7])
+    now = first7 - dt.timedelta(hours=30)  # the -24 h decision time is still ahead
+    assert end6 is not None and start6 <= now < end6  # still inside week 6
+    assert now >= first7 - lead
+    later7 = sorted(
+        {dt.date.fromisoformat(d) for d in sched.filter(pl.col("week") == 7)["gameday"]}
+    )
+    far_day = later7[-1]  # the week's last game date, outside the window at `now`
+    assert all(k - lead > now for k in kick[far_day])
+    occurs7 = (max(kick[day7]) + dt.timedelta(hours=1)).isoformat()
+    occurs_far = (max(kick[far_day]) + dt.timedelta(hours=1)).isoformat()
+
+    def mk(series: str, day: dt.date, n: int, occurs: str) -> dict[str, Any]:
+        return {**fx["market"], **_ticker(series, day, tail=f"N{n}"), "occurrence_datetime": occurs}
+
+    near_priced = mk("KXNFLRECYDS", day7, 1, occurs7)
+    near_unpriced = mk("KXNFLRECYDSPROT", day7, 2, occurs7)
+    far_priced = mk("KXNFLRECYDS", far_day, 3, occurs_far)
+    markets = {
+        "KXNFLRECYDS": [near_priced, far_priced],
+        "KXNFLRECYDSPROT": [near_unpriced],
+    }
+    k = FakeKalshi(markets, fx["response"]["orderbook_fp"])
+    stats = KalshiRunStats()
+    market_rows, book_rows = collect_week_markets(
+        k,
+        ["KXNFLRECYDS", "KXNFLRECYDSPROT"],
+        week=6,
+        start=start6,
+        end=end6,
+        now=now,
+        kickoffs=kick,
+        book_series=set(KALSHI.orderbook_series.value),
+        lead=lead,
+        progress=lambda s: None,
+        stats=stats,
+        next_week=(7, start7, end7),
+    )
+    assert [r["ticker"] for r in market_rows] == [near_priced["ticker"]]
+    assert market_rows[0]["nfl_week"] == 7 and market_rows[0]["ask_source"] == "orderbook"
+    assert k.book_calls == [near_priced["ticker"]]
+    assert {r["nfl_week"] for r in book_rows} == {7}
+    assert stats.next_week_markets == 1
+
+
 def test_run_summary_carries_requests_and_429s() -> None:
     s = KalshiRunStats(requests=120, http_429=3, markets=900, orderbooks=40, seconds=12.5)
     text = s.summary()

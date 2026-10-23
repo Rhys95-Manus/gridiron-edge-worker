@@ -298,6 +298,7 @@ class KalshiRunStats:
     http_429: int = 0
     markets: int = 0
     orderbooks: int = 0
+    next_week_markets: int = 0
     seconds: float = 0.0
     rate_final: float | None = None
     rate_min: float | None = None
@@ -309,7 +310,8 @@ class KalshiRunStats:
             else ""
         )
         return (
-            f"requests {self.requests} (order books {self.orderbooks}, markets {self.markets}), "
+            f"requests {self.requests} (order books {self.orderbooks}, markets {self.markets}"
+            f" incl. {self.next_week_markets} next week), "
             f"HTTP 429 x{self.http_429}{rate}, {self.seconds:.1f} s"
         )
 
@@ -338,16 +340,37 @@ def collect_week_markets(
     progress: Callable[[str], None],
     stats: KalshiRunStats,
     every: int = 250,
+    next_week: tuple[int, dt.datetime, dt.datetime | None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """DATA-08: the week's markets for the approved series. Order books only where
     wants_orderbook says so; every other market takes its asks from its /markets record
-    (ask_source says which). Progress lines are timestamped (UTC)."""
-    markets = []
+    (ask_source says which). With `next_week` (week, start, end), next week's markets that
+    wants_orderbook accepts are kept too, under next week's number (Thursday gap, ruling
+    2026-10-23); its other markets wait for their own week. Progress lines are timestamped
+    (UTC)."""
+
+    def inside(t: dt.datetime, a: dt.datetime, b: dt.datetime | None) -> bool:
+        return t >= a and (b is None or t < b)
+
+    markets: list[dict[str, Any]] = []
+    weeks: dict[str, int] = {}
     for series in approved:
         for m in k.markets(series_ticker=series, min_close_ts=int(start.timestamp())):
             t = _occurs(m)
-            if t and t >= start and (end is None or t < end):
-                markets.append({**m, "series_ticker": series})
+            if t is None:
+                continue
+            row = {**m, "series_ticker": series}
+            if inside(t, start, end):
+                markets.append(row)
+                weeks[row["ticker"]] = week
+            elif (
+                next_week is not None
+                and inside(t, next_week[1], next_week[2])
+                and wants_orderbook(row, book_series, kickoffs, now, lead)
+            ):
+                markets.append(row)
+                weeks[row["ticker"]] = next_week[0]
+                stats.next_week_markets += 1
     stats.markets = len(markets)
     booked = [m for m in markets if wants_orderbook(m, book_series, kickoffs, now, lead)]
     progress(
@@ -373,7 +396,7 @@ def collect_week_markets(
                             "side": side,
                             "bid_cc": dollars_to_cc(price),
                             "qty": qty,
-                            "nfl_week": week,
+                            "nfl_week": weeks[m["ticker"]],
                         }
                     )
             if stats.orderbooks % every == 0:
@@ -381,7 +404,7 @@ def collect_week_markets(
         else:
             yes_ask, no_ask = market_asks(m)
             source = "market"
-        row = market_row(m, m["series_ticker"], week, False, yes_ask, no_ask)
+        row = market_row(m, m["series_ticker"], weeks[m["ticker"]], False, yes_ask, no_ask)
         market_rows.append({**row, "ask_source": source})
     progress(_stamp(f"kalshi: order books done ({stats.orderbooks})"))
     return market_rows, book_rows
@@ -452,6 +475,16 @@ def _run_kalshi(
         f"{season} week {week}: markets occurring {start:%Y-%m-%d %H:%M}Z to "
         f"{f'{end:%Y-%m-%d %H:%M}Z' if end else 'open-ended'}"
     )
+    sched = _schedules([season])
+    try:
+        next_start, next_end = week_window(sched, week + 1)
+        next_week: tuple[int, dt.datetime, dt.datetime | None] | None = (
+            week + 1,
+            next_start,
+            next_end,
+        )
+    except KeyError:  # last week of the season: nothing after it
+        next_week = None
     market_rows, book_rows = collect_week_markets(
         k,
         approved,
@@ -459,7 +492,8 @@ def _run_kalshi(
         start=start,
         end=end,
         now=pulled_at,
-        kickoffs=kickoffs_by_date(_schedules([season])),
+        next_week=next_week,
+        kickoffs=kickoffs_by_date(sched),
         book_series=set(cfg.kalshi.orderbook_series.value),
         lead=orderbook_lead(cfg.kalshi),
         progress=lambda s: print(s, flush=True),
