@@ -67,12 +67,65 @@ class RateLimiter:
         self._sleep = sleep
         self._next: float | None = None
 
+    @property
+    def rate(self) -> float:
+        return 1.0 / self._interval
+
     def wait(self) -> None:
         now = self._clock()
         if self._next is not None and now < self._next:
             self._sleep(self._next - now)
             now = self._next
         self._next = now + self._interval
+
+    def throttled(self) -> None:
+        """Called after a 429. A fixed limiter keeps its rate."""
+
+    def ok(self) -> None:
+        """Called after a successful response. A fixed limiter keeps its rate."""
+
+
+class AdaptiveRateLimiter(RateLimiter):
+    """DATA-08 (ruling 2026-10-22): halve the rate on every 429, never below `floor`; after
+    `quiet_seconds` with no 429, raise it by `step` requests/s, at most once per quiet period
+    and never above the starting (maximum) rate. Every change is logged."""
+
+    def __init__(
+        self,
+        per_second: float,
+        *,
+        floor: float,
+        quiet_seconds: float,
+        step: float,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if not 0 < floor <= per_second or quiet_seconds <= 0 or step <= 0:
+            raise ValueError("need 0 < floor <= rate, quiet_seconds > 0, step > 0")
+        super().__init__(per_second, clock=clock, sleep=sleep)
+        self._max = per_second
+        self._floor = floor
+        self._quiet = quiet_seconds
+        self._step = step
+        self._calm_since = clock()
+        self.min_rate = per_second
+
+    def _set(self, rate: float, why: str) -> None:
+        old = self.rate
+        self._interval = 1.0 / rate
+        self.min_rate = min(self.min_rate, rate)
+        if rate != old:
+            log.warning("rate limit %s: %.2f -> %.2f req/s", why, old, rate)
+
+    def throttled(self) -> None:
+        self._set(max(self._floor, self.rate / 2), "after HTTP 429")
+        self._calm_since = self._clock()
+
+    def ok(self) -> None:
+        now = self._clock()
+        if self.rate < self._max and now - self._calm_since >= self._quiet:
+            self._set(min(self._max, self.rate + self._step), "recovering")
+            self._calm_since = now
 
 
 class PublicClient:
@@ -108,8 +161,12 @@ class PublicClient:
         r = self._client.get(url, params=params)
         if r.status_code == 429 or r.status_code >= 500:
             self.retryable_by_status[r.status_code] += 1
+            if r.status_code == 429 and self._limiter is not None:
+                self._limiter.throttled()
             log.warning("retryable HTTP %s from %s", r.status_code, r.request.url.host)
             raise RetryableStatus(r)
+        if self._limiter is not None:
+            self._limiter.ok()
         return r
 
     def get(self, url: str, params: dict[str, Any] | None = None) -> httpx.Response:

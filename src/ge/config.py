@@ -524,6 +524,9 @@ class KalshiSettings(_Group):
     candle_period_minutes: IntSetting
     read_tokens_per_second: IntSetting
     tokens_per_request: IntSetting
+    min_requests_per_second: IntSetting
+    rate_recovery_quiet_seconds: IntSetting
+    rate_recovery_step_per_second: IntSetting
     orderbook_series: StrListSetting
     orderbook_collector_gap_hours: IntSetting
 

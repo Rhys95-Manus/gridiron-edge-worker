@@ -15,7 +15,7 @@ import polars as pl
 
 from ge.config import ATTRIBUTION, IngestConfig, KalshiSettings, load_fees, load_params
 from ge.ingest.fees_check import check_fee_schedule, fee_check, parse_effective_date
-from ge.ingest.http import PublicClient, RateLimiter
+from ge.ingest.http import AdaptiveRateLimiter, PublicClient
 from ge.ingest.kalshi import (
     DECISIONS_PATH,
     REVIEW_PATH,
@@ -240,9 +240,20 @@ def kalshi_rate_per_second(cfg: KalshiSettings) -> float:
     return cfg.read_tokens_per_second.value / cfg.tokens_per_request.value
 
 
+def kalshi_limiter(cfg: KalshiSettings) -> AdaptiveRateLimiter:
+    """DATA-08: start at the documented read rate; halve on 429 to the floor, recover slowly
+    (ruling 2026-10-22)."""
+    return AdaptiveRateLimiter(
+        kalshi_rate_per_second(cfg),
+        floor=float(cfg.min_requests_per_second.value),
+        quiet_seconds=float(cfg.rate_recovery_quiet_seconds.value),
+        step=float(cfg.rate_recovery_step_per_second.value),
+    )
+
+
 def kalshi_http(cfg: IngestConfig) -> PublicClient:
-    """DATA-08: the one client for Kalshi, rate limited to the documented read rate."""
-    return PublicClient(cfg.http, rate_limiter=RateLimiter(kalshi_rate_per_second(cfg.kalshi)))
+    """DATA-08: the one client for Kalshi, behind the adaptive rate limiter."""
+    return PublicClient(cfg.http, rate_limiter=kalshi_limiter(cfg.kalshi))
 
 
 def orderbook_lead(cfg: KalshiSettings) -> dt.timedelta:
@@ -288,11 +299,18 @@ class KalshiRunStats:
     markets: int = 0
     orderbooks: int = 0
     seconds: float = 0.0
+    rate_final: float | None = None
+    rate_min: float | None = None
 
     def summary(self) -> str:
+        rate = (
+            f", rate {self.rate_final:.1f} req/s (min {self.rate_min:.1f})"
+            if self.rate_final is not None and self.rate_min is not None
+            else ""
+        )
         return (
             f"requests {self.requests} (order books {self.orderbooks}, markets {self.markets}), "
-            f"HTTP 429 x{self.http_429}, {self.seconds:.1f} s"
+            f"HTTP 429 x{self.http_429}{rate}, {self.seconds:.1f} s"
         )
 
 
@@ -379,12 +397,14 @@ def run_kalshi(
     pulled_at = _now()
     stats = stats if stats is not None else KalshiRunStats()
     t0 = time.monotonic()
-    with kalshi_http(cfg) as http:
+    limiter = kalshi_limiter(cfg.kalshi)
+    with PublicClient(cfg.http, rate_limiter=limiter) as http:
         try:
             return _run_kalshi(cfg, http, season, week, history, pulled_at, stats)
         finally:
             stats.requests = http.attempts
             stats.http_429 = http.retryable_by_status.get(429, 0)
+            stats.rate_final, stats.rate_min = limiter.rate, limiter.min_rate
             stats.seconds = time.monotonic() - t0
             print(_stamp(f"kalshi: {stats.summary()}"), flush=True)
 

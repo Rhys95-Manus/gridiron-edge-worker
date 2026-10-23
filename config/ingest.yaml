@@ -25,6 +25,12 @@ kalshi:
   # limit; the lowest (Basic) tier is used for our unauthenticated reads.
   read_tokens_per_second: {spec_id: DATA-08, value: 200, status: initial, source: 'https://docs.kalshi.com/getting_started/rate_limits (fetched 2026-10-20): "Per-second token budgets in each event-contract bucket:" Basic "200 read, 100 write"; lowest tier, ruling 2026-10-20'}
   tokens_per_request: {spec_id: DATA-08, value: 10, status: initial, source: 'https://docs.kalshi.com/getting_started/rate_limits (fetched 2026-10-20): "Most requests cost the default of 10 tokens."'}
+  # Adaptive limit (user ruling 2026-10-22): the unauthenticated limit is below the documented
+  # Basic budget (65 x 429 at 20/s, real run 2026-10-20), so halve on every 429 down to the
+  # floor and add the step after each quiet period, up to the documented rate.
+  min_requests_per_second: {spec_id: DATA-08, value: 1, status: initial, source: 'user ruling 2026-10-22: "on a 429, halve the rate (to a floor in ingest.yaml)"; 1 req/s proposed by Claude 2026-10-22 for review (a 17,000-request run would still finish in under 5 h at the floor)'}
+  rate_recovery_quiet_seconds: {spec_id: DATA-08, value: 30, status: initial, source: 'user ruling 2026-10-22: "recover slowly after a quiet period"; 30 s proposed by Claude 2026-10-22 for review'}
+  rate_recovery_step_per_second: {spec_id: DATA-08, value: 1, status: initial, source: 'user ruling 2026-10-22: "recover slowly"; +1 req/s per quiet period proposed by Claude 2026-10-22 for review (additive increase after multiplicative decrease)'}
   orderbook_series: {spec_id: DATA-08, value: [KXNFLPASSYDS, KXNFLRECYDS, KXNFLRSHYDS, KXNFLREC, KXNFLTD, KXNFLFIRSTTD, KXNFLGAME, KXNFLSPREAD, KXNFLTOTAL], status: initial, source: 'user ruling 2026-10-20: order books only for series we intend to price (ordinary player yards, receptions, anytime/first TD, game lines); every other market takes its asks from the /markets record. Tickers matched by series title; KXNFLTD is the anytime TD series (rules: "scores at least 1+ touchdowns")'}
   orderbook_collector_gap_hours: {spec_id: DATA-08, value: 15, status: initial, source: 'user ruling 2026-10-20 ("only within the decision windows"): books are pulled from BT-01 first decision time (kickoff - 24 h) minus this gap until kickoff, so at least one scheduled run falls before each decision time; 15 h = the longest gap between GridironEdge\Collect triggers (18:00 to 09:00 ET)'}
 
