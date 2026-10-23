@@ -15,7 +15,7 @@ from pathlib import Path
 import polars as pl
 
 from ge.config import REPO_ROOT, load_ingest
-from ge.ingest.jobs import _now, _schedules, run_kalshi, run_weather
+from ge.ingest.jobs import KalshiRunStats, _now, _schedules, run_kalshi, run_weather
 from ge.ingest.nflverse import current_season, ingest_nflverse
 from ge.store.known_at import week_window
 
@@ -70,8 +70,9 @@ def _user_agent() -> str:
 def _kalshi() -> tuple[bool, str]:
     season = current_season()
     week = current_week(_schedules([season]), _now())
-    code = run_kalshi(load_ingest(), season, week, False)
-    return code == 0, f"season {season} week {week}: exit {code}"
+    stats = KalshiRunStats()
+    code = run_kalshi(load_ingest(), season, week, False, stats)
+    return code == 0, f"season {season} week {week}: exit {code}; {stats.summary()}"
 
 
 def _nflverse() -> tuple[bool, str]:

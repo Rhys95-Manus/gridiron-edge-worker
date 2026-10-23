@@ -498,6 +498,10 @@ class StrSetting(_Entry):
     value: Annotated[str, StringConstraints(min_length=1)]
 
 
+class StrListSetting(_Entry):
+    value: list[Annotated[str, StringConstraints(min_length=1)]]
+
+
 class HttpSettings(_Group):
     timeout_seconds: IntSetting
     max_attempts: IntSetting
@@ -518,6 +522,10 @@ class KalshiSettings(_Group):
     events_page_limit: IntSetting
     trades_page_limit: IntSetting
     candle_period_minutes: IntSetting
+    read_tokens_per_second: IntSetting
+    tokens_per_request: IntSetting
+    orderbook_series: StrListSetting
+    orderbook_collector_gap_hours: IntSetting
 
 
 class NwsSettings(_Group):

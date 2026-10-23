@@ -142,7 +142,9 @@ def test_kalshi_step_pulls_the_week_worked_out_from_schedules(
     start, _ = week_window(sched, w)
     calls: list[tuple[int, int, bool]] = []
 
-    def fake_run_kalshi(cfg: Any, season: int, week: int, history: bool) -> int:
+    def fake_run_kalshi(
+        cfg: Any, season: int, week: int, history: bool, stats: Any = None
+    ) -> int:  # stats: request counts for the log line (2026-10-20)
         calls.append((season, week, history))
         return 0
 

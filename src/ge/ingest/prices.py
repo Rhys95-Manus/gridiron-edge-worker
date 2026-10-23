@@ -28,6 +28,23 @@ def _best_bid_cc(levels: Sequence[Sequence[str]]) -> int | None:
     return max((dollars_to_cc(price) for price, _qty in levels), default=None)
 
 
+def market_asks(market: Mapping[str, object]) -> tuple[int | None, int | None]:
+    """DATA-08 / EDG-01: asks from a GET /markets record, for markets whose order book is not
+    pulled (2026-10-20). YES ask = yes_ask_dollars when its size (yes_ask_size_fp, the NO bids
+    behind it) is positive; NO ask = no_ask_dollars when yes_bid_size_fp is positive. A side
+    with nothing resting has no ask, as in book_asks."""
+
+    def size(key: str) -> Decimal:
+        try:
+            return Decimal(str(market.get(key) or "0"))
+        except InvalidOperation as exc:
+            raise ValueError(f"bad size {key}: {market.get(key)!r}") from exc
+
+    yes_ask = dollars_to_cc(str(market["yes_ask_dollars"])) if size("yes_ask_size_fp") > 0 else None
+    no_ask = dollars_to_cc(str(market["no_ask_dollars"])) if size("yes_bid_size_fp") > 0 else None
+    return yes_ask, no_ask
+
+
 def book_asks(orderbook_fp: Mapping[str, Sequence[Sequence[str]]]) -> tuple[int | None, int | None]:
     """EDG-01: YES ask = $1 - best NO bid; NO ask = $1 - best YES bid, in centicents.
 

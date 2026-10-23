@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 from collections import defaultdict
-from typing import Any
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from ge.config import ATTRIBUTION, IngestConfig, load_fees
+from ge.config import ATTRIBUTION, IngestConfig, KalshiSettings, load_fees, load_params
 from ge.ingest.fees_check import check_fee_schedule, fee_check, parse_effective_date
-from ge.ingest.http import PublicClient
+from ge.ingest.http import PublicClient, RateLimiter
 from ge.ingest.kalshi import (
     DECISIONS_PATH,
     REVIEW_PATH,
     KalshiPublic,
     approved_series,
+    event_ticker_date,
     pending_series,
     refresh_review,
 )
@@ -29,7 +33,7 @@ from ge.ingest.kalshi_history import (
     run_history,
 )
 from ge.ingest.nflverse import current_season
-from ge.ingest.prices import book_asks, dollars_to_cc
+from ge.ingest.prices import book_asks, dollars_to_cc, market_asks
 from ge.ingest.raw import DATA_ROOT, read_latest, seasons_stored, write_raw
 from ge.ingest.stadiums import (
     build_stadiums,
@@ -41,7 +45,7 @@ from ge.ingest.stadiums import (
 )
 from ge.ingest.weather_nws import NwsClient, classify_game, parse_gridpoint
 from ge.ingest.wikidata import WikidataClient
-from ge.store.known_at import week_window
+from ge.store.known_at import week_window, with_kickoff
 
 EASTERN = ZoneInfo("America/New_York")  # nflverse gametime is Eastern (schedules dictionary)
 
@@ -231,60 +235,118 @@ def _team_names() -> list[str]:
     return read_latest(DATA_ROOT, "teams", SEASONLESS)["team_name"].drop_nulls().to_list()
 
 
-def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
-    pulled_at = _now()
-    with PublicClient(cfg.http) as http:
-        k = KalshiPublic(http, cfg.kalshi)
-        all_series = k.series_list()
-        cands, new = refresh_review(REVIEW_PATH, DECISIONS_PATH, all_series, _team_names())
-        write_raw(
-            pl.DataFrame(
-                [
-                    {
-                        **{
-                            kk: json.dumps(v) if isinstance(v, list | dict) else v
-                            for kk, v in s.items()
-                        }
-                    }
-                    for s in all_series
-                    if s["ticker"] in {c.ticker for c in cands}
-                ]
-            ),
-            "kalshi_series_candidates",
-            season,
-            source="Kalshi GET /series (DATA-08)",
-            pulled_at=pulled_at,
+def kalshi_rate_per_second(cfg: KalshiSettings) -> float:
+    """DATA-08: Kalshi's documented read budget divided by the default request cost."""
+    return cfg.read_tokens_per_second.value / cfg.tokens_per_request.value
+
+
+def kalshi_http(cfg: IngestConfig) -> PublicClient:
+    """DATA-08: the one client for Kalshi, rate limited to the documented read rate."""
+    return PublicClient(cfg.http, rate_limiter=RateLimiter(kalshi_rate_per_second(cfg.kalshi)))
+
+
+def orderbook_lead(cfg: KalshiSettings) -> dt.timedelta:
+    """DATA-08 / BT-01: how long before kickoff order books start being pulled: the first
+    decision time (kickoff - 24 h) plus the longest gap between scheduled collector runs."""
+    hours = load_params().backtest.bt_01_decision_hours_before_kickoff.value
+    return dt.timedelta(hours=hours + cfg.orderbook_collector_gap_hours.value)
+
+
+def kickoffs_by_date(sched: pl.DataFrame) -> dict[dt.date, list[dt.datetime]]:
+    """BT-01: each Eastern game date's kickoffs (UTC), from schedules. Kalshi event tickers
+    carry only the game date, and a market's occurrence time is not its kickoff."""
+    out: dict[dt.date, list[dt.datetime]] = defaultdict(list)
+    for r in with_kickoff(sched).select("gameday", "kickoff_utc").iter_rows():
+        out[dt.date.fromisoformat(r[0])].append(r[1])
+    return dict(out)
+
+
+def wants_orderbook(
+    m: dict[str, Any],
+    book_series: set[str],
+    kickoffs: dict[dt.date, list[dt.datetime]],
+    now: dt.datetime,
+    lead: dt.timedelta,
+) -> bool:
+    """DATA-08 (ruling 2026-10-20): pull a market's order book only when its series is in
+    the price set and some game on its event date kicks off within (now, now + lead]."""
+    series = str(m.get("series_ticker") or m["event_ticker"].split("-", 1)[0])
+    if series not in book_series:
+        return False
+    day = event_ticker_date(m.get("event_ticker") or "")
+    if day is None:
+        return False
+    return any(k - lead <= now < k for k in kickoffs.get(day, []))
+
+
+@dataclass
+class KalshiRunStats:
+    """DATA-08: one Kalshi pull's request load, for the console and logs/collect.log."""
+
+    requests: int = 0
+    http_429: int = 0
+    markets: int = 0
+    orderbooks: int = 0
+    seconds: float = 0.0
+
+    def summary(self) -> str:
+        return (
+            f"requests {self.requests} (order books {self.orderbooks}, markets {self.markets}), "
+            f"HTTP 429 x{self.http_429}, {self.seconds:.1f} s"
         )
-        approved = sorted(approved_series(DECISIONS_PATH))
-        pending = pending_series(REVIEW_PATH, DECISIONS_PATH)
-        print(
-            f"NFL series candidates: {len(cands)} ({new} new); approved: {len(approved)}; "
-            f"awaiting a decision: {len(pending)} (proposals in {REVIEW_PATH}; decide in "
-            f"{DECISIONS_PATH})"
+
+
+class _MarketSource(Protocol):
+    def markets(self, **filters: Any) -> Iterator[dict[str, Any]]: ...
+
+    def orderbook(self, ticker: str) -> dict[str, Any]: ...
+
+
+def _stamp(msg: str) -> str:
+    return f"{_now().isoformat(timespec='seconds')} {msg}"
+
+
+def collect_week_markets(
+    k: _MarketSource,
+    approved: list[str],
+    *,
+    week: int,
+    start: dt.datetime,
+    end: dt.datetime | None,
+    now: dt.datetime,
+    kickoffs: dict[dt.date, list[dt.datetime]],
+    book_series: set[str],
+    lead: dt.timedelta,
+    progress: Callable[[str], None],
+    stats: KalshiRunStats,
+    every: int = 250,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """DATA-08: the week's markets for the approved series. Order books only where
+    wants_orderbook says so; every other market takes its asks from its /markets record
+    (ask_source says which). Progress lines are timestamped (UTC)."""
+    markets = []
+    for series in approved:
+        for m in k.markets(series_ticker=series, min_close_ts=int(start.timestamp())):
+            t = _occurs(m)
+            if t and t >= start and (end is None or t < end):
+                markets.append({**m, "series_ticker": series})
+    stats.markets = len(markets)
+    booked = [m for m in markets if wants_orderbook(m, book_series, kickoffs, now, lead)]
+    progress(
+        _stamp(
+            f"kalshi: {len(markets)} markets in window from {len(approved)} series; "
+            f"order books for {len(booked)}"
         )
-        if not approved:
-            print(
-                "No approved series yet. Decide series `include` in the decisions file, then rerun."
-            )
-            return 2
-        if history:
-            return _run_kalshi_history(k, season, week, approved)
-        start, end = _week_window(season, week)
-        print(
-            f"{season} week {week}: markets occurring {start:%Y-%m-%d %H:%M}Z to "
-            f"{f'{end:%Y-%m-%d %H:%M}Z' if end else 'open-ended'}"
-        )
-        markets = []
-        for series in approved:
-            for m in k.markets(series_ticker=series, min_close_ts=int(start.timestamp())):
-                t = _occurs(m)
-                if t and t >= start and (end is None or t < end):
-                    markets.append({**m, "series_ticker": series})
-        book_rows: list[dict[str, Any]] = []
-        market_rows: list[dict[str, Any]] = []
-        for m in markets:
+    )
+    book_rows: list[dict[str, Any]] = []
+    market_rows: list[dict[str, Any]] = []
+    want = {m["ticker"] for m in booked}
+    for m in markets:
+        if m["ticker"] in want:
             book = k.orderbook(m["ticker"])
+            stats.orderbooks += 1
             yes_ask, no_ask = book_asks(book)
+            source = "orderbook"
             for side in ("yes", "no"):
                 for price, qty in book.get(f"{side}_dollars") or []:
                     book_rows.append(
@@ -296,7 +358,93 @@ def run_kalshi(cfg: IngestConfig, season: int, week: int, history: bool) -> int:
                             "nfl_week": week,
                         }
                     )
-            market_rows.append(market_row(m, m["series_ticker"], week, False, yes_ask, no_ask))
+            if stats.orderbooks % every == 0:
+                progress(_stamp(f"kalshi: order books {stats.orderbooks}/{len(booked)}"))
+        else:
+            yes_ask, no_ask = market_asks(m)
+            source = "market"
+        row = market_row(m, m["series_ticker"], week, False, yes_ask, no_ask)
+        market_rows.append({**row, "ask_source": source})
+    progress(_stamp(f"kalshi: order books done ({stats.orderbooks})"))
+    return market_rows, book_rows
+
+
+def run_kalshi(
+    cfg: IngestConfig,
+    season: int,
+    week: int,
+    history: bool,
+    stats: KalshiRunStats | None = None,
+) -> int:
+    pulled_at = _now()
+    stats = stats if stats is not None else KalshiRunStats()
+    t0 = time.monotonic()
+    with kalshi_http(cfg) as http:
+        try:
+            return _run_kalshi(cfg, http, season, week, history, pulled_at, stats)
+        finally:
+            stats.requests = http.attempts
+            stats.http_429 = http.retryable_by_status.get(429, 0)
+            stats.seconds = time.monotonic() - t0
+            print(_stamp(f"kalshi: {stats.summary()}"), flush=True)
+
+
+def _run_kalshi(
+    cfg: IngestConfig,
+    http: PublicClient,
+    season: int,
+    week: int,
+    history: bool,
+    pulled_at: dt.datetime,
+    stats: KalshiRunStats,
+) -> int:
+    k = KalshiPublic(http, cfg.kalshi)
+    print(_stamp("kalshi: start"), flush=True)
+    all_series = k.series_list()
+    cands, new = refresh_review(REVIEW_PATH, DECISIONS_PATH, all_series, _team_names())
+    write_raw(
+        pl.DataFrame(
+            [
+                {**{kk: json.dumps(v) if isinstance(v, list | dict) else v for kk, v in s.items()}}
+                for s in all_series
+                if s["ticker"] in {c.ticker for c in cands}
+            ]
+        ),
+        "kalshi_series_candidates",
+        season,
+        source="Kalshi GET /series (DATA-08)",
+        pulled_at=pulled_at,
+    )
+    approved = sorted(approved_series(DECISIONS_PATH))
+    pending = pending_series(REVIEW_PATH, DECISIONS_PATH)
+    print(
+        f"NFL series candidates: {len(cands)} ({new} new); approved: {len(approved)}; "
+        f"awaiting a decision: {len(pending)} (proposals in {REVIEW_PATH}; decide in "
+        f"{DECISIONS_PATH})"
+    )
+    if not approved:
+        print("No approved series yet. Decide series `include` in the decisions file, then rerun.")
+        return 2
+    if history:
+        return _run_kalshi_history(k, season, week, approved)
+    start, end = _week_window(season, week)
+    print(
+        f"{season} week {week}: markets occurring {start:%Y-%m-%d %H:%M}Z to "
+        f"{f'{end:%Y-%m-%d %H:%M}Z' if end else 'open-ended'}"
+    )
+    market_rows, book_rows = collect_week_markets(
+        k,
+        approved,
+        week=week,
+        start=start,
+        end=end,
+        now=pulled_at,
+        kickoffs=kickoffs_by_date(_schedules([season])),
+        book_series=set(cfg.kalshi.orderbook_series.value),
+        lead=orderbook_lead(cfg.kalshi),
+        progress=lambda s: print(s, flush=True),
+        stats=stats,
+    )
     for name, rows in (
         ("kalshi_markets", market_rows),
         ("kalshi_orderbook", book_rows),
@@ -340,7 +488,7 @@ def run_fees_check(cfg: IngestConfig, pdf_path: str | None) -> int:
     if not included:
         print(f"API check: no series are decided include in {DECISIONS_PATH}; nothing to compare")
         return 0 if ok else 1
-    with PublicClient(cfg.http) as http:
+    with kalshi_http(cfg) as http:
         listed = {s["ticker"]: s for s in KalshiPublic(http, cfg.kalshi).series_list()}
     gone = sorted(included - set(listed))
     result = fee_check(fees, [listed[t] for t in sorted(included) if t in listed])

@@ -20,6 +20,13 @@ kalshi:
   events_page_limit: {spec_id: DATA-08, value: 200, status: initial, source: 'https://docs.kalshi.com/api-reference/events/get-events.md: limit "1-200"'}
   trades_page_limit: {spec_id: DATA-08, value: 1000, status: initial, source: 'https://docs.kalshi.com/api-reference/market/get-trades.md: limit "1-1000"'}
   candle_period_minutes: {spec_id: DATA-08, value: 60, status: initial, source: 'docs allow 1, 60, 1440; 60 for BT-07e "contracts traded in the hour before decision time"; approved by user 2026-09-29'}
+  # Request budget (user ruling 2026-10-20). Rate = read_tokens_per_second / tokens_per_request.
+  # The page states its token model for authenticated requests and gives no separate public
+  # limit; the lowest (Basic) tier is used for our unauthenticated reads.
+  read_tokens_per_second: {spec_id: DATA-08, value: 200, status: initial, source: 'https://docs.kalshi.com/getting_started/rate_limits (fetched 2026-10-20): "Per-second token budgets in each event-contract bucket:" Basic "200 read, 100 write"; lowest tier, ruling 2026-10-20'}
+  tokens_per_request: {spec_id: DATA-08, value: 10, status: initial, source: 'https://docs.kalshi.com/getting_started/rate_limits (fetched 2026-10-20): "Most requests cost the default of 10 tokens."'}
+  orderbook_series: {spec_id: DATA-08, value: [KXNFLPASSYDS, KXNFLRECYDS, KXNFLRSHYDS, KXNFLREC, KXNFLTD, KXNFLFIRSTTD, KXNFLGAME, KXNFLSPREAD, KXNFLTOTAL], status: initial, source: 'user ruling 2026-10-20: order books only for series we intend to price (ordinary player yards, receptions, anytime/first TD, game lines); every other market takes its asks from the /markets record. Tickers matched by series title; KXNFLTD is the anytime TD series (rules: "scores at least 1+ touchdowns")'}
+  orderbook_collector_gap_hours: {spec_id: DATA-08, value: 15, status: initial, source: 'user ruling 2026-10-20 ("only within the decision windows"): books are pulled from BT-01 first decision time (kickoff - 24 h) minus this gap until kickoff, so at least one scheduled run falls before each decision time; 15 h = the longest gap between GridironEdge\Collect triggers (18:00 to 09:00 ET)'}
 
 nws:
   base_url: {spec_id: DATA-06, value: 'https://api.weather.gov', status: initial, source: 'https://www.weather.gov/documentation/services-web-api: "The API is located at: https://api.weather.gov"'}
