@@ -19,6 +19,7 @@ GRID_FIELDS = (
     "windGust",
     "probabilityOfPrecipitation",
     "quantitativePrecipitation",
+    "snowfallAmount",  # MTC-05 live table (spec synced 2026-10-23)
 )
 
 GameWeather = Literal["pull", "pull_roof_unknown", "skip_roof", "no_coordinates"]
@@ -43,7 +44,7 @@ def expand_series(series: Mapping[str, Any]) -> list[tuple[dt.datetime, Any]]:
 
 
 def parse_gridpoint(grid: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """DATA-06: hourly rows {field, valid_hour, value, uom} for the five spec fields."""
+    """DATA-06 / MTC-05: hourly rows {field, valid_hour, value, uom} for the GRID_FIELDS."""
     props = grid["properties"]
     out: list[dict[str, Any]] = []
     for field in GRID_FIELDS:

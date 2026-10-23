@@ -29,14 +29,22 @@ def _hours(duration: str) -> int:
     return int(m.group(1) or 0) * 24 + int(m.group(2) or 0)
 
 
-def test_grid_fields_are_the_five_the_spec_asks_for() -> None:
+def test_grid_fields_are_the_ones_the_spec_asks_for() -> None:
+    """DATA-06 plus MTC-05's live table (spec synced 2026-10-23), which adds snowfallAmount."""
     assert set(GRID_FIELDS) == {
         "temperature",
         "windSpeed",
         "windGust",
         "probabilityOfPrecipitation",
         "quantitativePrecipitation",
+        "snowfallAmount",
     }
+
+
+def test_snowfall_amount_keeps_nws_unit() -> None:
+    rows = [r for r in parse_gridpoint(_grid()) if r["field"] == "snowfallAmount"]
+    assert rows, "the captured gridpoint carries snowfallAmount"
+    assert {r["uom"] for r in rows} == {"wmoUnit:mm"}
 
 
 @pytest.mark.parametrize("field", ["temperature", "windSpeed", "windGust"])
