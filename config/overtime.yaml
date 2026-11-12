@@ -1,0 +1,184 @@
+# PRJ-02 overtime formats (rulings 2026-10-23: B7 and the overtime rulings). One entry per
+# season the simulator runs (2021-2024 and 2026) and game type. Source: the NFL's official
+# rulebook page on operations.nfl.com, Rule 16 (Overtime Procedures). 2021-2024 were read from
+# Internet Archive captures dated inside the season; 2026 from the live official page, rendered
+# in a browser (the 2026 page loads Rule 16 with JavaScript, so its archived copy holds no rule
+# text). Each entry keeps one verbatim quote under 15 words; everything else is the format in
+# our own words (no further rulebook text is copied). Loaded strictly by
+# ge.models.sim.overtime.load_overtime. A season with no entry raises.
+#
+# Format fields:
+#   period_minutes: length of each overtime period
+#   max_periods: 1 = a single period; null = periods continue until there is a winner
+#   ties_allowed: whether a game still level after the last period ends tied
+#   timeouts_per_team: timeouts each team gets; timeouts_reset_periods: they reset every N
+#     periods (null = once for all of overtime)
+#   opening_touchdown_ends_game: a touchdown on the first possession wins at once
+#   opening_safety_ends_game: a safety by the kicking team on the receiving team's first
+#     possession wins at once
+#   After both teams have had their opportunity to possess, the team ahead wins; if level, the
+#   next score of any kind wins (all entries below).
+
+entries:
+- season: 2021
+  postseason: false
+  spec_id: PRJ-02
+  status: initial
+  quote: "There shall be a maximum of one 10-minute period"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20211013094818/https://operations.nfl.com/the-rules/2021-nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/2021-nfl-rulebook/
+  capture_date: '2021-10-13'
+  period_minutes: 10
+  max_periods: 1
+  ties_allowed: true
+  timeouts_per_team: 2
+  timeouts_reset_periods: null
+  opening_touchdown_ends_game: true
+  opening_safety_ends_game: true
+- season: 2021
+  postseason: true
+  spec_id: PRJ-02
+  status: initial
+  quote: "If the score is tied at the end of a 15-minute overtime period"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20211013094818/https://operations.nfl.com/the-rules/2021-nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/2021-nfl-rulebook/
+  capture_date: '2021-10-13'
+  period_minutes: 15
+  max_periods: null
+  ties_allowed: false
+  timeouts_per_team: 3
+  timeouts_reset_periods: 2
+  opening_touchdown_ends_game: true
+  opening_safety_ends_game: true
+- season: 2022
+  postseason: false
+  spec_id: PRJ-02
+  status: initial
+  quote: "There shall be a maximum of one 10-minute period"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20221002060355/https://operations.nfl.com/the-rules/2022-nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/2022-nfl-rulebook/
+  capture_date: '2022-10-02'
+  period_minutes: 10
+  max_periods: 1
+  ties_allowed: true
+  timeouts_per_team: 2
+  timeouts_reset_periods: null
+  opening_touchdown_ends_game: true
+  opening_safety_ends_game: true
+- season: 2022
+  postseason: true
+  spec_id: PRJ-02
+  status: initial
+  quote: "Both teams must have the opportunity to possess the ball at least once"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20221002060355/https://operations.nfl.com/the-rules/2022-nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/2022-nfl-rulebook/
+  capture_date: '2022-10-02'
+  period_minutes: 15
+  max_periods: null
+  ties_allowed: false
+  timeouts_per_team: 3
+  timeouts_reset_periods: 2
+  opening_touchdown_ends_game: false
+  opening_safety_ends_game: true
+- season: 2023
+  postseason: false
+  spec_id: PRJ-02
+  status: initial
+  quote: "There shall be a maximum of one 10-minute period"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20231015191046/https://operations.nfl.com/the-rules/nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/nfl-rulebook/
+  capture_date: '2023-10-15'
+  period_minutes: 10
+  max_periods: 1
+  ties_allowed: true
+  timeouts_per_team: 2
+  timeouts_reset_periods: null
+  opening_touchdown_ends_game: true
+  opening_safety_ends_game: true
+- season: 2023
+  postseason: true
+  spec_id: PRJ-02
+  status: initial
+  quote: "Both teams must have the opportunity to possess the ball at least once"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20231015191046/https://operations.nfl.com/the-rules/nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/nfl-rulebook/
+  capture_date: '2023-10-15'
+  period_minutes: 15
+  max_periods: null
+  ties_allowed: false
+  timeouts_per_team: 3
+  timeouts_reset_periods: 2
+  opening_touchdown_ends_game: false
+  opening_safety_ends_game: true
+- season: 2024
+  postseason: false
+  spec_id: PRJ-02
+  status: initial
+  quote: "There shall be a maximum of one 10-minute period"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20241002025225/https://operations.nfl.com/the-rules/nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/nfl-rulebook/
+  capture_date: '2024-10-02'
+  period_minutes: 10
+  max_periods: 1
+  ties_allowed: true
+  timeouts_per_team: 2
+  timeouts_reset_periods: null
+  opening_touchdown_ends_game: true
+  opening_safety_ends_game: true
+- season: 2024
+  postseason: true
+  spec_id: PRJ-02
+  status: initial
+  quote: "Both teams must have the opportunity to possess the ball at least once"
+  text_read_from: archive
+  archive_url: https://web.archive.org/web/20241002025225/https://operations.nfl.com/the-rules/nfl-rulebook/
+  original_url: https://operations.nfl.com/the-rules/nfl-rulebook/
+  capture_date: '2024-10-02'
+  period_minutes: 15
+  max_periods: null
+  ties_allowed: false
+  timeouts_per_team: 3
+  timeouts_reset_periods: 2
+  opening_touchdown_ends_game: false
+  opening_safety_ends_game: true
+# 2026: read from the live official page (ruling 3a, 2026-10-23). The regular season now gives
+# both teams a possession even after an opening touchdown (only an opening safety ends it).
+- season: 2026
+  postseason: false
+  spec_id: PRJ-02
+  status: initial
+  quote: "Both teams must have the opportunity to possess the ball once"
+  text_read_from: live
+  archive_url: null
+  original_url: https://operations.nfl.com/rules-officiating/2026-nfl-rulebook/
+  capture_date: '2026-10-23'
+  period_minutes: 10
+  max_periods: 1
+  ties_allowed: true
+  timeouts_per_team: 2
+  timeouts_reset_periods: null
+  opening_touchdown_ends_game: false
+  opening_safety_ends_game: true
+- season: 2026
+  postseason: true
+  spec_id: PRJ-02
+  status: initial
+  quote: "Both teams must have the opportunity to possess the ball at least once"
+  text_read_from: live
+  archive_url: null
+  original_url: https://operations.nfl.com/rules-officiating/2026-nfl-rulebook/
+  capture_date: '2026-10-23'
+  period_minutes: 15
+  max_periods: null
+  ties_allowed: false
+  timeouts_per_team: 3
+  timeouts_reset_periods: 2
+  opening_touchdown_ends_game: false
+  opening_safety_ends_game: true

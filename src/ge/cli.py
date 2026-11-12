@@ -97,6 +97,17 @@ def ingest_weather_cmd(
     raise typer.Exit(run_weather(cfg, _user_agent(), days or cfg.nws.forecast_window_days.value))
 
 
+@ingest.command("era5")
+def ingest_era5_cmd(
+    seasons: Annotated[str, typer.Option(help="e.g. 2016-2024 or 2026 (never 2025)")],
+) -> None:
+    """DATA-07: Open-Meteo ERA5 game-window weather for outdoor games (MTC-05 / ENV fits)."""
+    from ge.config import load_ingest
+    from ge.ingest.jobs import run_era5_seasons
+
+    raise typer.Exit(run_era5_seasons(load_ingest(), _seasons(seasons)))
+
+
 @ingest.command("kalshi")
 def ingest_kalshi_cmd(
     season: Annotated[int, typer.Option(help="Season year")],
@@ -311,6 +322,65 @@ def fit(
             f"{len(out.missing)} missing"
         )
     print(f"report: {path}")
+    print(ATTRIBUTION)
+
+
+@app.command("fit-sim")
+def fit_sim(
+    as_of: Annotated[
+        str, typer.Option(help="Data cut: each dataset's latest pull at or before this time.")
+    ],
+    window: Annotated[
+        str, typer.Option(help="S2021, S2022, S2023, S2024, live, or all (default).")
+    ] = "all",
+    base: Annotated[str, typer.Option(help="Fit version copied unchanged.")] = "v4",
+    fit_version: Annotated[str, typer.Option(help="Folder under config/params_fitted/.")] = "v5",
+    fresh: Annotated[bool, typer.Option(help="Re-extract every season.")] = False,
+) -> None:
+    """Phase 5 (PRJ-02, MTC-05, ENV, PLY-14) per-window fits, written as <fit-version> = <base>
+    plus the new keys. Never reads 2025 (BT-07b)."""
+    import datetime as dt
+
+    from ge.config import ATTRIBUTION
+    from ge.fit.sim_job import run_sim_fit
+    from ge.ingest.weather_era5 import ATTRIBUTION as WEATHER_ATTRIBUTION
+    from ge.store.holdout import Window
+
+    when = dt.datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+    if when.tzinfo is None:
+        raise typer.BadParameter("--as-of needs a time zone, e.g. 2026-10-24T00:00:00Z")
+    windows = Window.walk_forward() if window == "all" else [Window.named(window)]
+    results = run_sim_fit(
+        windows, when, base=base, version=fit_version, fresh=fresh,
+        log=lambda m: print(dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), m, flush=True),
+    )  # fmt: skip
+    for name, out in results.items():
+        print(
+            f"{name}: {len(out.values)} Phase 5 values, {len(out.no_signal)} no detectable "
+            f"signal, {len(out.missing)} missing"
+        )
+    print(ATTRIBUTION)
+    print(WEATHER_ATTRIBUTION)
+
+
+@app.command("sim-season")
+def sim_season(
+    season: Annotated[int, typer.Option(help="Season to simulate (never 2025).")],
+    model_version: Annotated[str, typer.Option(help="Tag; with the game id it seeds the runs.")],
+    runs: Annotated[int, typer.Option(help="Runs per game.")] = 20_000,
+) -> None:
+    """PRJ-02: simulate every game of a season from decision-time inputs (unanchored model
+    mode) and write one summary row per game to data/sim_runs/<model-version>/."""
+    import datetime as dt
+
+    from ge.config import ATTRIBUTION
+    from ge.models.sim.backtest import run_season
+
+    def log(m: str) -> None:
+        print(dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), m, flush=True)
+
+    path = run_season(season, n_runs=runs, model_version=model_version, log=log)
+    print(f"wrote {path}")
     print(ATTRIBUTION)
 
 

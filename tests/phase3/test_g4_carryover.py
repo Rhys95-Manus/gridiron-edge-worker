@@ -18,6 +18,7 @@ import pytest
 
 from ge.metrics.coaching import load_registry
 from ge.metrics.context import build_context
+from ge.metrics.engine import check_priors
 from ge.metrics.registry import raw, shrunk
 from ge.store.snapshot import snapshot
 from tests.phase3 import oracle as o
@@ -128,10 +129,9 @@ def test_week_1_qb_unknown_raises(tmp_path: Path) -> None:
     """Week 1: a team that hasn't played has no current-season dropbacks, so its quarterback
     is QB1 on the latest depth chart visible at decision time (G4, decision log 2026-10-13).
     With the chart visible every team's quarterback is settled (no "QB unknown"); with the
-    chart removed the carryover raises and the reason G4 gives names the missing depth
-    chart. The metric engine still raises in week 1 for teams yet to play, whose play-caller
-    is unknown (rulings 2026-10-14). Every team still gets raw rows; teams yet to play have
-    n = 0."""
+    chart removed the carryover raises for the target game's teams and the reason G4 gives
+    names the missing depth chart (other teams yet to play are outside G4's scope, ruling
+    2026-10-25). Every team still gets raw rows; teams yet to play have n = 0."""
     snap = snapshot(first_game(1), root=STORE)
     ctx = build_context(snap)
     # Teams whose week-1 chart is visible at decision time (BT-01: a later game's chart, e.g.
@@ -186,6 +186,52 @@ _TEAM_COLS = (
     "penalty_team",
     "team",
 )
+
+
+def test_week_1_scope_is_target_teams_and_teams_with_plays() -> None:
+    """Ruling 2026-10-25: Phase 4b's G4 scope (rulings 2026-10-14) applies to the metric engine
+    too. In week 1 only the target game's two teams and teams that already have plays this
+    season get a carryover prior; every other team keeps its row with no prior and no shrunk
+    value, and a note says why, so a team that doesn't touch the game never blocks it."""
+    snap = snapshot(first_game(1), root=STORE)
+    ctx = build_context(snap)
+    f = shrunk(ctx, "OFF-01", "epa").filter(pl.col("cell") == "all")
+    tg = snap.collect("target_game").row(0, named=True)
+    played = set(
+        snap.collect("pbp").filter(pl.col("season") == snap.season)["posteam"].drop_nulls()
+    )
+    scope = {tg["home_team"], tg["away_team"]} | played
+    outside = [r for r in f.iter_rows(named=True) if r["entity_id"] not in scope]
+    assert outside, "week 1 should have teams outside the scope"
+    for r in f.iter_rows(named=True):
+        if r["entity_id"] in scope:
+            assert r["prior"] is not None, r["entity_id"]
+        else:
+            assert r["prior"] is None and r["shrunk"] is None, r["entity_id"]
+            assert "outside G4 scope" in (r["note"] or ""), r["note"]
+
+
+def test_scope_guard_allows_only_out_of_scope_null_priors() -> None:
+    """Ruling 2026-10-25: a missing prior is allowed only for a team outside G4's scope (its
+    rows are noted); a missing prior for an in-scope team still raises. Cell stats whose prior
+    is the team's own shrunk value (OFF-12 / DEF-03 cells) reach this guard with null priors
+    for out-of-scope teams."""
+    rows = pl.DataFrame(
+        {
+            "entity_id": ["AAA", "BBB", "CCC"],
+            "team": ["AAA", "BBB", "CCC"],
+            "cell": ["left_end"] * 3,
+            "prior": [4.1, None, None],
+            "note": [None, None, "outside G4 scope: ..."],
+        },
+        schema_overrides={"prior": pl.Float64, "note": pl.String},
+    )
+    out = check_priors(rows, "OFF-12", "ypc", scope=frozenset({"AAA"}))
+    assert out.filter(pl.col("team") == "BBB")["note"][0].startswith("outside G4 scope")
+    with pytest.raises(ValueError, match="no prior"):
+        check_priors(rows, "OFF-12", "ypc", scope=frozenset({"AAA", "BBB"}))
+    with pytest.raises(ValueError, match="no prior"):
+        check_priors(rows, "OFF-12", "ypc", scope=None)
 
 
 def test_relocated_team_keeps_its_history(g4_snap, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

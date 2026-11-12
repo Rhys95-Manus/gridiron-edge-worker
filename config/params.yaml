@@ -255,6 +255,17 @@ projection:
   prj_02_tol_plays_per_team_game: {spec_id: PRJ-02, value: 2, status: initial, source: 'plays per team-game ± 2'}
   prj_02_tol_pass_rate: {spec_id: PRJ-02, value: 0.015, status: initial, source: 'pass rate ± 1.5 points'}
   prj_02_tol_yards_per_pass_attempt: {spec_id: PRJ-02, value: 0.2, status: initial, source: 'yards per pass attempt ± 0.2'}
+  prj_02_h_l_1: {spec_id: PRJ-02, value: 1.5, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_2: {spec_id: PRJ-02, value: 2, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_3: {spec_id: PRJ-02, value: 3, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_4: {spec_id: PRJ-02, value: 4, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_5: {spec_id: PRJ-02, value: 6, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_6: {spec_id: PRJ-02, value: 8, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_7: {spec_id: PRJ-02, value: 12, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_8: {spec_id: PRJ-02, value: 16, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_9: {spec_id: PRJ-02, value: 24, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_10: {spec_id: PRJ-02, value: 32, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
+  prj_02_h_l_11: {spec_id: PRJ-02, value: 48, status: initial, source: 'h_L is chosen per window from {1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48} weeks'}
   prj_03_first_td_crosscheck_max_gap: {spec_id: PRJ-03, value: 0.03, status: initial, source: 'differ by more than 3 percentage points'}
   prj_06_season_runs: {spec_id: PRJ-06, value: 20000, status: initial, source: '20,000 season simulations'}
   prj_06_qb_min_prev_dropback_share: {spec_id: PRJ-06, value: 0.5, status: initial, source: 'QBs with at least 50% of their team'}

@@ -1,0 +1,43 @@
+# PRJ-02 simulator settings that are neither model constants in MODEL_SPEC.md nor rulebook
+# values (those live in config/game_rules.yaml and config/overtime.yaml). Each entry says where
+# its value comes from. Entries marked "proposed by Claude 2026-10-24, pending Rhys's review"
+# are listed in the Phase 5 report for approval. Loaded strictly by ge.models.sim.settings.
+
+runs:
+  chunks: {spec_id: PRJ-02, value: 4, status: initial, source: 'ruling E12 (2026-10-24): "a fixed number of chunks (params, initial 4)"'}
+
+league:
+  punt_bucket_yards: {spec_id: PRJ-02, value: 5, status: initial, source: 'ruling E10 (2026-10-24): "punt net per 5-yard bucket of punt yardline"'}
+  fg_miss_bucket_yards: {spec_id: PRJ-02, value: 5, status: initial, source: 'proposed by Claude 2026-10-24, pending Rhys''s review: the field position after a missed field goal is drawn from missed attempts in the same 5-yard bucket of kick distance (same width as punts, E10)'}
+  late_kickoff_seconds: {spec_id: PRJ-02, value: 300, status: initial, source: 'proposed by Claude 2026-10-24, pending Rhys''s review: kickoffs by the trailing team in the last 300 s of the 4th period (or overtime) draw from their own empirical outcomes, so onside kicks appear at their observed rate (E10 "onside attempts by situation"); all other kickoffs draw from the rest'}
+  min_category_events: {spec_id: PRJ-02, value: 30, status: initial, source: 'proposed by Claude 2026-10-24, pending Rhys''s review: an empirical category (a run cell, a punt bucket, a clock situation) with fewer weighted-sample plays than this falls back to its parent category (run cells -> all designed runs; punt and miss buckets -> the neighbouring bucket; clock situations -> the same outcome in the other clock regime, inside or outside the last two minutes of a half). 30 = BT-02''s minimum entities per m'}
+
+distill:
+  xpass_togo_bin_upper: {spec_id: PRJ-02, value: [1, 2, 3, 6, 10], status: initial, source: 'ruling 2026-10-29 (P3): xpass(state) carries an indicator for each distance bin within each down, ydstogo 1, 2, 3, 4-6 and 7-10 (each value is a bin''s inclusive upper edge), 11 or more the reference'}
+
+short_yardage:
+  downs: {spec_id: PRJ-02, value: [3, 4], status: initial, source: 'ruling 2026-10-29 (P2): a designed run on 3rd or 4th down with 2 yards or fewer to go draws from the league short-yardage category'}
+  max_togo: {spec_id: PRJ-02, value: 2, status: initial, source: 'ruling 2026-10-29 (P2): short yardage is 2 yards or fewer to go'}
+
+sacks:
+  distance_upper: {spec_id: MTC-03, value: [2, 6, 10], status: initial, source: 'ruling 2026-10-30 (P5): the sack-rate situation offset has distance bins 1-2, 3-6, 7-10 and 11+ (inclusive upper edges) within each down group (1st, 2nd, 3rd/4th)'}
+
+pass_depth:
+  distance_upper: {spec_id: PRJ-02, value: [2, 6, 10], status: initial, source: 'ruling 2026-11-02: pass depth by situation has distance bins 1-2, 3-6, 7-10 and 11+ (inclusive upper edges) within each down group (1st, 2nd, 3rd/4th); same values as sacks.distance_upper, its own key'}
+
+situation_yards:
+  distance_upper: {spec_id: PRJ-02, value: [2, 6, 10], status: initial, source: 'ruling 2026-11-03 (P6): 1st- and 2nd-down designed runs draw from a (run cell, situation) table with distance bins 1-2, 3-6, 7-10 and 11+ (inclusive upper edges) within each of the two downs; same values as pass_depth.distance_upper, its own key'}
+  yac_by_situation: {spec_id: PRJ-02, value: false, status: initial, source: 'ruling 2026-11-11 (P6s): true = YAC draws from the (band, pass-depth cell) category (ruling 2026-11-03); false = from the band category only. Ruling 2026-11-12: false (runs by situation only; thin-cell YAC tails open)'}
+
+fourth_go:
+  togo_upper: {spec_id: PRJ-02, value: [1, 3], status: initial, source: 'ruling 2026-10-31: the simulator''s 4th-down go model has one term per distance bin 1, 2-3, 4+ (inclusive upper edges) x field bin, plus linear score differential and game seconds; COA-02''s linear p_go is unchanged'}
+  yardline_upper: {spec_id: PRJ-02, value: [40, 60], status: initial, source: 'ruling 2026-10-31: the go model''s field bins yardline_100 <= 40, 41-60, > 60 (inclusive upper edges)'}
+
+# Diagnostic counters (approved by Rhys 2026-10-30): display bins for the scoring-gap counters.
+# They only read the play; no simulated outcome depends on them.
+diagnostics:
+  red_zone_max_yardline: {spec_id: PRJ-02, value: 20, status: initial, source: 'diagnostic counters approved 2026-10-30: a red-zone trip is a drive with any snap at yardline_100 <= 20'}
+  fourth_togo_upper: {spec_id: PRJ-02, value: [1, 3], status: initial, source: 'diagnostic counters approved 2026-10-30: 4th-down distance bins 1, 2-3, 4+ (inclusive upper edges)'}
+  fourth_yardline_upper: {spec_id: PRJ-02, value: [40, 60], status: initial, source: 'diagnostic counters approved 2026-10-30: 4th-down field bins yardline_100 <= 40, 41-60, > 60 (inclusive upper edges)'}
+  early_deep_air_min: {spec_id: PRJ-02, value: 10, status: initial, source: 'diagnostic counters approved 2026-10-30: a 1st/2nd-down pass attempt with air yards >= 10 counts as deep, below as short'}
+  fg_distance_lower: {spec_id: PRJ-02, value: [30, 40, 50], status: initial, source: 'diagnostic counters approved 2026-10-30: field-goal kick-distance bins < 30, 30-39, 40-49, 50+ (lower edges)'}

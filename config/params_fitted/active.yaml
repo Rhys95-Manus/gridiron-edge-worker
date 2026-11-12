@@ -1,2 +1,3 @@
 # The Phase 3e fit the metric engine reads (ge.config.params_for).
-fit_version: v4
+# v5 = v4 (every entry unchanged) plus the Phase 5 fits; switched by Rhys's ruling 2026-10-24 (E9).
+fit_version: v5

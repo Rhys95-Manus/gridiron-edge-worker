@@ -183,6 +183,37 @@ def run_weather(cfg: IngestConfig, user_agent: str, days: int) -> int:
     return 0
 
 
+# --- ERA5 history (DATA-07) ----------------------------------------------------------------
+
+
+def run_era5_seasons(cfg: IngestConfig, seasons: list[int]) -> int:
+    """DATA-07: every season is checked (2025 raises HoldoutReadError) before any request;
+    then one season at a time through the ingest.yaml rate limit."""
+    from ge.ingest.weather_era5 import ATTRIBUTION as ERA5_ATTRIBUTION
+    from ge.ingest.weather_era5 import check_era5_season, era5_limiter, run_era5
+
+    for s in seasons:
+        check_era5_season(s)
+    sched = _schedules(seasons)
+    stadiums = load_stadiums()
+    with PublicClient(cfg.http, rate_limiter=era5_limiter(cfg.open_meteo)) as http:
+        for s in seasons:
+            t0 = time.monotonic()
+            n = run_era5(
+                cfg,
+                s,
+                http=http,
+                sched=sched,
+                stadiums=stadiums,
+                pulled_at=_now(),
+                progress=lambda m: print(_stamp(m), flush=True),
+            )
+            print(_stamp(f"era5 {s}: {n} games stored in {time.monotonic() - t0:.0f} s"))
+        print(f"requests {http.attempts}, HTTP 429 x{http.retryable_by_status.get(429, 0)}")
+    print(ERA5_ATTRIBUTION)
+    return 0
+
+
 # --- Kalshi (DATA-08) ----------------------------------------------------------------------
 
 

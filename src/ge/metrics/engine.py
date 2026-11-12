@@ -290,6 +290,8 @@ Prior = League | Fixed | Parent | Computed | AtPosition | Role
 NO_POSITION = "no roster position: no position prior"
 NO_SLOT = "no slot (outside QB1, RB1-2, WR1-3, TE1): no role prior"
 NO_SIGNAL = "no detectable signal (BT-02): shrunk = prior"
+G4_OUT = "outside G4 scope"
+OUTSIDE_G4_SCOPE = f"{G4_OUT}: not in the target game and no plays this season (ruling 2026-10-25)"
 # A k the spec doesn't give: only Phase 3e's fitted k exists (none -> NotImplementedError).
 FIT_ONLY = "fit"
 
@@ -522,13 +524,33 @@ def shrink_stat(
         rows = pl.concat(
             [rows, _reset_priors(ctx, spec_id, sd, raw, reset_rows).select(rows.columns)]
         )
-    if rows["prior"].null_count():
-        bad = rows.filter(pl.col("prior").is_null())
-        raise ValueError(
-            f"{spec_id} {sd.stat}: no prior for {bad.select('entity_id', 'cell').rows()[:5]}"
-        )
+    in_g4 = ctx.week is not None and cv.in_carryover_window(ctx.week)
+    rows = check_priors(rows, spec_id, sd.stat, scope=ctx.g4_scope if in_g4 else None)
     skip = pl.col("below_min_sample") if sd.prior_only_below_min else None
     return _shrink_with_k(rows, spec_id, sd, skip)
+
+
+def check_priors(
+    rows: pl.DataFrame, spec_id: str, stat: str, scope: frozenset[str] | None
+) -> pl.DataFrame:
+    """G4 scope guard (ruling 2026-10-25): a null prior is allowed only for a team outside
+    `scope` (weeks 1-4: the target game's teams plus teams with plays this season); those rows
+    get the "outside G4 scope" note and shrink to null. Any other null prior raises. Cell stats
+    whose prior is the team's own shrunk value (OFF-12 / DEF-03) inherit the null. With scope
+    None every team is in scope."""
+    out = ~pl.col("team").is_in(list(scope)) if scope is not None else pl.lit(False)
+    bad = rows.filter(pl.col("prior").is_null() & ~out)
+    if bad.height:
+        raise ValueError(
+            f"{spec_id} {stat}: no prior for {bad.select('entity_id', 'cell').rows()[:5]}"
+        )
+    noted = pl.col("note").str.contains(G4_OUT, literal=True).fill_null(False)
+    return rows.with_columns(
+        pl.when(pl.col("prior").is_null() & ~noted)
+        .then(_note(pl.lit(OUTSIDE_G4_SCOPE)))
+        .otherwise(pl.col("note"))
+        .alias("note")
+    )
 
 
 def _note(extra: pl.Expr) -> pl.Expr:
@@ -624,11 +646,17 @@ def _carryover(
     )
     lg_map = dict(lg.select("cell", "value").iter_rows())
     rows = rows.with_columns(fr).join(last, on=["_fr", "cell"], how="left").drop("_fr")
-    priors, notes = [], []
+    priors: list[float | None] = []
+    notes = []
+    scope = ctx.g4_scope
     for r in rows.iter_rows(named=True):
         league = lg_map.get(r["cell"])
         if league is None:
             raise ValueError(f"G4: {spec_id} {sd.stat}: no prior-season league value")
+        if scope is not None and r["team"] not in scope:
+            priors.append(None)
+            notes.append("; ".join(x for x in (r["note"], OUTSIDE_G4_SCOPE) if x))
+            continue
         base = r["_last"] if r["_last"] is not None else league
         changed, why = ctx.g4_changed(r["entity_id"], side)
         priors.append(cv.carryover_prior(base, league, changed=changed))

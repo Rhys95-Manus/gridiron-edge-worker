@@ -312,6 +312,17 @@ class Projection(_Group):
     prj_02_tol_plays_per_team_game: Param
     prj_02_tol_pass_rate: Param
     prj_02_tol_yards_per_pass_attempt: Param
+    prj_02_h_l_1: Param
+    prj_02_h_l_2: Param
+    prj_02_h_l_3: Param
+    prj_02_h_l_4: Param
+    prj_02_h_l_5: Param
+    prj_02_h_l_6: Param
+    prj_02_h_l_7: Param
+    prj_02_h_l_8: Param
+    prj_02_h_l_9: Param
+    prj_02_h_l_10: Param
+    prj_02_h_l_11: Param
     prj_03_first_td_crosscheck_max_gap: Param
     prj_06_season_runs: Param
     prj_06_qb_min_prev_dropback_share: Param
@@ -319,6 +330,10 @@ class Projection(_Group):
     prj_07_bins: Param
     prj_07_min_forecasts_per_market_type: Param
     prj_07_min_forecasts_per_bin: Param
+
+    def h_l_grid(self) -> tuple[float, ...]:
+        """PRJ-02 league level: the h_L grid in league weeks."""
+        return tuple(float(getattr(self, f"prj_02_h_l_{i}").value) for i in range(1, 12))
 
 
 class Edge(_Group):
@@ -497,6 +512,10 @@ class IntSetting(_Entry):
     value: StrictInt
 
 
+class FloatSetting(_Entry):
+    value: StrictFloat
+
+
 class StrSetting(_Entry):
     value: Annotated[str, StringConstraints(min_length=1)]
 
@@ -539,6 +558,13 @@ class NwsSettings(_Group):
     forecast_window_days: IntSetting
 
 
+class OpenMeteoSettings(_Group):
+    archive_url: StrSetting
+    model: StrSetting
+    mph_to_kmh: FloatSetting
+    requests_per_second: IntSetting
+
+
 class WikidataSettings(_Group):
     api_url: StrSetting
     search_limit: IntSetting
@@ -559,10 +585,6 @@ class ElevationUnits(_Group):
     foot: UnitSetting
 
 
-class FloatSetting(_Entry):
-    value: StrictFloat
-
-
 class GeoSettings(_Group):
     earth_mean_radius_km: FloatSetting
 
@@ -572,6 +594,7 @@ class IngestConfig(_Strict):
     nflverse: NflverseSettings
     kalshi: KalshiSettings
     nws: NwsSettings
+    open_meteo: OpenMeteoSettings
     wikidata_units: ElevationUnits
     geo: GeoSettings
     wikidata: WikidataSettings

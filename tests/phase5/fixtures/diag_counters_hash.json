@@ -1,0 +1,7 @@
+{
+  "source": "synthetic: tests/phase5/sim_synth.py synthetic_game() and synthetic_league(), simulate(..., 2000, game_id='G_DIAG_HASH', model_version='m1'), default chunks from config/sim.yaml; no football data",
+  "generated": "2026-10-31, with the engine after the 4th-down go model of ruling 2026-10-31 (cell-based go decision; the synthetic game's go model changed with it); hash update approved by Rhys 2026-11-01. Previous values (engine before the diagnostic counters of 2026-10-30): regular c90fac5491f09a79fc10db2011d716eebbe81b04588a36f4371cb3abba219c52, postseason 38867f9e4df91a18b511d02193c4b1e19f97f6f9ba1488545be766ba5eacc975",
+  "hashed": "SHA-256 over the bytes of team[:, :, :73], player, first_td, ot, in that order",
+  "regular": "548de8703e80ce94df3d555ed37d309b3169f81d025fe18eb048e72b6e1a6eca",
+  "postseason": "1a4be927efc184af89392a1256522609b9e7a16a920835ecec20b243456633bb"
+}

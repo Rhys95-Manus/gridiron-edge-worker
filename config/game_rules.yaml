@@ -1,0 +1,51 @@
+# PRJ-02 game-rule constants (ruling E2, 2026-10-24), built like config/overtime.yaml. Source:
+# the NFL's official rulebook page on operations.nfl.com. 2021-2024 were read from Internet
+# Archive captures dated inside each season; 2026 from the live official page, rendered in a
+# browser with every rule section expanded (2026-10-24). Each value lists the seasons in whose
+# source every one of its quotes was found verbatim; a value read for any other season raises.
+# Quotes are under 15 words each; no further rulebook text is copied.
+
+sources:
+  # 2016-2020: added 2026-11-01 for the kickoff eras only (ruling 2026-11-01, Q1); no other
+  # rule below lists these seasons.
+  # 2016-2017 were captured over http; the https form of the same archive URL returns the
+  # identical capture (byte-identical, checked 2026-11-02).
+  2016: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20160922153931/https://operations.nfl.com/the-rules/2016-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2016-nfl-rulebook/', capture_date: '2016-09-22'}
+  2017: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20170902072257/https://operations.nfl.com/the-rules/2017-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2017-nfl-rulebook/', capture_date: '2017-09-02'}
+  2018: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20180924083907/https://operations.nfl.com/the-rules/2018-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2018-nfl-rulebook/', capture_date: '2018-09-24'}
+  2019: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20190916133603/https://operations.nfl.com/the-rules/2019-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2019-nfl-rulebook/', capture_date: '2019-09-16'}
+  2020: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20200924221658/https://operations.nfl.com/the-rules/2020-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2020-nfl-rulebook/', capture_date: '2020-09-24'}
+  2021: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20211013094818/https://operations.nfl.com/the-rules/2021-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2021-nfl-rulebook/', capture_date: '2021-10-13'}
+  2022: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20221002060355/https://operations.nfl.com/the-rules/2022-nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/2022-nfl-rulebook/', capture_date: '2022-10-02'}
+  2023: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20231015191046/https://operations.nfl.com/the-rules/nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/nfl-rulebook/', capture_date: '2023-10-15'}
+  2024: {text_read_from: archive, archive_url: 'https://web.archive.org/web/20241002025225/https://operations.nfl.com/the-rules/nfl-rulebook/', original_url: 'https://operations.nfl.com/the-rules/nfl-rulebook/', capture_date: '2024-10-02'}
+  2026: {text_read_from: live, archive_url: null, original_url: 'https://operations.nfl.com/rules-officiating/2026-nfl-rulebook/', capture_date: '2026-10-24'}
+
+rules:
+  touchdown_points: {spec_id: PRJ-02, status: initial, value: 6, quotes: ['Touchdown: 6 points'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  field_goal_points: {spec_id: PRJ-02, status: initial, value: 3, quotes: ['Field Goal: 3 points'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  safety_points: {spec_id: PRJ-02, status: initial, value: 2, quotes: ['Safety: 2 points'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  try_kick_points: {spec_id: PRJ-02, status: initial, value: 1, quotes: ['Try after touchdown: 1 point (Field Goal or Safety) or 2 points (Touchdown)'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  try_run_pass_points: {spec_id: PRJ-02, status: initial, value: 2, quotes: ['Try after touchdown: 1 point (Field Goal or Safety) or 2 points (Touchdown)'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  line_to_gain_yards: {spec_id: PRJ-02, status: initial, value: 10, quotes: ['spot 10 yards in advance of the spot of the snap'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  downs_per_series: {spec_id: PRJ-02, status: initial, value: 4, quotes: ['the four consecutive charged scrimmage downs'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  # 360 feet end line to end line, less two end zones of 10 yards, is 100 yards between the goal
+  # lines (3 feet per yard: NIST SP 811 Appendix B.9, foot 3.048 E-01 m and yard 9.144 E-01 m,
+  # fetched 2026-10-24). The 2026 page does not carry this wording, so 2026 is not covered.
+  field_of_play_yards: {spec_id: PRJ-02, status: initial, value: 100, quotes: ['360 feet in length', '10 yards from and parallel to each end line'], seasons: [2021, 2022, 2023, 2024]}
+  # Goal line 10 yards inside each end line: the end zone is 10 yards deep (bounds air yards).
+  end_zone_yards: {spec_id: PRJ-02, status: initial, value: 10, quotes: ['10 yards from and parallel to each end line'], seasons: [2021, 2022, 2023, 2024]}
+  periods: {spec_id: PRJ-02, status: initial, value: 4, quotes: ['divided into four periods of 15 minutes each'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  period_minutes: {spec_id: PRJ-02, status: initial, value: 15, quotes: ['divided into four periods of 15 minutes each'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  timeouts_per_half: {spec_id: PRJ-02, status: initial, value: 3, quotes: ['Each team is entitled to three timeouts during a half'], seasons: [2021, 2022, 2023, 2024, 2026]}
+  two_minute_warning_seconds: {spec_id: PRJ-02, status: initial, value: 120, quotes: ['prior to two minutes remaining on the game clock'], seasons: [2021, 2022, 2023, 2024, 2026]}
+
+# PRJ-02 kickoff eras (K1, rulings 2026-11-01 and 2026-11-02): an era is a set of seasons with
+# the same free-kick touchback spot text. Each era's quote was found verbatim (whitespace
+# normalised) in every season in `seasons` and in none in `absent_in`; 2026 from the live page
+# rendered in a browser (2026-11-01). A kickoff table draws only from kickoffs of the game's
+# era. Era names carry no rule values.
+kickoff_eras:
+  touchback_spot_a: {spec_id: PRJ-02, status: initial, quotes: ['free kicks that result in a touchback is the 25-yard line'], seasons: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023], absent_in: [2024, 2026]}
+  touchback_spot_b: {spec_id: PRJ-02, status: initial, quotes: ['from its 30-yard line or 20-yard line (as applicable by Rule 6-1-5)'], seasons: [2024], absent_in: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2026]}
+  touchback_spot_c: {spec_id: PRJ-02, status: initial, quotes: ['from its 35-yard line or 20-yard line (as applicable by Rule 6-1-5)'], seasons: [2026], absent_in: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]}

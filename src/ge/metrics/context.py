@@ -375,6 +375,25 @@ class MetricContext:
             return None, ""
         return now[2] != then[2], "new head coach (stands in for play-caller)"
 
+    @cached_property
+    def g4_scope(self) -> frozenset[str] | None:
+        """G4 scope (rulings 2026-10-14 for PRJ-01a, 2026-10-25 for the metric engine): the
+        target game's two teams plus every team with plays this season so far. A team outside
+        it shares no plays with the game, so its unknown change never blocks the game. None
+        without a target game (the Phase 3e fits): every team is in scope."""
+        tg = self.snap.collect("target_game")
+        if not tg.height or self.season != self.snap.season:
+            return None
+        r = tg.row(0, named=True)
+        pbp = self.snap.collect("pbp")
+        cur = pbp.filter(pl.col("season") == self.season) if pbp.height else pbp
+        played: set[str] = set()
+        if cur.height:
+            played = set(cur["posteam"].drop_nulls().to_list()) | set(
+                cur["defteam"].drop_nulls().to_list()
+            )
+        return frozenset({str(r["home_team"]), str(r["away_team"])} | played)
+
     def g4_changed(self, team: str, side: Side) -> tuple[bool | None, str]:
         """G4: (changed, note). Offense: new offensive play-caller or new QB (most dropbacks
         this season vs last; before the first dropback, depth-chart QB1); defense: new
