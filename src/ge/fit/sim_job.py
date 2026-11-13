@@ -44,10 +44,13 @@ from ge.fit.league_level import choose_league_half_life
 from ge.fit.sim_fits import (
     FgPuntFit,
     GoFit,
+    SticksFit,
     fit_fg_vs_punt,
     fit_fourth_go,
+    fit_sticks,
     fourth_go_rows,
     league_week_series,
+    sticks_rows,
 )
 from ge.fit.sim_inputs import (
     game_status_rows,
@@ -350,19 +353,41 @@ def record_tilt(
 
 
 def record_fourth_go(out: SimOut, fit: GoFit, seasons: list[int]) -> None:
-    """Rulings 2026-10-31 and 2026-11-01: the go model's 12 terms as fit keys; counts and
-    approximate SEs go to the diagnostics."""
+    """Rulings 2026-10-31, 2026-11-01 and 2026-11-12: the go model's terms (A.GO_TERMS) as fit
+    keys; counts and approximate SEs go to the diagnostics."""
     from ge.models.sim.arrays import GO_TERMS, go_key
 
     m = (
-        "rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02's 4th-down decisions, "
-        "one term per distance x field cell + score_differential + game_seconds_remaining + "
-        "ln(ydstogo / L) in the last distance bin, h_L-weighted"
+        "rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down "
+        "decision (G7 garbage time included), one term per distance x field cell + "
+        "score_differential + ln(ydstogo / L) in the last distance bin + one term per trailing "
+        "bin x late-time bin, h_L-weighted"
     )
-    coefs = (*fit.cell, fit.score_differential, fit.game_seconds, fit.long_ln_togo)
+    coefs = (*fit.cell, fit.score_differential, fit.long_ln_togo, *fit.late)
     for t, b in zip(GO_TERMS, coefs, strict=True):
         out.put(go_key(t), "PRJ-02", b, m, seasons, fit.n)
     out.diagnostics["fourth_go"] = asdict(fit)
+
+
+def record_sticks(out: SimOut, fit: SticksFit, seasons: list[int]) -> None:
+    """Ruling 2026-11-12 (S-1): the spot-short q per kind (A.STICKS_KINDS) as fit keys; O, E,
+    the unclamped value and the counts go to the diagnostics."""
+    from ge.models.sim.arrays import STICKS_KINDS, sticks_key
+
+    m = (
+        "ruling 2026-11-12 (S-1): P(a gain exactly on the line to gain is spotted one yard "
+        "short) = 1 - observed / expected gains on the line, the expected share from reference "
+        "distances in the same distance bin, downs 1-3, clamped to [0, 1], h_L-weighted"
+    )
+    for k, q, n in zip(STICKS_KINDS, fit.q, fit.n, strict=True):
+        out.put(sticks_key(k), "PRJ-02", q, m, seasons, n)
+    out.diagnostics["sticks"] = {
+        "raw": list(fit.raw),
+        "observed": list(fit.observed),
+        "expected": list(fit.expected),
+        "n": list(fit.n),
+        "n_eff": list(fit.n_eff),
+    }
 
 
 def fit_sim_window(work: Path, w: Window) -> SimOut:
@@ -415,8 +440,24 @@ def fit_sim_window(work: Path, w: Window) -> SimOut:
         h=ll.h_l,
         togo_upper=go.togo_upper.value,
         yardline_upper=go.yardline_upper.value,
+        trail_upper=go.trail_upper.value,
+        late_seconds_upper=go.late_seconds_upper.value,
     )
     record_fourth_go(out, gf, seasons)
+    sticks = load_sim().sticks
+    with use_params(ActiveParams(load_params(), None)):  # G7 bounds, as the league tables
+        st_rows = sticks_rows(core)
+    sf = fit_sticks(
+        st_rows,
+        target_index=weeks.height,
+        h=ll.h_l,
+        togo_min=sticks.togo_min.value,
+        togo_max=sticks.togo_max.value,
+        distance_upper=sticks.distance_upper.value,
+        min_gap=sticks.min_gap.value,
+        min_expected=sticks.min_expected.value,
+    )
+    record_sticks(out, sf, seasons)
 
     # PRJ-02 rating tilt (leave-one-out, ruling 2026-10-24) + as-written comparison
     tilt = _cat(work, "tilt", seasons)

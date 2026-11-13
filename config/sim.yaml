@@ -27,11 +27,19 @@ pass_depth:
 
 situation_yards:
   distance_upper: {spec_id: PRJ-02, value: [2, 6, 10], status: initial, source: 'ruling 2026-11-03 (P6): 1st- and 2nd-down designed runs draw from a (run cell, situation) table with distance bins 1-2, 3-6, 7-10 and 11+ (inclusive upper edges) within each of the two downs; same values as pass_depth.distance_upper, its own key'}
-  yac_by_situation: {spec_id: PRJ-02, value: false, status: initial, source: 'ruling 2026-11-11 (P6s): true = YAC draws from the (band, pass-depth cell) category (ruling 2026-11-03); false = from the band category only. Ruling 2026-11-12: false (runs by situation only; thin-cell YAC tails open)'}
 
 fourth_go:
   togo_upper: {spec_id: PRJ-02, value: [1, 3], status: initial, source: 'ruling 2026-10-31: the simulator''s 4th-down go model has one term per distance bin 1, 2-3, 4+ (inclusive upper edges) x field bin, plus linear score differential and game seconds; COA-02''s linear p_go is unchanged'}
   yardline_upper: {spec_id: PRJ-02, value: [40, 60], status: initial, source: 'ruling 2026-10-31: the go model''s field bins yardline_100 <= 40, 41-60, > 60 (inclusive upper edges)'}
+  trail_upper: {spec_id: PRJ-02, value: [8], status: initial, source: 'ruling 2026-11-12 (G-2): the go model''s trailing bins, deficit 1-8 and 9+ (inclusive upper edge); edges chosen after seeing the 2024 data'}
+  late_seconds_upper: {spec_id: PRJ-02, value: [300, 900], status: initial, source: 'ruling 2026-11-12 (G-2): the go model''s late-time bins, game_seconds_remaining <= 300 and 301-900 (inclusive upper edges), one term per trailing bin x late-time bin, replacing the linear game-seconds term; edges chosen after seeing the 2024 data'}
+
+sticks:
+  togo_min: {spec_id: PRJ-02, value: 3, status: initial, source: 'ruling 2026-11-12 (S-1): a designed run or completion on downs 1-3, short of goal to go, that gains exactly the distance is spotted one yard short with probability q[kind] when ydstogo is between togo_min and togo_max (inclusive); 1-2 yards to go have no reference distance in their bin'}
+  togo_max: {spec_id: PRJ-02, value: 10, status: initial, source: 'ruling 2026-11-12 (S-1): the largest distance at which the spot-short applies and q is fitted'}
+  distance_upper: {spec_id: PRJ-02, value: [2, 6, 10], status: initial, source: 'ruling 2026-11-12 (S-1): q''s reference P(gain = t) is the mean share of gain t at other distances in the same bin 1-2, 3-6, 7-10, 11+ (inclusive upper edges); same values as situation_yards.distance_upper, its own key'}
+  min_gap: {spec_id: PRJ-02, value: 2, status: initial, source: 'ruling 2026-11-12 (S-1): a reference distance t'' is at least 2 yards from t, so gain t is neither on nor one short of its line'}
+  min_expected: {spec_id: PRJ-02, value: 200, status: initial, source: 'ruling 2026-11-12 (S-1): q[kind] is fitted only when the expected count of gains on the line (league weights rescaled to the effective sample size) is at least 200, the same number as BT-02''s minimum events; below it the fit raises'}
 
 # Diagnostic counters (approved by Rhys 2026-10-30): display bins for the scoring-gap counters.
 # They only read the play; no simulated outcome depends on them.

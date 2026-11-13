@@ -140,15 +140,33 @@ NTEAM = 147
 
 # ---- PRJ-02 4th-down go model (ruling 2026-10-31): one logit per distance x field cell
 # (config/sim.yaml `fourth_go`; cell = distance bin x 3 + field bin), then the slopes on
-# score_differential and game_seconds_remaining
+# score_differential; ruling 2026-11-01: long_ln_togo = slope on ln(ydstogo / L) in the last
+# distance bin; ruling 2026-11-12 (G-2): one term per trailing bin x late-time bin
+# (config/sim.yaml fourth_go.trail_upper, late_seconds_upper), replacing the game-seconds slope
 GO_CELLS = 9
-# ruling 2026-11-01: long_ln_togo = slope on ln(ydstogo / L) in the last distance bin
-GO_TERMS = (*(f"cell{c}" for c in range(GO_CELLS)), "sd", "game_sec", "long_ln_togo")
+GO_TRAIL_BINS = 2
+GO_TIME_BINS = 2
+GO_LATE = GO_TRAIL_BINS * GO_TIME_BINS
+GO_TERMS = (
+    *(f"cell{c}" for c in range(GO_CELLS)),
+    "sd",
+    "long_ln_togo",
+    *(f"trail{b}_time{k}" for b in range(GO_TRAIL_BINS) for k in range(GO_TIME_BINS)),
+)
 
 
 def go_key(term: str) -> str:
     """Fit key of one go-model term."""
     return f"fit:PRJ-02/go/{term}"
+
+
+# ---- PRJ-02 sticks spot-short (ruling 2026-11-12, S-1): q per play kind
+STICKS_KINDS = ("run", "completion")
+
+
+def sticks_key(kind: str) -> str:
+    """Fit key of one spot-short probability."""
+    return f"fit:PRJ-02/sticks/{kind}"
 
 
 # ---- model feature ids (CompiledLogit)
@@ -272,6 +290,7 @@ class GameArrays:
     wp: CompiledLogit
     p_go: FloatArray  # PRJ-02 go model (ruling 2026-10-31): GO_TERMS order, see go_key
     fg_punt: FloatArray  # ruling C8: intercept, slope on yardline_100
+    sticks_q: FloatArray  # ruling 2026-11-12 (S-1): spot-short q, STICKS_KINDS order
     rules: IntArray  # (NG,)
     ot: IntArray  # (NO,)
     player_ids: tuple[tuple[str, ...], tuple[str, ...]]  # gsis ids per side, for the outputs

@@ -141,25 +141,21 @@ def offense_scored() -> pl.Expr:
     return _is1("touchdown") & (pl.col("td_team") == pl.col("posteam")).fill_null(False)
 
 
-def pack_yac(comp: pl.DataFrame, *, edges: Sequence[int], min_events: int) -> Packed:
+def pack_yac(comp: pl.DataFrame, *, min_events: int) -> Packed:
     """PRJ-02 YAC table (ruling 2026-10-29): categories are the depth bands (comp's `band`,
-    0..3), then every completion, then one per (band, pass-depth situation cell) (ruling
-    2026-11-03, P6; `edges` = pass_depth.distance_upper) with its band as parent. Each is a
-    weighted Kaplan-Meier estimate with offensive-TD completions censored. The simulation then
-    truncates at the goal line once. `comp`: down, ydstogo, band, yards_after_catch, the
+    0..3), then every completion (parent of each band). Each is a weighted Kaplan-Meier estimate
+    with offensive-TD completions censored. The simulation then truncates at the goal line once.
+    YAC by situation was removed (ruling 2026-11-12). `comp`: band, yards_after_catch, the
     offense_scored columns, w."""
     cols = (pl.col("yards_after_catch").cast(pl.Float64).alias("value"),
             offense_scored().alias("censored"), "w")  # fmt: skip
-    d = _with_cell(comp.drop_nulls(["down", "ydstogo"]), edges)  # band categories keep every row
     rows = pl.concat(
         [
             comp.select(pl.col("band").cast(pl.Int64).alias("cat"), *cols),
             comp.select(pl.lit(BAND_COUNT, dtype=pl.Int64).alias("cat"), *cols),
-            d.select((YAC_CELL0 + pl.col("band") * PD_CELLS + pl.col("pd_cell")).cast(pl.Int64)
-                     .alias("cat"), *cols),
         ]
-    )  # fmt: skip
-    parent = _cell_parents(rows, YAC_CELL0, BAND_COUNT, PD_CELLS, BAND_COUNT, min_events)
+    )
+    parent = [BAND_COUNT] * (BAND_COUNT + 1)
     return pack_categories(rows, n_categories=len(parent), parent=parent, min_events=min_events)
 
 
@@ -440,7 +436,6 @@ PD_DOWN_GROUPS = 3
 PD_DIST_BINS = 4
 PD_CELLS = PD_DOWN_GROUPS * PD_DIST_BINS
 AIR_CELL0 = BAND_COUNT + 1
-YAC_CELL0 = BAND_COUNT + 1  # YAC (band, cell) categories, same cells (ruling 2026-11-03, P6)
 
 
 def depth_cell(down: npt.ArrayLike, togo: npt.ArrayLike, edges: Sequence[int]) -> IntArray:
@@ -510,7 +505,7 @@ class LeagueTables:
     band_share: FloatArray  # league share of attempts per band
     pass_depth_offset: FloatArray  # [down group, distance bin, band] ln share ratio (2026-11-02)
     location_share: FloatArray  # [band, PASS_LOCATIONS]: cp(state) needs a pass location
-    yac: Packed  # bands, all completions, then (band, situation cell) (ruling 2026-11-03)
+    yac: Packed  # bands, then all completions (situation categories removed 2026-11-12)
     int_rate_band: FloatArray  # per band
     fumble_run_rate: float
     fumble_completion_rate: float
@@ -735,8 +730,8 @@ def build_league(
             location_share[b, j] = float(part.filter(pl.col("pass_location") == loc)["w"].sum())
         location_share[b] /= location_share[b].sum()
     comp = att.filter(_is1("complete_pass") & pl.col("yards_after_catch").is_not_null())
-    # goal-line censored (ruling 2026-10-29), by situation (ruling 2026-11-03)
-    yac = pack_yac(comp, edges=pd_edges, min_events=min_events)
+    # goal-line censored (ruling 2026-10-29); no situation categories (ruling 2026-11-12)
+    yac = pack_yac(comp, min_events=min_events)
     int_rate_band = np.array(
         [_rate(att.filter(pl.col("band") == b), _is1("interception")) for b in range(BAND_COUNT)]
     )

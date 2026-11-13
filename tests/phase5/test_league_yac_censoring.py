@@ -112,8 +112,6 @@ def test_pack_yac_bands_and_all_completions() -> None:
     2: at risk 5 -> 1/5, S 4/5; 4: at risk 4 -> 4/5 * 1/4 = 1/5, S 3/5; 5c; 8: 3/5."""
     comp = pl.DataFrame(
         {
-            "down": [1.0] * 5,
-            "ydstogo": [10.0] * 5,
             "band": [0, 0, 1, 1, 1],
             "yards_after_catch": [2.0, 5.0, 4.0, 4.0, 8.0],
             "touchdown": [0, 1, 0, 1, 0],
@@ -123,12 +121,12 @@ def test_pack_yac_bands_and_all_completions() -> None:
         },
         schema_overrides={"td_team": pl.String},
     )
-    p = pack_yac(comp, edges=[2, 6, 10], min_events=2)
+    p = pack_yac(comp, min_events=2)
     assert _masses(p, 0) == pytest.approx({2.0: 0.5, 5.0: 0.5})
     assert _masses(p, 1) == pytest.approx({4.0: 1 / 3, 8.0: 2 / 3})
     assert _masses(p, 4) == pytest.approx({2.0: 0.2, 4.0: 0.2, 8.0: 0.6})
-    assert p.source[:5].tolist() == [0, 1, 4, 4, 4]
-    assert p.n[:5].tolist() == [2, 3, 0, 0, 5]
+    assert p.source.tolist() == [0, 1, 4, 4, 4]
+    assert p.n.tolist() == [2, 3, 0, 0, 5]
 
 
 def test_censored_estimate_recovers_the_true_mean() -> None:

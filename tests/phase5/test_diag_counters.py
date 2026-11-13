@@ -133,7 +133,7 @@ def test_drives_starting_inside_the_20_are_red_zone_trips() -> None:
 
 
 def test_losses_put_every_4th_down_long_and_count_early_yards() -> None:
-    game = replace(_runs_only(synthetic_game()), p_go=np.array([30.0] * 9 + [0.0, 0.0, 0.0]))
+    game = replace(_runs_only(synthetic_game()), p_go=np.array([30.0] * 9 + [0.0] * 6))
     t = _t(_sim(game, _quiet(synthetic_league(), [-2.0]), 500))
     fc = A.FOURTH_CELLS
     go = t[..., A.R_4TH_GO0 : A.R_4TH_GO0 + fc].reshape(*t.shape[:2], 3, 3)

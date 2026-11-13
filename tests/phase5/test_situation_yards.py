@@ -1,9 +1,9 @@
 """PRJ-02 run yards and YAC by down and distance (ruling 2026-11-03, P6). Situation cells for
 1st and 2nd down: down x distance bin (config/sim.yaml situation_yards.distance_upper, inclusive
 upper edges). 1st/2nd-down designed runs draw from the (run cell, situation) category, parent
-the run cell; 3rd/4th downs keep short yardage and late down. YAC draws from the (band,
-pass-depth cell) category, parent the band. Both stay goal-line censored. Synthetic placeholder
-data only."""
+the run cell; 3rd/4th downs keep short yardage and late down; goal-line censored. YAC by
+situation was removed (ruling 2026-11-12): YAC draws from the band. Synthetic placeholder data
+only."""
 
 from __future__ import annotations
 
@@ -18,13 +18,11 @@ from ge.models.sim import arrays as A
 from ge.models.sim.league import (
     BAND_COUNT,
     LATE_DOWN,
-    PD_CELLS,
     RUN_CATEGORIES,
     RUN_CELL_COUNT,
     RUN_SIT0,
     SIT_CELLS,
     SIT_DIST_BINS,
-    YAC_CELL0,
     pack_categories,
     pack_runs,
     pack_yac,
@@ -52,7 +50,6 @@ def test_settings_and_layout() -> None:
     assert (SIT_DIST_BINS, SIT_CELLS) == (4, 8)
     assert RUN_SIT0 == LATE_DOWN + 1 == 11
     assert RUN_CATEGORIES == RUN_SIT0 + RUN_CELL_COUNT * SIT_CELLS == 75
-    assert YAC_CELL0 == BAND_COUNT + 1
 
 
 def test_situation_cell_downs_one_and_two_only() -> None:
@@ -167,20 +164,16 @@ def _comp() -> pl.DataFrame:
     )
 
 
-def test_pack_yac_situation_categories() -> None:
-    p = pack_yac(_comp(), edges=EDGES, min_events=1)
-    assert len(p.lo) == YAC_CELL0 + BAND_COUNT * PD_CELLS
-    first10, third8 = 2, 10  # pass-depth cells (ruling 2026-11-02)
-    assert _masses(p, YAC_CELL0 + 1 * PD_CELLS + first10) == pytest.approx(
-        {2.0: 1 / 3, 6.0: 1 / 3, 10.0: 1 / 3}
-    )
-    assert _masses(p, YAC_CELL0 + 1 * PD_CELLS + third8) == pytest.approx({1.0: 1.0})
-    # bands and every completion as before
+def test_pack_yac_has_no_situation_categories() -> None:
+    """Ruling 2026-11-12: YAC by situation removed; the bands and every completion only."""
+    p = pack_yac(_comp(), min_events=1)
+    assert len(p.lo) == BAND_COUNT + 1
     assert _masses(p, 1) == pytest.approx({1.0: 0.25, 2.0: 0.25, 6.0: 0.25, 10.0: 0.25})
-    assert p.n[:YAC_CELL0].tolist() == [2, 4, 2, 2, 10]
-    q = pack_yac(_comp(), edges=EDGES, min_events=2)
-    assert q.source[YAC_CELL0 + 1 * PD_CELLS + third8] == 1  # one row: the short band
-    assert q.source[YAC_CELL0 + 1 * PD_CELLS + first10] == YAC_CELL0 + 1 * PD_CELLS + first10
+    assert p.n.tolist() == [2, 4, 2, 2, 10]
+
+
+def test_yac_switch_is_gone() -> None:
+    assert "yac_by_situation" not in type(load_sim().situation_yards).model_fields
 
 
 def _run_league(first: float, second: float):  # type: ignore[no-untyped-def]
@@ -217,60 +210,19 @@ def test_engine_draws_early_down_runs_from_their_situation() -> None:
     assert t[run_conv : run_conv + 6].sum() > 0  # 3rd-down runs keep their 2-25 tables
 
 
-def test_engine_draws_yac_from_the_situation_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    _yac_switch(monkeypatch, True)  # off by ruling 2026-11-12; this test needs it on
-    lg = synthetic_league()
-    cats = [[0.0]] * YAC_CELL0 + [[7.0]] * (BAND_COUNT * PD_CELLS)
+def test_engine_draws_yac_from_the_band() -> None:
+    """Ruling 2026-11-12: every band 3.0, every completion 0.0 -> 30 tenths per completion."""
+    cats = [[3.0]] * BAND_COUNT + [[0.0]]
     rows = [(k, v, 1.0) for k, vals in enumerate(cats) for v in vals]
     df = pl.DataFrame(rows, schema=["cat", "value", "w"], orient="row")
     yac = pack_categories(df, n_categories=len(cats), parent=list(range(len(cats))), min_events=1)
-    t = _team(replace(lg, yac=yac), 500)
+    t = _team(replace(synthetic_league(), yac=yac), 500)
     comp = t[A.R_CMP_B0 : A.R_CMP_B0 + 4].sum()
     assert comp > 0
-    assert t[A.R_YAC_CMP_B0 : A.R_YAC_CMP_B0 + 4].sum() == 70 * comp  # tenths of a yard
+    assert t[A.R_YAC_CMP_B0 : A.R_YAC_CMP_B0 + 4].sum() == 30 * comp  # tenths of a yard
 
 
-def test_yac_switch_setting() -> None:
-    """Ruling 2026-11-11 (P6s): situation_yards.yac_by_situation; ruling 2026-11-12: false."""
-    s = load_sim().situation_yards.yac_by_situation
-    assert s.value is False and s.spec_id == "PRJ-02" and s.status == "initial"
-
-
-def _yac_band_vs_cell_league():  # type: ignore[no-untyped-def]
-    """Every band category 3.0, every completion 0.0, every (band, cell) category 7.0."""
-    cats = [[3.0]] * BAND_COUNT + [[0.0]] + [[7.0]] * (BAND_COUNT * PD_CELLS)
-    rows = [(k, v, 1.0) for k, vals in enumerate(cats) for v in vals]
-    df = pl.DataFrame(rows, schema=["cat", "value", "w"], orient="row")
-    yac = pack_categories(df, n_categories=len(cats), parent=list(range(len(cats))), min_events=1)
-    return replace(synthetic_league(), yac=yac)
-
-
-def _yac_switch(monkeypatch: pytest.MonkeyPatch, on: bool) -> None:
-    from ge.models.sim import engine
-
-    real = load_sim()
-    switch = real.situation_yards.yac_by_situation.model_copy(update={"value": on})
-    sy = real.situation_yards.model_copy(update={"yac_by_situation": switch})
-    monkeypatch.setattr(engine, "load_sim", lambda: real.model_copy(update={"situation_yards": sy}))
-
-
-def _yac_tenths_per_completion(monkeypatch: pytest.MonkeyPatch, on: bool) -> float:
-    _yac_switch(monkeypatch, on)
-    t = _team(_yac_band_vs_cell_league(), 500)
-    comp = t[A.R_CMP_B0 : A.R_CMP_B0 + 4].sum()
-    assert comp > 0
-    return float(t[A.R_YAC_CMP_B0 : A.R_YAC_CMP_B0 + 4].sum() / comp)
-
-
-def test_yac_switch_off_draws_from_the_band(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert _yac_tenths_per_completion(monkeypatch, False) == 30.0
-
-
-def test_yac_switch_on_draws_from_the_situation(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert _yac_tenths_per_completion(monkeypatch, True) == 70.0
-
-
-def test_engine_refuses_the_old_run_and_yac_tables() -> None:
+def test_engine_refuses_the_old_run_table_and_the_situation_yac_table() -> None:
     from ge.models.sim.engine import simulate
     from tests.phase5.sim_synth import _packed
 
@@ -278,6 +230,6 @@ def test_engine_refuses_the_old_run_and_yac_tables() -> None:
     with pytest.raises(ValueError, match="run table has no situation"):
         simulate(synthetic_game(), replace(lg, run_yards=_packed([[1.0, 3.0]] * 11)), 5,
                  game_id="G_OLD", model_version="m1")  # fmt: skip
-    with pytest.raises(ValueError, match="YAC table has no situation"):
-        simulate(synthetic_game(), replace(lg, yac=_packed([[0.0, 3.0]] * 5)), 5,
+    with pytest.raises(ValueError, match="YAC table has situation categories"):
+        simulate(synthetic_game(), replace(lg, yac=_packed([[0.0, 3.0]] * (5 + 48))), 5,
                  game_id="G_OLD", model_version="m1")  # fmt: skip

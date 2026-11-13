@@ -10,7 +10,7 @@ seasons:
 - 2020
 data_as_of: '2026-10-24T00:00:00+00:00'
 data_digest: dca5faa37f1ecd699a0baa861dbaef1035fb5a65fccd5a3832973d4ad4ab1ec3
-code_commit: 7b35f5479a0f42383614e2622be5af530e49655a+uncommitted
+code_commit: ff76c190a12e6d2b3b947aae0742123829ae3018+uncommitted
 attribution: 'Data: nflverse; charting: FTN Data via nflverse; expected points: ffopportunity (ffverse)
   via nflverse; data license not stated by the source'
 values:
@@ -645,182 +645,227 @@ values:
   fit:PRJ-02/go/cell0:
     spec_id: PRJ-02
     status: fitted
-    value: 2.2066440917226187
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: 1.209369949456731
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell1:
     spec_id: PRJ-02
     status: fitted
-    value: 1.9568530611997645
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: 0.9501473300904668
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell2:
     spec_id: PRJ-02
     status: fitted
-    value: -0.13284666404295664
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -1.2301883458068874
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell3:
     spec_id: PRJ-02
     status: fitted
-    value: 0.12820777870372363
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -0.894781454613174
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell4:
     spec_id: PRJ-02
     status: fitted
-    value: -0.20519933663394724
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -1.2693628028432293
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell5:
     spec_id: PRJ-02
     status: fitted
-    value: -1.9698145164748744
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -2.9105979740329024
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell6:
     spec_id: PRJ-02
     status: fitted
-    value: -0.9018725759260148
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -2.1746250463466987
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell7:
     spec_id: PRJ-02
     status: fitted
-    value: -1.0427645726571757
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -2.150030145853877
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/cell8:
     spec_id: PRJ-02
     status: fitted
-    value: -2.2087376084338874
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -3.2474948315223218
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
-    initial_value: null
-  fit:PRJ-02/go/game_sec:
-    spec_id: PRJ-02
-    status: fitted
-    value: -0.0004973497876076855
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
-    seasons:
-    - 2016
-    - 2017
-    - 2018
-    - 2019
-    - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/long_ln_togo:
     spec_id: PRJ-02
     status: fitted
-    value: -1.2656626668247932
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -1.1896795641383986
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
     initial_value: null
   fit:PRJ-02/go/sd:
     spec_id: PRJ-02
     status: fitted
-    value: -0.06172960374626376
-    method: 'rulings 2026-10-31 and 2026-11-01: logistic P(go for it) on COA-02''s 4th-down decisions,
-      one term per distance x field cell + score_differential + game_seconds_remaining + ln(ydstogo /
-      L) in the last distance bin, h_L-weighted'
+    value: -0.03753649288642225
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
     seasons:
     - 2016
     - 2017
     - 2018
     - 2019
     - 2020
-    n: 16606
+    n: 19097
+    initial_value: null
+  fit:PRJ-02/go/trail0_time0:
+    spec_id: PRJ-02
+    status: fitted
+    value: 3.6228440413895537
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    n: 19097
+    initial_value: null
+  fit:PRJ-02/go/trail0_time1:
+    spec_id: PRJ-02
+    status: fitted
+    value: 0.5808555720625578
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    n: 19097
+    initial_value: null
+  fit:PRJ-02/go/trail1_time0:
+    spec_id: PRJ-02
+    status: fitted
+    value: 4.296720343906811
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    n: 19097
+    initial_value: null
+  fit:PRJ-02/go/trail1_time1:
+    spec_id: PRJ-02
+    status: fitted
+    value: 2.334370082736984
+    method: 'rulings 2026-10-31, 2026-11-01, 2026-11-12: logistic P(go for it) on every 4th-down decision
+      (G7 garbage time included), one term per distance x field cell + score_differential + ln(ydstogo
+      / L) in the last distance bin + one term per trailing bin x late-time bin, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    n: 19097
     initial_value: null
   fit:PRJ-02/h_l:
     spec_id: PRJ-02
@@ -834,6 +879,36 @@ values:
     - 2019
     - 2020
     n: 105
+    initial_value: null
+  fit:PRJ-02/sticks/completion:
+    spec_id: PRJ-02
+    status: fitted
+    value: 0.22797647021179224
+    method: 'ruling 2026-11-12 (S-1): P(a gain exactly on the line to gain is spotted one yard short)
+      = 1 - observed / expected gains on the line, the expected share from reference distances in the
+      same distance bin, downs 1-3, clamped to [0, 1], h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    n: 39550
+    initial_value: null
+  fit:PRJ-02/sticks/run:
+    spec_id: PRJ-02
+    status: fitted
+    value: 0.4290632479353954
+    method: 'ruling 2026-11-12 (S-1): P(a gain exactly on the line to gain is spotted one yard short)
+      = 1 - observed / expected gains on the line, the expected share from reference distances in the
+      same distance bin, downs 1-3, clamped to [0, 1], h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    n: 42812
     initial_value: null
   fit:PRJ-02/tilt/completion:
     spec_id: PRJ-02

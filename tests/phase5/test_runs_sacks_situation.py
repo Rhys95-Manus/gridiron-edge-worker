@@ -20,11 +20,14 @@ from ge.models.sim.league import (
     LATE_DOWN,
     RUN_CATEGORIES,
     RUN_CELL_COUNT,
+    RUN_SIT0,
     SACK_DIST_BINS,
     SACK_DOWN_GROUPS,
     SHORT_YARDAGE,
+    SIT_CELLS,
     pack_runs,
     pack_sack_offsets,
+    situation_cell,
 )
 from ge.models.sim.settings import load_sim
 from tests.phase5.sim_synth import _packed, _run_packed, synthetic_game, synthetic_league
@@ -180,10 +183,11 @@ def test_engine_sack_offsets() -> None:
 
 @pytest.mark.realdata
 def test_replay_2024_run_yards_by_down_with_the_s2024_table() -> None:
-    """2024 G7 designed runs keep their cell (late-down category on 3rd/4th with more than 2 to
-    go; short yardage left out) and yardline; yards drawn from the S2024 table, clipped once
-    at the goal line. Mean within 0.20 of actual on 1st and 2nd down, 0.75 on 3rd/4th
-    (ruling 2026-10-30)."""
+    """2024 G7 designed runs keep their cell and yardline: 1st/2nd down use the (run cell,
+    situation) category the engine uses (ruling 2026-11-03; R-2, approved by Rhys 2026-11-12),
+    3rd/4th with more than 2 to go the late-down category, short yardage left out; yards drawn
+    from the S2024 table, clipped once at the goal line. Mean within 0.20 of actual on 1st and
+    2nd down, 0.75 on 3rd/4th (ruling 2026-10-30)."""
     from ge.config import ActiveParams, load_params, use_params
     from ge.ingest.raw import DATA_ROOT, read_latest
     from ge.metrics import plays as pf
@@ -199,9 +203,11 @@ def test_replay_2024_run_yards_by_down_with_the_s2024_table() -> None:
     late = (pl.col("down") >= 3) & (pl.col("ydstogo") > 2)
     runs = runs.filter(~((pl.col("down") >= 3) & (pl.col("ydstogo") <= 2)))
     idx_map = {c: i for i, c in enumerate(pf.RUN_CELLS)}
-    cat = runs.select(pl.when(late).then(LATE_DOWN)
-                      .otherwise(pl.col("cell").replace_strict(idx_map, return_dtype=pl.Int64))
-                      ).to_series().to_numpy()  # fmt: skip
+    cell = runs["cell"].replace_strict(idx_map, return_dtype=pl.Int64).to_numpy()
+    sit = situation_cell(runs["down"].to_numpy(), runs["ydstogo"].to_numpy(),
+                         load_sim().situation_yards.distance_upper.value)  # fmt: skip
+    is_late = runs.select(late).to_series().to_numpy()
+    cat = np.where(is_late, LATE_DOWN, RUN_SIT0 + cell * SIT_CELLS + sit)
     t = load_window_league(2024).run_yards
     src = t.source[cat]
     yl = runs["yardline_100"].to_numpy().astype(np.float64)

@@ -47,15 +47,6 @@ def _run_packed(cats: list[list[float]]) -> Packed:
     return pack_categories(df, n_categories=75, parent=parent, min_events=1)
 
 
-def _yac_packed(cats: list[list[float]]) -> Packed:
-    """Bands and every completion, then 4 x 12 (band, situation cell) categories with no rows,
-    each falling back to its band (ruling 2026-11-03)."""
-    rows = [(k, float(v), 1.0) for k, vals in enumerate(cats) for v in vals]
-    df = pl.DataFrame(rows, schema=["cat", "value", "w"], orient="row")
-    parent = list(range(5)) + [k // 12 for k in range(48)]
-    return pack_categories(df, n_categories=53, parent=parent, min_events=1)
-
-
 def synthetic_league() -> LeagueTables:
     run = [-2.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 12.0, 25.0]
     air = [[-4.0, -2.0], [2.0, 5.0, 8.0], [11.0, 14.0, 18.0], [22.0, 30.0, 40.0]]
@@ -78,7 +69,7 @@ def synthetic_league() -> LeagueTables:
         pass_depth_offset=np.zeros((3, 4, 4)),  # no situation shift (test setting)
         band_share=np.array([0.2, 0.5, 0.2, 0.1]),
         location_share=np.full((4, 3), 1 / 3),
-        yac=_yac_packed([[0.0, 3.0, 6.0, 12.0]] * 5),  # (band, cell) -> band (2026-11-03)
+        yac=_packed([[0.0, 3.0, 6.0, 12.0]] * 5),  # bands, every completion (2026-11-12)
         int_rate_band=np.array([0.01, 0.015, 0.03, 0.06]),
         fumble_run_rate=0.01,
         fumble_completion_rate=0.005,
@@ -198,8 +189,9 @@ def synthetic_game(
         wp=_logit(0.0, {A.F_SCORE_DIFF: 0.15}),
         # go model (ruling 2026-10-31): cell logits by distance 1 / 2-3 / 4+ (same for every
         # field bin), no score or time slope (test setting)
-        p_go=np.array([-3.3] * 3 + [-3.75] * 3 + [-5.1] * 3 + [0.0, 0.0, 0.0]),
+        p_go=np.array([-3.3] * 3 + [-3.75] * 3 + [-5.1] * 3 + [0.0] * 6),
         fg_punt=np.array([4.0, -0.11]),
+        sticks_q=np.zeros(2),  # no spot-short (ruling 2026-11-12, S-1; test setting)
         rules=rules,
         ot=ot,
         player_ids=(ROSTER, ROSTER),

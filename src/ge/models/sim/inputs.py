@@ -89,6 +89,13 @@ def go_model(fit_value: Callable[[str, str], float]) -> np.ndarray:
     return np.array([fit_value(A.go_key(t), "PRJ-02") for t in A.GO_TERMS], dtype=np.float64)
 
 
+def sticks_model(fit_value: Callable[[str, str], float]) -> np.ndarray:
+    """PRJ-02 sticks spot-short (ruling 2026-11-12, S-1): q in A.STICKS_KINDS order."""
+    return np.array(
+        [fit_value(A.sticks_key(k), "PRJ-02") for k in A.STICKS_KINDS], dtype=np.float64
+    )
+
+
 def _fit_value(key: str, spec_id: str) -> float:
     """A fit-only value; no-signal contributes zero (BT-02); missing raises."""
     status, value, reason = current_params().fit_status(key)
@@ -418,6 +425,7 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
         wp=wp,
         p_go=p_go,
         fg_punt=fg_punt,
+        sticks_q=sticks_model(_fit_value),
         rules=rules,
         ot=ot,
         player_ids=ids,

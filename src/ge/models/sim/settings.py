@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import StrictBool, StrictInt
+from pydantic import StrictInt
 
 from ge.config import REPO_ROOT, IntSetting, _Entry, _Group, _Strict
 
@@ -45,18 +45,23 @@ class PassDepthSettings(_Group):
     distance_upper: IntListSetting  # ruling 2026-11-02
 
 
-class BoolSetting(_Entry):
-    value: StrictBool
-
-
 class SituationYardsSettings(_Group):
-    distance_upper: IntListSetting  # ruling 2026-11-03 (P6)
-    yac_by_situation: BoolSetting  # ruling 2026-11-11 (P6s)
+    distance_upper: IntListSetting  # ruling 2026-11-03 (P6); runs only (ruling 2026-11-12)
 
 
 class FourthGoSettings(_Group):
     togo_upper: IntListSetting  # ruling 2026-10-31
     yardline_upper: IntListSetting
+    trail_upper: IntListSetting  # ruling 2026-11-12 (G-2)
+    late_seconds_upper: IntListSetting
+
+
+class SticksSettings(_Group):  # ruling 2026-11-12 (S-1)
+    togo_min: IntSetting
+    togo_max: IntSetting
+    distance_upper: IntListSetting
+    min_gap: IntSetting
+    min_expected: IntSetting
 
 
 class DiagnosticSettings(_Group):  # diagnostic counters approved 2026-10-30
@@ -76,6 +81,7 @@ class SimSettings(_Strict):
     pass_depth: PassDepthSettings
     situation_yards: SituationYardsSettings
     fourth_go: FourthGoSettings
+    sticks: SticksSettings
     diagnostics: DiagnosticSettings
 
 

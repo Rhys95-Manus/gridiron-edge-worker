@@ -17,7 +17,7 @@ shares inside the 20, 10 and 5 split by each player's own target/carry mix, PLY-
 end-zone throws), depth band (passer x target / league shares, ruling 2026-10-25), air yards
 and pass location
 (league), interception (league by band + tilt), completion (cp(state) + CROE, C6, + tilt +
-weather), yards after catch (league by band and down x distance cell, ruling 2026-11-03,
+weather), yards after catch (league by band; situation cells removed by ruling 2026-11-12;
 explosive reweighting for surface, tilt, PLY-09, MTC-02). Runs: carrier (PLY-05 / zone shares),
 cell (PLY-16 or OFF-12), yards (league by cell and 1st/2nd-down situation, ruling 2026-11-03,
 or the league short-yardage category on 3rd/4th and short, ruling 2026-10-29, or the late-down
@@ -63,7 +63,6 @@ from ge.models.sim.league import (
     SIT_CELLS,
     SIT_DIST_BINS,
     SIT_DOWNS,
-    YAC_CELL0,
     LeagueTables,
     Packed,
 )
@@ -109,8 +108,10 @@ NTB = 15
     LS_N_TOGO_EDGES,
     LS_RZ_YL,
     LS_DEEP_AIR,
-) = range(31)
-NLS = 31
+    LS_STICKS_TOGO_MIN,  # ruling 2026-11-12 (S-1)
+    LS_STICKS_TOGO_MAX,
+) = range(33)
+NLS = 33
 # ---- league vectors
 LA_INT0, LA_BAND0, LA_LOC0, LA_TO0 = 0, 4, 8, 20
 LA_SY_DOWN0 = 32  # 1.0 when down d (1-4) is a short-yardage down (ruling 2026-10-29)
@@ -131,9 +132,10 @@ LA_PD0 = LA_GO_YL0 + 2
 LA_PD_EDGE0 = LA_PD0 + PD_CELLS * BAND_COUNT
 # run yards by situation (ruling 2026-11-03, P6): 1st/2nd-down distance upper edges
 LA_SIT_EDGE0 = LA_PD_EDGE0 + PD_DIST_BINS - 1
-# 1.0 = YAC from the (band, cell) category, 0.0 = from the band (ruling 2026-11-11, P6s)
-LA_YAC_SIT = LA_SIT_EDGE0 + SIT_DIST_BINS - 1
-NLA = LA_YAC_SIT + 1
+# go model trailing x late-time bins (ruling 2026-11-12, G-2): deficit and time upper edges
+LA_GO_TRAIL0 = LA_SIT_EDGE0 + SIT_DIST_BINS - 1
+LA_GO_LATE0 = LA_GO_TRAIL0 + A.GO_TRAIL_BINS - 1
+NLA = LA_GO_LATE0 + A.GO_TIME_BINS
 C_RUN_IN = CLOCK_CATEGORIES.index("run_inbounds")
 C_COMP_IN = CLOCK_CATEGORIES.index("complete_inbounds")
 C_INC = CLOCK_CATEGORIES.index("incomplete")
@@ -224,10 +226,10 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
             "PRJ-02: the league run table has no short-yardage category (ruling 2026-10-29); "
             "rebuild the league tables"
         )
-    if len(t.yac.lo) != YAC_CELL0 + BAND_COUNT * PD_CELLS:
+    if len(t.yac.lo) != BAND_COUNT + 1:
         raise ValueError(
-            "PRJ-02: the league YAC table has no situation categories (ruling 2026-11-03); "
-            "rebuild the league tables"
+            "PRJ-02: the league YAC table has situation categories, removed by ruling "
+            "2026-11-12; rebuild the league tables"
         )
     sit_edges = load_sim().situation_yards.distance_upper.value
     if len(sit_edges) != SIT_DIST_BINS - 1:
@@ -272,6 +274,12 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     go_togo, go_yl = sim.fourth_go.togo_upper.value, sim.fourth_go.yardline_upper.value
     if len(go_togo) != 2 or len(go_yl) != 2:
         raise ValueError(f"PRJ-02: the go model's {A.GO_CELLS} cells need 2 edges per bin set")
+    go_trail, go_late_s = sim.fourth_go.trail_upper.value, sim.fourth_go.late_seconds_upper.value
+    if len(go_trail) != A.GO_TRAIL_BINS - 1 or len(go_late_s) != A.GO_TIME_BINS:
+        raise ValueError(
+            f"PRJ-02: the go model's {A.GO_LATE} late terms need {A.GO_TRAIL_BINS - 1} deficit "
+            f"edge(s) and {A.GO_TIME_BINS} time edges (ruling 2026-11-12)"
+        )
     ls = np.zeros(NLS)
     ls[LS_FUM_RUN] = t.fumble_run_rate
     ls[LS_FUM_COMP] = t.fumble_completion_rate
@@ -308,6 +316,8 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     ls[LS_N_TOGO_EDGES] = len(edges)
     ls[LS_RZ_YL] = float(dg.red_zone_max_yardline.value)
     ls[LS_DEEP_AIR] = float(dg.early_deep_air_min.value)
+    ls[LS_STICKS_TOGO_MIN] = float(sim.sticks.togo_min.value)
+    ls[LS_STICKS_TOGO_MAX] = float(sim.sticks.togo_max.value)
     la = np.zeros(NLA)
     la[LA_4TH_TOGO0 : LA_4TH_TOGO0 + 2] = f_togo
     la[LA_4TH_YL0 : LA_4TH_YL0 + 2] = f_yl
@@ -318,8 +328,9 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     la[LA_GO_YL0 : LA_GO_YL0 + 2] = go_yl
     la[LA_PD0:LA_PD_EDGE0] = t.pass_depth_offset.reshape(-1)
     la[LA_PD_EDGE0:LA_SIT_EDGE0] = pd_edges
-    la[LA_SIT_EDGE0:LA_YAC_SIT] = sit_edges
-    la[LA_YAC_SIT] = 1.0 if sim.situation_yards.yac_by_situation.value else 0.0
+    la[LA_SIT_EDGE0:LA_GO_TRAIL0] = sit_edges
+    la[LA_GO_TRAIL0:LA_GO_LATE0] = go_trail
+    la[LA_GO_LATE0:NLA] = go_late_s
     for d in sim.short_yardage.downs.value:
         la[LA_SY_DOWN0 + d - 1] = 1.0
     la[LA_TOGO_EDGE0 : LA_TOGO_EDGE0 + len(edges)] = edges
@@ -493,16 +504,48 @@ def xpass_bin(togo, edges):
 
 
 @njit(cache=True, nogil=True)
-def go_logit(p_go, togo, yl, sd, game_sec, togo_edges, yl_edges):
+def go_late(sd, game_sec, trail_edges, late_edges):
+    """Ruling 2026-11-12 (G-2), as ge.fit.sim_fits.go_late_index: trailing bin x number of time
+    bins + time bin when the offense trails with at most late_edges[-1] seconds left (inclusive
+    upper edges); -1 otherwise."""
+    if sd >= 0.0 or game_sec > late_edges[-1]:
+        return -1
+    return xpass_bin(-sd, trail_edges) * late_edges.shape[0] + xpass_bin(game_sec, late_edges)
+
+
+@njit(cache=True, nogil=True)
+def go_logit(p_go, togo, yl, sd, game_sec, togo_edges, yl_edges, trail_edges, late_edges):
     """PRJ-02 4th-down go model (ruling 2026-10-31): the cell's logit (distance bin x 3 + field
-    bin, inclusive upper edges, as ge.fit.sim_fits.go_cell) + score and game-seconds slopes +
-    (ruling 2026-11-01) a slope on ln(togo / L) in the last distance bin, L its lower edge."""
+    bin, inclusive upper edges, as ge.fit.sim_fits.go_cell) + the score slope + (ruling
+    2026-11-01) a slope on ln(togo / L) in the last distance bin, L its lower edge + (ruling
+    2026-11-12) the trailing x late-time term, if any."""
     tb = xpass_bin(togo, togo_edges)
     c = tb * (yl_edges.shape[0] + 1) + xpass_bin(yl, yl_edges)
-    x = p_go[c] + p_go[A.GO_CELLS] * sd + p_go[A.GO_CELLS + 1] * game_sec
+    x = p_go[c] + p_go[A.GO_CELLS] * sd
     if tb == togo_edges.shape[0]:
-        x += p_go[A.GO_CELLS + 2] * np.log(togo / (togo_edges[-1] + 1.0))
+        x += p_go[A.GO_CELLS + 1] * np.log(togo / (togo_edges[-1] + 1.0))
+    k = go_late(sd, game_sec, trail_edges, late_edges)
+    if k >= 0:
+        x += p_go[A.GO_CELLS + 2 + k]
     return x
+
+
+@njit(cache=True, nogil=True)
+def spot_short(gain, togo, yl, down, q, togo_min, togo_max, rng):
+    """PRJ-02 sticks spot-short (ruling 2026-11-12, S-1): on downs 1-3, short of goal to go
+    (togo < yl), with togo_min <= togo <= togo_max, a gain exactly equal to togo is spotted one
+    yard short with probability q. Draws only when q > 0 and the rule applies, so q = 0 leaves
+    the random sequence unchanged."""
+    if (
+        q > 0.0
+        and down <= 3
+        and gain == togo
+        and togo < yl
+        and togo_min <= togo <= togo_max
+        and rng.random() < q
+    ):
+        return gain - 1.0
+    return gain
 
 
 @njit(cache=True, nogil=True)
@@ -582,6 +625,7 @@ def _game(
     mw,
     p_go,
     fg_punt,
+    sticks_q,
     rules,
     ot,
     values,
@@ -639,8 +683,9 @@ def _game(
     go_togo_edges = la[LA_GO_TOGO0 : LA_GO_TOGO0 + 2]
     go_yl_edges = la[LA_GO_YL0 : LA_GO_YL0 + 2]
     pd_edges = la[LA_PD_EDGE0:LA_SIT_EDGE0]
-    sit_edges = la[LA_SIT_EDGE0:LA_YAC_SIT]
-    yac_sit = la[LA_YAC_SIT] > 0.5  # ruling 2026-11-11 (P6s)
+    sit_edges = la[LA_SIT_EDGE0:LA_GO_TRAIL0]
+    go_trail_edges = la[LA_GO_TRAIL0:LA_GO_LATE0]
+    go_late_edges = la[LA_GO_LATE0:NLA]
     rz_on = False  # the current drive has had a red-zone snap (diagnostic)
     bandp = np.zeros(4)
     cellp = np.zeros(8)
@@ -823,7 +868,8 @@ def _game(
         ):
             kind = 2
         if kind == 0 and down == 4:
-            x5 = go_logit(p_go, togo, yl, sd, game_sec, go_togo_edges, go_yl_edges)
+            x5 = go_logit(p_go, togo, yl, sd, game_sec, go_togo_edges, go_yl_edges,
+                          go_trail_edges, go_late_edges)  # fmt: skip
             pg = min(max(_expit(x5) + team[off, A.T_GO_OVER], 0.0), 1.0)
             if rng.random() >= pg:
                 kind = 3 if rng.random() < _expit(fg_punt[0] + fg_punt[1] * yl) else 4
@@ -1041,8 +1087,7 @@ def _game(
                                 hi,
                                 base,
                                 TB_YAC,
-                                # ruling 2026-11-03; band only when off (2026-11-11, P6s)
-                                YAC_CELL0 + band * PD_CELLS + dcell if yac_sit else band,
+                                band,  # no situation categories (ruling 2026-11-12)
                                 thr,
                                 team[off, A.T_EXPL_SHIFT],
                                 rng,
@@ -1062,6 +1107,9 @@ def _game(
                                 out_team[off, A.R_GL_CLIP_YDS] += int(g - yl)
                             if yl - gain >= 100.0:
                                 gain = yl - 99.0
+                            gain = spot_short(gain, togo, yl, down, sticks_q[1],
+                                              ls[LS_STICKS_TOGO_MIN], ls[LS_STICKS_TOGO_MAX],
+                                              rng)  # ruling 2026-11-12 (S-1)  # fmt: skip
                             out_player[off, qb, A.S_PASS_CMP] += 1
                             out_team[off, A.R_COMP] += 1
                             out_team[off, A.R_CMP_B0 + band] += 1
@@ -1133,6 +1181,9 @@ def _game(
                 )
                 g = _sround(g + team[off, A.T_YPC_SHIFT] + player[off, rb, A.P_RYOE], rng)
                 gain = min(max(g, ls[LS_RUN_MIN]), yl)
+                # ruling 2026-11-12 (S-1)
+                gain = spot_short(gain, togo, yl, down, sticks_q[0], ls[LS_STICKS_TOGO_MIN],
+                                  ls[LS_STICKS_TOGO_MAX], rng)  # fmt: skip
                 out_player[off, rb, A.S_RUSH_ATT] += 1
                 out_player[off, rb, A.S_RUSH_YDS] += int(gain)
                 out_team[off, A.R_RUSH_YDS] += int(gain)
@@ -1337,6 +1388,7 @@ def _chunk(
     mw,
     p_go,
     fg_punt,
+    sticks_q,
     rules,
     ot,
     values,
@@ -1366,6 +1418,7 @@ def _chunk(
             mw,
             p_go,
             fg_punt,
+            sticks_q,
             rules,
             ot,
             values,
@@ -1404,8 +1457,13 @@ def simulate(
     if game.p_go.shape != (len(A.GO_TERMS),):
         raise ValueError(
             f"PRJ-02: the 4th-down go model has {len(A.GO_TERMS)} terms (rulings 2026-10-31, "
-            f"2026-11-01); "
-            f"got {game.p_go.shape}"
+            f"2026-11-01, 2026-11-12); refit the go model; got {game.p_go.shape}"
+        )
+    q = np.asarray(game.sticks_q, dtype=np.float64)
+    if q.shape != (len(A.STICKS_KINDS),) or not ((q >= 0.0) & (q <= 1.0)).all():
+        raise ValueError(
+            f"PRJ-02: the sticks spot-short needs one q in [0, 1] per kind {A.STICKS_KINDS} "
+            f"(ruling 2026-11-12, S-1); got {game.sticks_q!r}"
         )
     pmax = game.player.shape[1]
     out_team = np.zeros((n_runs, 2, A.NTEAM), dtype=np.int32)
@@ -1432,6 +1490,7 @@ def simulate(
             mw,
             game.p_go,
             game.fg_punt,
+            game.sticks_q,
             game.rules,
             game.ot,
             *lg,
