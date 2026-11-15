@@ -5,7 +5,8 @@ R2: designed runs on 3rd or 4th down with more than short_yardage.max_togo to go
 pooled late-down category (parent: every designed run).
 S1: P(sack) = expit(game sack logit + league offset[down group, distance bin]), the offset
 logit(cell rate) - logit(overall rate), thin cells falling back to their down group.
-Synthetic placeholder plays; the last two tests replay 2024 (realdata)."""
+Synthetic placeholder plays; the last two tests replay real seasons (realdata): run yards on
+2024 and 2023, sack rates on 2024."""
 
 from __future__ import annotations
 
@@ -182,19 +183,21 @@ def test_engine_sack_offsets() -> None:
 
 
 @pytest.mark.realdata
-def test_replay_2024_run_yards_by_down_with_the_s2024_table() -> None:
-    """2024 G7 designed runs keep their cell and yardline: 1st/2nd down use the (run cell,
+@pytest.mark.parametrize("season", [2024, 2023])
+def test_replay_run_yards_by_down_with_the_window_table(season: int) -> None:
+    """A season's G7 designed runs keep their cell and yardline: 1st/2nd down use the (run cell,
     situation) category the engine uses (ruling 2026-11-03; R-2, approved by Rhys 2026-11-12),
     3rd/4th with more than 2 to go the late-down category, short yardage left out; yards drawn
-    from the S2024 table, clipped once at the goal line. Mean within 0.20 of actual on 1st and
-    2nd down, 0.75 on 3rd/4th (ruling 2026-10-30)."""
+    from that season's window table (S2024 for 2024, S2023 for 2023; second-season rule,
+    approved by Rhys 2026-11-14), clipped once at the goal line. Mean within 0.20 of actual on
+    1st and 2nd down, 0.75 on 3rd/4th (ruling 2026-10-30)."""
     from ge.config import ActiveParams, load_params, use_params
     from ge.ingest.raw import DATA_ROOT, read_latest
     from ge.metrics import plays as pf
     from ge.models.sim.backtest import load_window_league
 
     try:
-        pbp = read_latest(DATA_ROOT, "pbp", 2024)
+        pbp = read_latest(DATA_ROOT, "pbp", season)
     except FileNotFoundError as exc:
         pytest.fail(f"realdata test needs the local store: {exc}")
     with use_params(ActiveParams(load_params(), None)):
@@ -208,7 +211,7 @@ def test_replay_2024_run_yards_by_down_with_the_s2024_table() -> None:
                          load_sim().situation_yards.distance_upper.value)  # fmt: skip
     is_late = runs.select(late).to_series().to_numpy()
     cat = np.where(is_late, LATE_DOWN, RUN_SIT0 + cell * SIT_CELLS + sit)
-    t = load_window_league(2024).run_yards
+    t = load_window_league(season).run_yards
     src = t.source[cat]
     yl = runs["yardline_100"].to_numpy().astype(np.float64)
     rng = np.random.default_rng(20261030)
