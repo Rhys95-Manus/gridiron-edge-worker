@@ -24,6 +24,11 @@
   q = 1 - O / E clamped to [0, 1], O the weighted count of gains exactly on the line, E the
   count expected from reference distances in the same distance bin (config/sim.yaml `sticks`),
   under the league weights rescaled to the effective sample size; E below sticks.min_expected
+  raises.
+- Early-down field goals (Rhys 2026-11-16, M4): on eligible snaps (config/sim.yaml early_fg),
+  P(field-goal attempt) = expit(b0 + b1 s + b2 T + b3 s T), s = seconds left in the half, T = 1
+  with an offense timeout left; weighted by the league level the same way; BT-02's 200 attempts
+  and 200 non-attempts over the whole fit, and both outcomes with and without a timeout, else it
   raises."""
 
 from __future__ import annotations
@@ -386,4 +391,87 @@ def fit_sticks(
         neffs.append(n_eff)
     return SticksFit(
         q=tuple(q), raw=tuple(raw), observed=tuple(obs), expected=tuple(exp), n=ns, n_eff=neffs
+    )
+
+
+EARLY_FG_FEATURES = ("week_index", "kick", "seconds", "timeout")
+EARLY_FG_PLAY_TYPES = ("run", "pass", "field_goal", "qb_spike", "qb_kneel")
+
+
+def early_fg_rows(
+    core: pl.DataFrame,
+    *,
+    max_seconds: int,
+    max_yardline: int,
+    q4_score_min: int,
+    q4_score_max: int,
+    periods: list[int],
+) -> pl.DataFrame:
+    """PRJ-02 early-down field goals (Rhys 2026-11-16): eligible snaps on downs 1-3 whose play is
+    a run, pass, field goal, spike or kneel (no-play penalties out; ruling Q4: spikes and kneels
+    are eligible non-kicks), with a possession team, in an eligible period (never overtime), at
+    most max_seconds left in the half, yardline_100 <= max_yardline, and in the 4th quarter a
+    score differential from q4_score_min to q4_score_max. kick = 1 for a field-goal attempt;
+    seconds = half_seconds_remaining; timeout = 1 with an offense timeout left."""
+    qtr = pl.col("qtr")
+    d = core.filter(
+        pl.col("down").is_between(1, 3)
+        & pl.col("posteam").is_not_null()
+        & pl.col("play_type").is_in(list(EARLY_FG_PLAY_TYPES))
+        & qtr.is_in([p for p in periods if 1 <= p <= 4])
+        & (pl.col("half_seconds_remaining") <= max_seconds)
+        & (pl.col("yardline_100") <= max_yardline)
+        & ((qtr != 4) | pl.col("score_differential").is_between(q4_score_min, q4_score_max))
+    )
+    return d.select(
+        "week_index",
+        (pl.col("field_goal_attempt") == 1).fill_null(False).cast(pl.Float64).alias("kick"),
+        pl.col("half_seconds_remaining").cast(pl.Float64).alias("seconds"),
+        (pl.col("posteam_timeouts_remaining") >= 1).cast(pl.Float64).alias("timeout"),
+    ).drop_nulls()
+
+
+@dataclass(frozen=True)
+class EarlyFgFit:
+    coef: tuple[float, ...]  # A.EARLY_FG_TERMS order
+    se: tuple[float, ...]  # approximate (weights rescaled to the effective sample size)
+    n: int
+    events: int  # attempts
+    n_eff: float
+
+
+def fit_early_fg(rows: pl.DataFrame, *, target_index: int, h: float) -> EarlyFgFit:
+    """PRJ-02 early-down field goals (Rhys 2026-11-16, M4): weighted logistic of kick on
+    (1, seconds, timeout, seconds x timeout) under the PRJ-02 league weights rescaled to the
+    effective sample size. Raises below BT-02's minimum (attempts or non-attempts) or when the
+    rows with or without a timeout hold only one outcome. `rows`: EARLY_FG_FEATURES."""
+    d = rows.drop_nulls(list(EARLY_FG_FEATURES))
+    y = d["kick"].to_numpy().astype(np.float64)
+    events = int(y.sum())
+    min_events = int(load_params().fitting.bt_02_min_events.value)
+    if events < min_events or (y.size - events) < min_events:
+        raise NotImplementedError(
+            f"PRJ-02 (early-down field goals): the fit needs {min_events} attempts and "
+            f"{min_events} eligible snaps without one; got {events} and {y.size - events}"
+        )
+    t = d["timeout"].to_numpy().astype(np.float64)
+    for g in (0.0, 1.0):
+        k = y[t == g]
+        if k.size == 0 or k.min() == k.max():
+            raise NotImplementedError(
+                f"PRJ-02 (early-down field goals): the rows with timeout = {int(g)} hold only "
+                "one outcome, so the timeout terms have no finite estimate"
+            )
+    w = league_weights(d["week_index"].to_numpy(), target_index=target_index, h=h)
+    n_eff = float(w.sum() ** 2 / np.square(w).sum())
+    w = w * (n_eff / w.sum())
+    s = d["seconds"].to_numpy().astype(np.float64)
+    X = np.column_stack([np.ones(y.size), s, t, s * t])
+    fit = fit_logistic(X, y, w=w)
+    return EarlyFgFit(
+        coef=tuple(float(c) for c in fit.coef),
+        se=tuple(float(e) for e in fit.se),
+        n=int(y.size),
+        events=events,
+        n_eff=n_eff,
     )

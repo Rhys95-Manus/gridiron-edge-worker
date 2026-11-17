@@ -96,6 +96,23 @@ def sticks_model(fit_value: Callable[[str, str], float]) -> np.ndarray:
     )
 
 
+def early_fg_model(fit_value: Callable[[str, str], float]) -> np.ndarray:
+    """PRJ-02 early-down field goals (Rhys 2026-11-16, M4): the terms in A.EARLY_FG_TERMS order."""
+    return np.array(
+        [fit_value(A.early_fg_key(t), "PRJ-02") for t in A.EARLY_FG_TERMS], dtype=np.float64
+    )
+
+
+def early_fg_inputs(
+    enabled: bool, fit_value: Callable[[str, str], float]
+) -> tuple[bool, np.ndarray]:
+    """(on, coefficients). With the path enabled (config early_fg.enabled) missing keys raise
+    through fit_value (ruling Q5); off reads no key and returns zeros."""
+    if not enabled:
+        return False, np.zeros(len(A.EARLY_FG_TERMS))
+    return True, early_fg_model(fit_value)
+
+
 def _fit_value(key: str, spec_id: str) -> float:
     """A fit-only value; no-signal contributes zero (BT-02); missing raises."""
     status, value, reason = current_params().fit_status(key)
@@ -395,6 +412,7 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
     cp = compile_logit(_model("fit:PRJ-02/cp/"))
     wp = compile_logit(_model("fit:PRJ-02/wp/"))
     p_go = go_model(_fit_value)
+    efg_on, efg_coef = early_fg_inputs(bool(load_sim().early_fg.enabled.value), _fit_value)
     fg_punt = np.array(
         [_fit_value(f"fit:PRJ-02/fg_vs_punt/{t}", "PRJ-02") for t in ("intercept", "slope")]
     )
@@ -426,6 +444,8 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
         p_go=p_go,
         fg_punt=fg_punt,
         sticks_q=sticks_model(_fit_value),
+        early_fg_on=efg_on,
+        early_fg=efg_coef,
         rules=rules,
         ot=ot,
         player_ids=ids,

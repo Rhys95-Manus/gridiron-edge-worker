@@ -41,6 +41,14 @@ sticks:
   min_gap: {spec_id: PRJ-02, value: 2, status: initial, source: 'ruling 2026-11-12 (S-1): a reference distance t'' is at least 2 yards from t, so gain t is neither on nor one short of its line'}
   min_expected: {spec_id: PRJ-02, value: 200, status: initial, source: 'ruling 2026-11-12 (S-1): q[kind] is fitted only when the expected count of gains on the line (league weights rescaled to the effective sample size) is at least 200, the same number as BT-02''s minimum events; below it the fit raises'}
 
+early_fg:
+  enabled: {spec_id: PRJ-02, value: true, status: initial, source: 'ruling 2026-11-16 (Q5): the early-down field-goal path is switched by this explicit key; with it true and the early_fg fit keys missing the simulation raises'}
+  max_seconds: {spec_id: PRJ-02, value: 30, status: initial, source: 'ruling 2026-11-16: a snap on downs 1-3 is eligible for an early-down field goal with at most 30 seconds left in the half; chosen after seeing 2016-2023 data'}
+  max_yardline: {spec_id: PRJ-02, value: 40, status: initial, source: 'ruling 2026-11-16 (Q9, F2): eligible only with the ball at or inside the defense''s 40 (yardline_100 <= 40); kicks beyond it excluded, 48 of 721 in 2016-2023; chosen after seeing 2016-2023 data'}
+  q4_score_min: {spec_id: PRJ-02, value: -3, status: initial, source: 'ruling 2026-11-16 (Q2, F1): in the 4th quarter eligible only with the offense''s score minus the defense''s at least -3 (a field goal ties or takes the lead); -9 to -11 excluded; chosen after seeing 2016-2023 data'}
+  q4_score_max: {spec_id: PRJ-02, value: 0, status: initial, source: 'ruling 2026-11-16 (Q2): in the 4th quarter eligible only when trailing or tied (score differential at most 0)'}
+  periods: {spec_id: PRJ-02, value: [2, 4], status: initial, source: 'ruling 2026-11-16 (Q3): eligible in the 2nd and 4th quarters only, never in overtime; chosen after seeing 2016-2023 data'}
+
 # Diagnostic counters (approved by Rhys 2026-10-30): display bins for the scoring-gap counters.
 # They only read the play; no simulated outcome depends on them.
 diagnostics:

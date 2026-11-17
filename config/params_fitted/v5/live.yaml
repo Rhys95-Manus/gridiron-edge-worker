@@ -14,7 +14,7 @@ seasons:
 - 2024
 data_as_of: '2026-10-24T00:00:00+00:00'
 data_digest: 2b86045587f6ad760da73ab1ded473d9fd5d51bf837bcb5cba1af231fe058410
-code_commit: ff76c190a12e6d2b3b947aae0742123829ae3018+uncommitted
+code_commit: 69f2d5a2be9d06109dc8f7224f6e4b5074e2371c+uncommitted
 attribution: 'Data: nflverse; charting: FTN Data via nflverse; expected points: ffopportunity (ffverse)
   via nflverse; data license not stated by the source'
 values:
@@ -801,6 +801,82 @@ values:
     - 2023
     - 2024
     n: 164087
+    initial_value: null
+  fit:PRJ-02/early_fg/intercept:
+    spec_id: PRJ-02
+    status: fitted
+    value: 2.9792786707891503
+    method: 'Rhys 2026-11-16 (M4): logistic P(field-goal attempt) on eligible snaps on downs 1-3 at the
+      end of a half or regulation, on seconds left in the half, an offense-timeout indicator and their
+      product, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    - 2021
+    - 2022
+    - 2023
+    - 2024
+    n: 3634
+    initial_value: null
+  fit:PRJ-02/early_fg/seconds:
+    spec_id: PRJ-02
+    status: fitted
+    value: -0.5348357866818683
+    method: 'Rhys 2026-11-16 (M4): logistic P(field-goal attempt) on eligible snaps on downs 1-3 at the
+      end of a half or regulation, on seconds left in the half, an offense-timeout indicator and their
+      product, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    - 2021
+    - 2022
+    - 2023
+    - 2024
+    n: 3634
+    initial_value: null
+  fit:PRJ-02/early_fg/seconds_x_timeout:
+    spec_id: PRJ-02
+    status: fitted
+    value: -1.3702516488098255
+    method: 'Rhys 2026-11-16 (M4): logistic P(field-goal attempt) on eligible snaps on downs 1-3 at the
+      end of a half or regulation, on seconds left in the half, an offense-timeout indicator and their
+      product, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    - 2021
+    - 2022
+    - 2023
+    - 2024
+    n: 3634
+    initial_value: null
+  fit:PRJ-02/early_fg/timeout:
+    spec_id: PRJ-02
+    status: fitted
+    value: 8.34996425963077
+    method: 'Rhys 2026-11-16 (M4): logistic P(field-goal attempt) on eligible snaps on downs 1-3 at the
+      end of a half or regulation, on seconds left in the half, an offense-timeout indicator and their
+      product, h_L-weighted'
+    seasons:
+    - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
+    - 2021
+    - 2022
+    - 2023
+    - 2024
+    n: 3634
     initial_value: null
   fit:PRJ-02/fg_vs_punt/intercept:
     spec_id: PRJ-02

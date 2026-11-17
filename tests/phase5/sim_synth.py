@@ -192,6 +192,8 @@ def synthetic_game(
         p_go=np.array([-3.3] * 3 + [-3.75] * 3 + [-5.1] * 3 + [0.0] * 6),
         fg_punt=np.array([4.0, -0.11]),
         sticks_q=np.zeros(2),  # no spot-short (ruling 2026-11-12, S-1; test setting)
+        early_fg_on=False,  # early-down field goals off (Rhys 2026-11-16; test setting)
+        early_fg=np.zeros(4),
         rules=rules,
         ot=ot,
         player_ids=(ROSTER, ROSTER),

@@ -110,8 +110,12 @@ NTB = 15
     LS_DEEP_AIR,
     LS_STICKS_TOGO_MIN,  # ruling 2026-11-12 (S-1)
     LS_STICKS_TOGO_MAX,
-) = range(33)
-NLS = 33
+    LS_EFG_MAX_SEC,  # early-down field goals (Rhys 2026-11-16)
+    LS_EFG_MAX_YL,
+    LS_EFG_SD_MIN,
+    LS_EFG_SD_MAX,
+) = range(37)
+NLS = 37
 # ---- league vectors
 LA_INT0, LA_BAND0, LA_LOC0, LA_TO0 = 0, 4, 8, 20
 LA_SY_DOWN0 = 32  # 1.0 when down d (1-4) is a short-yardage down (ruling 2026-10-29)
@@ -135,7 +139,9 @@ LA_SIT_EDGE0 = LA_PD_EDGE0 + PD_DIST_BINS - 1
 # go model trailing x late-time bins (ruling 2026-11-12, G-2): deficit and time upper edges
 LA_GO_TRAIL0 = LA_SIT_EDGE0 + SIT_DIST_BINS - 1
 LA_GO_LATE0 = LA_GO_TRAIL0 + A.GO_TRAIL_BINS - 1
-NLA = LA_GO_LATE0 + A.GO_TIME_BINS
+# early-down field goals (Rhys 2026-11-16): 1.0 for each eligible period 1-4
+LA_EFG_PER0 = LA_GO_LATE0 + A.GO_TIME_BINS
+NLA = LA_EFG_PER0 + 4
 C_RUN_IN = CLOCK_CATEGORIES.index("run_inbounds")
 C_COMP_IN = CLOCK_CATEGORIES.index("complete_inbounds")
 C_INC = CLOCK_CATEGORIES.index("incomplete")
@@ -280,6 +286,9 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
             f"PRJ-02: the go model's {A.GO_LATE} late terms need {A.GO_TRAIL_BINS - 1} deficit "
             f"edge(s) and {A.GO_TIME_BINS} time edges (ruling 2026-11-12)"
         )
+    efg = sim.early_fg
+    if not set(efg.periods.value) <= {1, 2, 3, 4}:
+        raise ValueError("PRJ-02: early_fg.periods must be regulation periods 1-4 (ruling Q3)")
     ls = np.zeros(NLS)
     ls[LS_FUM_RUN] = t.fumble_run_rate
     ls[LS_FUM_COMP] = t.fumble_completion_rate
@@ -318,7 +327,13 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     ls[LS_DEEP_AIR] = float(dg.early_deep_air_min.value)
     ls[LS_STICKS_TOGO_MIN] = float(sim.sticks.togo_min.value)
     ls[LS_STICKS_TOGO_MAX] = float(sim.sticks.togo_max.value)
+    ls[LS_EFG_MAX_SEC] = float(efg.max_seconds.value)
+    ls[LS_EFG_MAX_YL] = float(efg.max_yardline.value)
+    ls[LS_EFG_SD_MIN] = float(efg.q4_score_min.value)
+    ls[LS_EFG_SD_MAX] = float(efg.q4_score_max.value)
     la = np.zeros(NLA)
+    for q in efg.periods.value:
+        la[LA_EFG_PER0 + q - 1] = 1.0
     la[LA_4TH_TOGO0 : LA_4TH_TOGO0 + 2] = f_togo
     la[LA_4TH_YL0 : LA_4TH_YL0 + 2] = f_yl
     la[LA_FG_DIST0 : LA_FG_DIST0 + len(fg_lower)] = fg_lower
@@ -330,7 +345,7 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     la[LA_PD_EDGE0:LA_SIT_EDGE0] = pd_edges
     la[LA_SIT_EDGE0:LA_GO_TRAIL0] = sit_edges
     la[LA_GO_TRAIL0:LA_GO_LATE0] = go_trail
-    la[LA_GO_LATE0:NLA] = go_late_s
+    la[LA_GO_LATE0:LA_EFG_PER0] = go_late_s
     for d in sim.short_yardage.downs.value:
         la[LA_SY_DOWN0 + d - 1] = 1.0
     la[LA_TOGO_EDGE0 : LA_TOGO_EDGE0 + len(edges)] = edges
@@ -549,6 +564,20 @@ def spot_short(gain, togo, yl, down, q, togo_min, togo_max, rng):
 
 
 @njit(cache=True, nogil=True)
+def early_fg_eligible(down, qtr, in_ot, half_sec, yl, sd, periods, max_sec, max_yl, sd_min,
+                      sd_max):  # fmt: skip
+    """PRJ-02 early-down field goals (Rhys 2026-11-16): downs 1-3, an eligible regulation period
+    (config early_fg.periods; never overtime), at most max_sec seconds left in the half, the ball
+    at or inside the defense's max_yl, and in the 4th quarter a score differential in
+    [sd_min, sd_max]."""
+    if in_ot or down > 3 or qtr < 1 or qtr > 4 or periods[qtr - 1] < 0.5:
+        return False
+    if half_sec > max_sec or yl > max_yl:
+        return False
+    return not (qtr == 4 and (sd < sd_min or sd > sd_max))
+
+
+@njit(cache=True, nogil=True)
 def lower_bin(v, edges):
     """Diagnostic bin from lower edges (approved 2026-10-30): the number of edges at or below v."""
     k = 0
@@ -626,6 +655,8 @@ def _game(
     p_go,
     fg_punt,
     sticks_q,
+    early_fg_on,
+    early_fg,
     rules,
     ot,
     values,
@@ -685,7 +716,9 @@ def _game(
     pd_edges = la[LA_PD_EDGE0:LA_SIT_EDGE0]
     sit_edges = la[LA_SIT_EDGE0:LA_GO_TRAIL0]
     go_trail_edges = la[LA_GO_TRAIL0:LA_GO_LATE0]
-    go_late_edges = la[LA_GO_LATE0:NLA]
+    go_late_edges = la[LA_GO_LATE0:LA_EFG_PER0]
+    efg_periods = la[LA_EFG_PER0:NLA]
+    efg_missed = False  # the last snap was a missed early-down field goal (ruling Q6)
     rz_on = False  # the current drive has had a red-zone snap (diagnostic)
     bandp = np.zeros(4)
     cellp = np.zeros(8)
@@ -718,8 +751,9 @@ def _game(
     while not game_over:
         # ---------------- period changes
         if clock <= 0.0:
-            if pending == 0 and (in_ot or qtr == 2 or qtr >= rules[A.G_PERIODS]):
+            if pending == 0 and (in_ot or qtr == 2 or qtr >= rules[A.G_PERIODS]) and not efg_missed:
                 out_team[off, A.R_END_HALF] += 1
+            efg_missed = False
             if not in_ot and qtr < rules[A.G_PERIODS]:
                 qtr += 1
                 clock = float(period_sec)
@@ -819,6 +853,7 @@ def _game(
 
         dfn = 1 - off
         sd = float(score[off] - score[dfn])
+        efg_missed = False
         # ---------------- features
         x[A.F_DOWN] = down
         x[A.F_YDSTOGO] = togo
@@ -858,6 +893,34 @@ def _game(
         kind = 0  # 0 normal, 1 kneel, 2 spike, 3 field goal, 4 punt
         if (in_ot or qtr == 4) and sd > 0 and clock <= (5 - down - tos[dfn]) * ls[LS_KNEEL_RUNOFF]:
             kind = 1
+        # early-down field goal (Rhys 2026-11-16): before the spike (ruling Q4); draws only on an
+        # eligible snap with P > 0
+        if (
+            kind == 0
+            and early_fg_on
+            and early_fg_eligible(
+                down,
+                qtr,
+                in_ot,
+                half_sec,
+                yl,
+                sd,
+                efg_periods,
+                ls[LS_EFG_MAX_SEC],
+                ls[LS_EFG_MAX_YL],
+                ls[LS_EFG_SD_MIN],
+                ls[LS_EFG_SD_MAX],
+            )
+        ):
+            out_team[off, A.R_EFG_ELIG] += 1
+            t_on = 1.0 if tos[off] >= 1 else 0.0
+            pk_e = _expit(
+                early_fg[0] + early_fg[1] * half_sec + early_fg[2] * t_on
+                + early_fg[3] * half_sec * t_on
+            )  # fmt: skip
+            if pk_e > 0.0 and rng.random() < pk_e:
+                kind = 3
+                out_team[off, A.R_EFG_ATT] += 1
         if (
             kind == 0
             and prev_running
@@ -1233,7 +1296,8 @@ def _game(
             out_team[off, A.R_FG_ATT] += 1
             fb = lower_bin(fg_dist, fg_edges)
             out_team[off, A.R_FG_ATT_D0 + fb] += 1
-            out_team[off, A.R_4TH_N0 + f_cell] += 1
+            if down == 4:  # early-down attempts are not 4th-down decisions
+                out_team[off, A.R_4TH_N0 + f_cell] += 1
             if rz_on:
                 out_team[off, A.R_RZ_FG_ATT] += 1
             if scored == 2:
@@ -1303,6 +1367,9 @@ def _game(
         if clock < 0.0:
             clock = 0.0
         prev_running = running and scored == 0 and not turnover and not ended
+        # a missed early-down kick is an attempt, not a possession alive at the end of the half
+        # (ruling Q6); cleared at the next snap or period end
+        efg_missed = kind == 3 and down <= 3 and scored == 0
 
         # ---------------- scores and possession changes
         if scored == 1 or scored == 2:
@@ -1389,6 +1456,8 @@ def _chunk(
     p_go,
     fg_punt,
     sticks_q,
+    early_fg_on,
+    early_fg,
     rules,
     ot,
     values,
@@ -1419,6 +1488,8 @@ def _chunk(
             p_go,
             fg_punt,
             sticks_q,
+            early_fg_on,
+            early_fg,
             rules,
             ot,
             values,
@@ -1465,6 +1536,12 @@ def simulate(
             f"PRJ-02: the sticks spot-short needs one q in [0, 1] per kind {A.STICKS_KINDS} "
             f"(ruling 2026-11-12, S-1); got {game.sticks_q!r}"
         )
+    efg = np.asarray(game.early_fg, dtype=np.float64)
+    if efg.shape != (len(A.EARLY_FG_TERMS),) or not np.isfinite(efg).all():
+        raise ValueError(
+            f"PRJ-02: the early-down field-goal model needs {len(A.EARLY_FG_TERMS)} finite "
+            f"terms {A.EARLY_FG_TERMS} (Rhys 2026-11-16, M4); got {game.early_fg!r}"
+        )
     pmax = game.player.shape[1]
     out_team = np.zeros((n_runs, 2, A.NTEAM), dtype=np.int32)
     out_player = np.zeros((n_runs, 2, pmax, A.NSTAT), dtype=np.int32)
@@ -1491,6 +1568,8 @@ def simulate(
             game.p_go,
             game.fg_punt,
             game.sticks_q,
+            bool(game.early_fg_on),
+            efg,
             game.rules,
             game.ot,
             *lg,

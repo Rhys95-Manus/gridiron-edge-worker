@@ -136,7 +136,10 @@ R_END_HALF = 138  # possessions alive when the 2nd or 4th period or an overtime 
 FG_DIST_BINS = 4  # kick distance < 30, 30-39, 40-49, 50+
 R_FG_ATT_D0 = 139
 R_FG_MADE_D0 = 143
-NTEAM = 147
+# Early-down field goals (Rhys 2026-11-16, Q7; they read the play, never draw)
+R_EFG_ELIG = 147  # eligible early-down snaps (counted only with the path on)
+R_EFG_ATT = 148  # early-down field-goal attempts
+NTEAM = 149
 
 # ---- PRJ-02 4th-down go model (ruling 2026-10-31): one logit per distance x field cell
 # (config/sim.yaml `fourth_go`; cell = distance bin x 3 + field bin), then the slopes on
@@ -167,6 +170,15 @@ STICKS_KINDS = ("run", "completion")
 def sticks_key(kind: str) -> str:
     """Fit key of one spot-short probability."""
     return f"fit:PRJ-02/sticks/{kind}"
+
+
+# ---- PRJ-02 early-down field goals (Rhys 2026-11-16, M4): P = expit(b0 + b1 s + b2 T + b3 s T)
+EARLY_FG_TERMS = ("intercept", "seconds", "timeout", "seconds_x_timeout")
+
+
+def early_fg_key(term: str) -> str:
+    """Fit key of one early-down field-goal term."""
+    return f"fit:PRJ-02/early_fg/{term}"
 
 
 # ---- model feature ids (CompiledLogit)
@@ -291,6 +303,8 @@ class GameArrays:
     p_go: FloatArray  # PRJ-02 go model (ruling 2026-10-31): GO_TERMS order, see go_key
     fg_punt: FloatArray  # ruling C8: intercept, slope on yardline_100
     sticks_q: FloatArray  # ruling 2026-11-12 (S-1): spot-short q, STICKS_KINDS order
+    early_fg_on: bool  # config/sim.yaml early_fg.enabled (Rhys 2026-11-16, Q5)
+    early_fg: FloatArray  # early-down field goals, EARLY_FG_TERMS order (zeros when off)
     rules: IntArray  # (NG,)
     ot: IntArray  # (NO,)
     player_ids: tuple[tuple[str, ...], tuple[str, ...]]  # gsis ids per side, for the outputs

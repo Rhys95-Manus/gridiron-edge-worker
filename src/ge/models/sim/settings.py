@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import StrictInt
+from pydantic import StrictBool, StrictInt
 
 from ge.config import REPO_ROOT, IntSetting, _Entry, _Group, _Strict
 
@@ -15,6 +15,10 @@ SIM_PATH = REPO_ROOT / "config" / "sim.yaml"
 
 class IntListSetting(_Entry):
     value: list[StrictInt]
+
+
+class BoolSetting(_Entry):
+    value: StrictBool
 
 
 class RunSettings(_Group):
@@ -64,6 +68,15 @@ class SticksSettings(_Group):  # ruling 2026-11-12 (S-1)
     min_expected: IntSetting
 
 
+class EarlyFgSettings(_Group):  # early-down field goals (Rhys 2026-11-16)
+    enabled: BoolSetting
+    max_seconds: IntSetting
+    max_yardline: IntSetting
+    q4_score_min: IntSetting
+    q4_score_max: IntSetting
+    periods: IntListSetting
+
+
 class DiagnosticSettings(_Group):  # diagnostic counters approved 2026-10-30
     red_zone_max_yardline: IntSetting
     fourth_togo_upper: IntListSetting
@@ -82,6 +95,7 @@ class SimSettings(_Strict):
     situation_yards: SituationYardsSettings
     fourth_go: FourthGoSettings
     sticks: SticksSettings
+    early_fg: EarlyFgSettings
     diagnostics: DiagnosticSettings
 
 

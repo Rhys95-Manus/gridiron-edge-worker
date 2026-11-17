@@ -42,9 +42,12 @@ from ge.fit.history import Reader, season_view
 from ge.fit.job import _commit
 from ge.fit.league_level import choose_league_half_life
 from ge.fit.sim_fits import (
+    EarlyFgFit,
     FgPuntFit,
     GoFit,
     SticksFit,
+    early_fg_rows,
+    fit_early_fg,
     fit_fg_vs_punt,
     fit_fourth_go,
     fit_sticks,
@@ -390,6 +393,21 @@ def record_sticks(out: SimOut, fit: SticksFit, seasons: list[int]) -> None:
     }
 
 
+def record_early_fg(out: SimOut, fit: EarlyFgFit, seasons: list[int]) -> None:
+    """Early-down field goals (Rhys 2026-11-16, M4): the terms (A.EARLY_FG_TERMS) as fit keys;
+    counts and approximate SEs go to the diagnostics."""
+    from ge.models.sim.arrays import EARLY_FG_TERMS, early_fg_key
+
+    m = (
+        "Rhys 2026-11-16 (M4): logistic P(field-goal attempt) on eligible snaps on downs 1-3 at "
+        "the end of a half or regulation, on seconds left in the half, an offense-timeout "
+        "indicator and their product, h_L-weighted"
+    )
+    for t, b in zip(EARLY_FG_TERMS, fit.coef, strict=True):
+        out.put(early_fg_key(t), "PRJ-02", b, m, seasons, fit.n)
+    out.diagnostics["early_fg"] = asdict(fit)
+
+
 def fit_sim_window(work: Path, w: Window) -> SimOut:
     seasons = list(w.seasons)
     out = SimOut({}, {}, {}, {})
@@ -458,6 +476,20 @@ def fit_sim_window(work: Path, w: Window) -> SimOut:
         min_expected=sticks.min_expected.value,
     )
     record_sticks(out, sf, seasons)
+    efg = load_sim().early_fg
+    ef = fit_early_fg(
+        early_fg_rows(
+            core,
+            max_seconds=efg.max_seconds.value,
+            max_yardline=efg.max_yardline.value,
+            q4_score_min=efg.q4_score_min.value,
+            q4_score_max=efg.q4_score_max.value,
+            periods=efg.periods.value,
+        ),
+        target_index=weeks.height,
+        h=ll.h_l,
+    )
+    record_early_fg(out, ef, seasons)
 
     # PRJ-02 rating tilt (leave-one-out, ruling 2026-10-24) + as-written comparison
     tilt = _cat(work, "tilt", seasons)
