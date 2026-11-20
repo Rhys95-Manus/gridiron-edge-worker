@@ -36,6 +36,21 @@ def test_spec_has_ids() -> None:
     assert {"G1", "OFF-01", "EDG-02", "BT-07e"} <= ids
 
 
+def test_spec_has_shadow_ids() -> None:
+    """PRV (pricer v0) and SHD (shadow log) families, approved 2026-11-19 (section 9b)."""
+    ids = spec_ids()
+    assert {"PRV-01", "PRV-12", "SHD-01", "SHD-18"} <= ids
+
+
+def test_numbers_in_reads_scientific_notation() -> None:
+    """PRV-12 writes ε = 1e-6 (approved 2026-11-19); other number forms parse as before."""
+    assert numbers_in("ε = 1e-6") == [1e-6]
+    assert numbers_in("1.5e3 and 2E+4") == [1.5e3, 2e4]
+    assert numbers_in("n_draws = 10,000") == [10_000]
+    assert numbers_in("The 1-minute candle") == [1]
+    assert numbers_in("kickoff \N{MINUS SIGN} 5 min") == [5]
+
+
 def test_every_params_spec_id_is_in_spec() -> None:
     ids = spec_ids()
     missing = [

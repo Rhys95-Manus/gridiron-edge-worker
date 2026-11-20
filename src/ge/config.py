@@ -23,7 +23,7 @@ PARAMS_PATH = REPO_ROOT / "config" / "params.yaml"
 FEES_PATH = REPO_ROOT / "config" / "fees.yaml"
 INGEST_PATH = REPO_ROOT / "config" / "ingest.yaml"
 
-SPEC_ID_PATTERN = r"^(?:(?:DATA|OFF|DEF|PLY|COA|MTC|ENV|PRJ|EDG|BT)-\d{2}[a-z]?|G[1-7])$"
+SPEC_ID_PATTERN = r"^(?:(?:DATA|OFF|DEF|PLY|COA|MTC|ENV|PRJ|EDG|BT|PRV|SHD)-\d{2}[a-z]?|G[1-7])$"
 
 SpecId = Annotated[str, StringConstraints(pattern=SPEC_ID_PATTERN)]
 Status = Literal["initial", "fitted"]
@@ -429,6 +429,87 @@ class Fitting(_Group):
         return tuple(10 ** (lo + i * step) for i in range(n + 1))
 
 
+class PricerV0(_Group):
+    """Spec section 9b, pricer v0 (PRV-01 to PRV-12), synced 2026-11-19."""
+
+    prv_01_strike_offset: Param
+    prv_03_min_prior_games_in_stint: Param
+    prv_min_player_games_per_position_group: Param
+    prv_07_continuity_offset: Param
+    prv_07_monte_carlo_draws: Param
+    prv_09_receptions_min_strike: Param
+    prv_09_receptions_max_strike: Param
+    prv_09_rec_yards_strike_1: Param
+    prv_09_rec_yards_strike_2: Param
+    prv_09_rec_yards_strike_3: Param
+    prv_09_rec_yards_strike_4: Param
+    prv_09_rec_yards_strike_5: Param
+    prv_09_rec_yards_strike_6: Param
+    prv_09_rec_yards_strike_7: Param
+    prv_09_rec_yards_strike_8: Param
+    prv_09_rec_yards_strike_9: Param
+    prv_09_rec_yards_strike_10: Param
+    prv_09_rec_yards_strike_11: Param
+    prv_09_rec_yards_step: Param
+    prv_09_rec_yards_max_strike: Param
+    prv_09_rush_yards_strike_1: Param
+    prv_09_rush_yards_strike_2: Param
+    prv_09_rush_yards_strike_3: Param
+    prv_09_rush_yards_strike_4: Param
+    prv_09_rush_yards_strike_5: Param
+    prv_09_rush_yards_strike_6: Param
+    prv_09_rush_yards_strike_7: Param
+    prv_09_rush_yards_strike_8: Param
+    prv_09_rush_yards_strike_9: Param
+    prv_09_rush_yards_strike_10: Param
+    prv_09_rush_yards_strike_11: Param
+    prv_09_rush_yards_strike_12: Param
+    prv_09_rush_yards_step: Param
+    prv_09_rush_yards_max_strike: Param
+    prv_09_min_scored_p: Param
+    prv_09_max_scored_p: Param
+    prv_10_first_scored_season: Param
+    prv_10_last_scored_season: Param
+    prv_10_first_fit_season: Param
+    prv_10_live_last_fit_season: Param
+    prv_11_min_scored_pairs: Param
+    prv_11_min_pairs_per_bin: Param
+    prv_11_min_recalibration_slope: Param
+    prv_11_max_recalibration_slope: Param
+    prv_11_max_abs_calibration_in_the_large: Param
+    prv_11_bin_tolerance_floor: Param
+    prv_11_bin_tolerance_z: Param
+    prv_12_log_loss_clip_eps: Param
+
+
+class Shadow(_Group):
+    """Spec section 9b, shadow log (SHD-01 to SHD-18), synced 2026-11-19."""
+
+    shd_02_t24h_early_minutes: Param
+    shd_02_t24h_late_minutes: Param
+    shd_02_t90m_early_minutes: Param
+    shd_02_t90m_late_minutes: Param
+    shd_03_tick_minutes: Param
+    shd_03_schedule_max_age_hours: Param
+    shd_04_close_capture_minutes_before_kickoff: Param
+    shd_04_close_capture_tolerance_minutes: Param
+    shd_06_fallback_candle_minutes: Param
+    shd_07_contract_payout_cc: CenticentParam
+    shd_08_fee_contracts: Param
+    shd_08_sensitivity_fee_contracts: Param
+    shd_09_interval_confidence: Param
+    shd_09_bootstrap_resamples: Param
+    shd_09_min_distinct_games: Param
+    shd_11_tiebreak_ask_target_cc: CenticentParam
+    shd_12_week_flag_miss_share: Param
+    shd_12_week_flag_min_planned_snapshots: Param
+    shd_12_week_exclude_miss_share: Param
+    shd_17_min_counted_positions: Param
+    shd_17_min_distinct_games: Param
+    shd_17_lower_bound_percentile: Param
+    shd_17_min_lower_bound_clv_cc: CenticentParam
+
+
 class Params(_Strict):
     fitting: Fitting
     conventions: Conventions
@@ -441,6 +522,8 @@ class Params(_Strict):
     projection: Projection
     edge: Edge
     backtest: Backtest
+    pricer_v0: PricerV0
+    shadow: Shadow
 
 
 class SeriesFees(_Strict):

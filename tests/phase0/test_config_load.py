@@ -87,6 +87,29 @@ def test_bad_status_fails() -> None:
     assert _fails("params", raw)
 
 
+@pytest.mark.parametrize("spec_id", ["PRV-03", "SHD-17"])
+def test_shadow_spec_id_families_accepted(spec_id: str) -> None:
+    """PRV and SHD families approved 2026-11-19."""
+    raw = _raw("params")
+    group, name, _ = next(iter_leaves(raw))
+    raw[group][name]["spec_id"] = spec_id
+    assert not _fails("params", raw)
+
+
+def test_params_has_shadow_groups() -> None:
+    """Spec section 9b constants (synced 2026-11-19) live in their own groups."""
+    params = load_params()
+    assert params.pricer_v0.prv_07_monte_carlo_draws.spec_id == "PRV-07"
+    assert params.shadow.shd_17_min_counted_positions.spec_id == "SHD-17"
+
+
+def test_unknown_spec_id_family_fails() -> None:
+    raw = _raw("params")
+    group, name, _ = next(iter_leaves(raw))
+    raw[group][name]["spec_id"] = "XYZ-01"
+    assert _fails("params", raw)
+
+
 def test_every_param_status_is_initial_or_fitted() -> None:
     for group, name, entry in iter_leaves(_raw("params")):
         assert entry["status"] in {"initial", "fitted"}, f"{group}.{name}"

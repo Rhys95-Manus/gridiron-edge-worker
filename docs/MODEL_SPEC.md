@@ -12,7 +12,7 @@ No metric goes into Base44 until it has a row here with a definition, formula, s
 
 **Hard rules the code enforces, not the model.** All math runs in backend functions or scripts. The LLM layer only writes the matchup story from numbers the code hands it, and every claim in that story must reference a metric ID and its sample size. If a number is missing, the story says so.
 
-**Metric ID prefixes.** `DATA` sources, `OFF` team offense, `DEF` team defense, `PLY` player, `COA` coaching, `MTC` matchup, `PRJ` projection, `EDG` edge/decision, `BT` backtest.
+**Metric ID prefixes.** `DATA` sources, `OFF` team offense, `DEF` team defense, `PLY` player, `COA` coaching, `MTC` matchup, `PRJ` projection, `EDG` edge/decision, `BT` backtest, PRV pricer v0, SHD shadow log.
 
 ## Global conventions (every metric uses these)
 
@@ -529,6 +529,76 @@ Scoring per market type: Brier score and log loss for our probability vs the mar
 
 With five hypotheses tested, at least one may look good by luck; a hypothesis counts only if its CLV interval clears zero after a Bonferroni adjustment (each tested at the 1% level) and it holds in at least three of the four walk-forward seasons.
 
+## 9b. Shadow track: pricer v0 and shadow log
+
+A simple prop pricer (pricer v0) and a no-money shadow log run during the 2026 season. Their job is to measure closing line value before the Phase 5 simulator can price props. Pricer v0 never feeds PRJ-02. Nothing in this section is ever tuned on shadow results.
+
+### Pricer v0 (PRV)
+
+**PRV-01 Market scope.** Pricer v0 prices only markets in the series KXNFLRECYDS, KXNFLRSHYDS and KXNFLREC with strike_type "greater", no cap_strike, and floor_strike + 0.5 a whole number. YES means the stat is at least X = floor_strike + 0.5. Every other market in those events is logged unpriced with its reason.
+
+**PRV-02 Player map.** A Kalshi player maps to an nflverse gsis_id only by an exact, unique match of normalised name and team code against rosters_weekly at as_of. Anything else is logged unpriced as unmapped, never guessed. The weekly report shows the unmapped rate per series.
+
+**PRV-03 Projection mean.** μ = E + m + G. E is the G3 recency-weighted mean of the player's ff_opportunity expected value for the stat over his prior games in his current team stint. m is the PLY-35 centring mean for his position group. G is his PLY-35 shrunk centred gap. The usage half-life is initial h = 3 games. A player needs at least 3 prior games in the stint to be priced. PLY-35 k comes from the window's params_fitted file; the live values are receptions 41.3, receiving yards 36.7 and rushing yards 24.4. Those k values were fit on 2016–2024, which includes seasons inside ffopportunity's own training data (2006–2020); this is accepted for v0 and recorded as a known weakness. Calibration also reports μ = E alone. E + m + G is used unless it fails PRV-11 while E alone passes, and that switch needs Rhys's approval before shadow logging starts.
+
+**PRV-04 Receptions distribution.** Candidates: negative binomial with one size parameter per position group; targets as negative binomial with receptions binomial on the player's shrunk catch rate; Poisson as the baseline.
+
+**PRV-05 Receiving yards distribution.** Candidates: receptions from PRV-04 times league per-reception yards by position group, scaled so the mean equals μ; a hurdle gamma with a zero mass; an empirical ratio of actual to μ by μ-bin and position group.
+
+**PRV-06 Rushing yards distribution.** Candidates: carries as negative binomial times league per-carry yards including negatives, scaled so the mean equals μ; a shifted gamma; an empirical ratio of actual to μ by μ-bin and position group.
+
+**PRV-04 to PRV-06 selection.** For each stat, the family used is the candidate with the lowest walk-forward log loss on 2022–2024 that also passes PRV-11. Distribution parameters are fitted on 2021–2024 only. Each fitted family needs at least 500 player-games per position group in its training window.
+
+**PRV-07 P(over).** p = P(Y ≥ X) for discrete models and 1 − F(X − 0.5) for continuous ones. Monte Carlo models use n_draws = 10,000, seeded from game_id and model_version, with yards rounded to whole numbers before comparing.
+
+**PRV-08 Availability gate.** Out or Doubtful at as_of: unpriced. Questionable, or no final injury report: priced and flagged. The status seen is stored on every row. Vacated targets and carries are not redistributed in v0.
+
+**PRV-09 Calibration strike grid.** Receptions X = 1 to 14. Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190. Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180. Only pairs with 0.03 ≤ p ≤ 0.97 are scored.
+
+**PRV-10 Fit and evaluation protocol.** Walk-forward: season S (2022, 2023, 2024) is scored with distribution parameters fitted on 2021 to S − 1 and PLY-35 k from that season's params_fitted/v4 window file. The live model uses distribution parameters fitted on 2021–2024 and k from live.yaml, frozen for the season. 2025 is never read.
+
+**PRV-11 Calibration pass ("not broken"), per stat.** At least 1,000 scored pairs and at least 50 per bin used. Logistic recalibration slope between 0.85 and 1.15. Absolute calibration-in-the-large at most 0.02. Every bin with at least 50 pairs within max(0.05, 2.58 × clustered SE) of its mean p, with standard errors clustered by player-game. Brier score no worse than the Poisson baseline's. A stat that fails is not shadow-logged, and v0 adds no recalibration layer.
+
+**PRV-12 Log-loss clip.** For scoring only, p is clipped to [ε, 1 − ε] with ε = 1e-6; logged probabilities are not clipped.
+
+### Shadow log (SHD)
+
+**SHD-01 Snapshots.** Snapshots are taken at kickoff − 24 h (the primary snapshot) and kickoff − 90 min, using BT-01's offsets and kickoff from the newest stored nflverse schedules. Every market in the three series for that game is logged, priced or not.
+
+**SHD-02 Snapshot tolerance.** A T−24h snapshot is valid from 15 min early to 60 min late. A T−90m snapshot is valid from 10 min early to 25 min late.
+
+**SHD-03 Scheduler.** A tick runs every 5 minutes. The tick re-pulls schedules into the shadow store when the newest stored copy is more than 6 h old.
+
+**SHD-04 Close-book capture.** An order-book capture is taken at kickoff − 5 min, valid within ±4 min.
+
+**SHD-05 Closing price.** The YES price of the last trade created after the snapshot was taken and before kickoff. No such trade before kickoff: no_trade. Last pre-kickoff trade at or before the snapshot: stale. Both are excluded from CLV and counted in the report.
+
+**SHD-06 Closing mid.** (yes_bid + yes_ask) / 2 from the SHD-04 capture, as a second measure. The 1-minute candle is used as a fallback only after its fields are confirmed on a saved fixture.
+
+**SHD-07 CLV.** Buy YES: entry E = yes_ask, close C = closing YES price. Buy NO: E = no_ask, C = 100¢ − closing YES price. clv_net = C − E − F, where F is the SHD-08 fee. Gross CLV and CLV against the mid at snapshot are shown as diagnostics only.
+
+**SHD-08 Fee in CLV.** F is the EDG-02 taker fee for one contract, rounded up to the whole cent. The 100-contract fee is shown as a sensitivity column.
+
+**SHD-09 CLV interval.** 95% interval by percentile bootstrap clustered by game, with B = 10,000 resamples seeded from shadow_version, market type and week. The naive SE (BT-06) is shown beside it. With fewer than 20 distinct games, the report shows "interval not reliable" instead of an interval.
+
+**SHD-10 Would-be action.** Buy YES or NO when the EDG-03 yardage and stat-prop thresholds hold against the order-book ask: edge after fees at least 5¢, ROI at least 10%, bid/ask spread at most 6¢. Book prices come from the order-book endpoint, never from the markets list.
+
+**SHD-11 Counted position.** For the stop rule, each player, stat and game counts once. Among that player's T−24h strikes for the stat with a would-be buy, the counted one has the largest net edge. Ties go to the ask closest to 50¢, then the lower X. Every other row is still logged and reported as a diagnostic.
+
+**SHD-12 Snapshot misses.** Every planned snapshot gets a status row: ok, ok_late, missed_not_run, missed_api_error, missed_no_markets or invalid_kickoff_moved. Only ok and ok_late snapshots enter CLV. A week whose infrastructure misses exceed 10% of at least 10 planned snapshots is flagged. A week whose infrastructure misses exceed 25% is excluded from SHD-17.
+
+**SHD-13 Results.** The result is Kalshi's settled result. A fair-price settlement or a void is not_binary and is excluded from results. Results are reported separately and labelled noise.
+
+**SHD-14 Append-only storage.** Write-once partitions plus a hash-chained manifest; the writer has no update or delete. No snapshot row for a game can be written after its kickoff. The writer refuses any path under data/raw.
+
+**SHD-15 Shadow versions.** Any change to pricer code, parameters or data rules starts a new shadow version. Versions are reported separately and never pooled. No fit, threshold, filter or market-type choice reads shadow data, enforced by a test.
+
+**SHD-16 Depth.** Liquidity is the contracts at or within 2¢ of the best price on each side (EDG-04).
+
+**SHD-17 Stop rule.** Evaluated per market type (receiving yards, rushing yards, receptions) on SHD-11 counted positions of one shadow version, using only valid snapshots and valid closes, excluding weeks dropped by SHD-12. It is evaluated once, when a market type first reaches 300 counted positions from at least 20 distinct games; weekly reports before that inform but decide nothing. A market type continues only if the one-sided 95% lower bound of mean net CLV (the 5th percentile of the SHD-09 bootstrap) is above 0¢; otherwise it stops for that shadow version. Pooled CLV never rescues a stopped type. If no market type continues, the shadow track stops or is rethought. If a market type has not reached the threshold when the 2026 Super Bowl settles, its verdict is inconclusive: no money and no stop; the same frozen shadow version resumes in 2027 with its count carried over. Rethinking allows a new pricer version designed and fitted on 2021–2024 data only, with its reason written down before it runs; it starts its own count at zero. Rethinking never allows using shadow prices, CLV or results to choose any parameter, distribution, threshold, strike, player filter, snapshot time or market type; re-scoring old rows with a new model; pooling versions; or moving the evaluation point after seeing results. This rule is stricter than BT-06 on purpose. Win/loss record is never an input.
+
+**SHD-18 Weather flag in shadow v0.** The 2026-10-23 weather-risk flag is computed on shadow/v0 from NWS forecasts at each snapshot. Until fit v5 reaches main, every weather effect is treated as no-signal. Flagged receiving-yards and receptions rows are logged with the reason weather_flag and excluded from CLV and SHD-17. Rushing yards is not affected.
+
 ## 10. What to expect
 
 The most likely result of season one is **no provable edge and a small loss roughly equal to fees**; a genuine edge, if it exists, will be small, concentrated in a few prop families, and invisible in win/loss results for at least a season. These ranges are my judgment, not measured data.
@@ -608,6 +678,16 @@ Backtesting follows BT-07 with its own tiers: college game lines are **Full** on
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-11-19 | Spec section 9b added: pricer v0 (PRV-01 to PRV-12) and shadow log (SHD-01 to SHD-18), with new ID prefixes PRV and SHD. Fees in CLV are rounded up to the whole cent per contract at one contract. Approved by Rhys 2026-11-19 | Every parameter needs a written definition and initial value before code. Planning report shadow-v0-plan.md (2026-11-19) proposed them; rulings on its 19 open questions were made in the shadow chat. |
+| 2026-11-19 | Shadow stop rule (SHD-17) counts one position per player, stat and game (SHD-11). It is evaluated once at 300 counted positions from at least 20 games; a market type continues only if the 95% lower bound of mean net CLV is above 0¢. If 300 is not reached by the 2026 Super Bowl, the verdict is inconclusive, no money is placed, and the frozen version resumes in 2027. Approved by Rhys 2026-11-19 | A player's strikes move together, so counting each strike would make 300 positions look like far more evidence than they are. The season-end clause stops pressure to judge early on a small sample. |
+| 2026-11-19 | For shadow v0 only, receiving-yards and receptions rows in weather-flagged games are logged but excluded from CLV and the stop rule. This amends "excluded from the shadow log" in the 2026-10-23 weather ruling for the shadow track. The flag is built on shadow/v0 from the spec text, with every weather effect treated as no-signal until fit v5 reaches main. Approved by Rhys 2026-11-19 | The shadow log logs every priced prop, and logging but excluding keeps the 2026-10-23 rule's intent. The flag code exists only on the Phase 5 branch. Treating all effects as no-signal is the conservative reading. |
+| 2026-11-19 | Pricer v0 uses the approved PLY-35 k values (fit 2016–2024) unchanged; its distribution parameters are fit on 2021–2024 only. Approved by Rhys 2026-11-19 | 2016–2020 are inside ffopportunity's training data, so expected values there are in-sample. The same issue partly affects k; refitting k is new work outside v0, so it is recorded as a known weakness. |
+| 2026-11-19 | Collector and shadow scheduler move to an always-on cloud Linux machine (2 vCPU, 4 GB RAM, at least 40 GB disk, US region). It reads public data only, holds no Kalshi credentials and never trades. It runs side by side with the laptop collector for about a week, with the day-one comparison test, before the laptop collector is switched off. Fits, sims and Phase 5 stay on the laptop. Provider to be chosen. For laptop development, the shadow worktree reads the worker's data\raw through a read-only junction and writes only to its own data\shadow. Approved by Rhys 2026-11-19 | The laptop task runs only while Rhys is logged in, and the laptop sleeps. Missed snapshots cannot be recovered. A public-data collector is not a location workaround. |
+| 2026-11-13 | Shadow track started ahead of Phase 6: a simple prop pricer (pricer v0, built on PLY-35) and the Phase 6b shadow log run on live 2026 games now. Pricer v0 never feeds PRJ-02. This amends the Build Plan's 6b trigger ("as soon as Phase 6 prices any market type"). Approved by Rhys 2026-11-13 | The Phase 5 simulator will not price props before the regular season ends, and nothing built so far tests whether an edge exists. A simple model with positive CLV justifies finishing the project; none tells us cheaply. |
+| 2026-11-13 | Shadow v0 market types are receiving yards (KXNFLRECYDS), rushing yards (KXNFLRSHYDS) and receptions (KXNFLREC) only. No TDs, combos or Protected props. Approved by Rhys 2026-11-13 | PLY-35 found no TD signal. Combos need PRJ-02's correlated simulation. Protected-prop settlement terms are still an open question. |
+| 2026-11-13 | The shadow log records every priced prop, not only would-be positions. Approved by Rhys 2026-11-13 | More data points for diagnostics. The stop rule still uses counted positions only. |
+| 2026-11-13 | Before shadow logging starts, pricer v0 must pass a 2021–2024 calibration check (PRV-11). The bar is "not broken", not "great". 2025 stays locked. Approved by Rhys 2026-11-13 | A broken pricer would make the shadow log measure bugs, not edge. |
+| 2026-11-13 | Shadow code lives in a git worktree at C:\gridiron-edge-shadow on branch shadow/v0 from origin/main, never in C:\gridiron-edge-worker, which holds Phase 5 work on wip/phase5-backup. Heavy jobs from the two workstreams take turns on the laptop. Approved by Rhys 2026-11-13 | One repo with two folders shares code without a second copy drifting, and keeps Phase 5's uncommitted work untouched. |
 | 2026-10-23 | Gridiron Edge is a personal trading tool, so Open-Meteo's free (non-commercial) API is allowed under DATA-07. Its historical ERA5 archive is ingested for the weather fits: hourly precipitation, snowfall, wind\_speed\_10m, wind\_gusts\_10m and temperature\_2m at each outdoor stadium's coordinates over each game window (kickoff to kickoff + 4 h), seasons 2016–2024 and 2026 only (2025 not ingested until the holdout is opened). Stored with pulled\_at, source URL and model. Rate-limited below the free tier (600 calls a minute, 5,000 an hour, 10,000 a day) by an ingest.yaml setting. The terms quote is recorded with the setting, and the data is attributed under CC BY 4.0. If the tool is ever offered to others or run as an AI Wealth Builders product, Open-Meteo's paid plan is required before that happens. Approved by Rhys 2026-10-23 | Schedules carry only temp and wind, so gust and precipitation effects could not be fitted. A test query (Green Bay stadium, 2016-12-11) returned hourly ERA5 precipitation, snowfall and gusts. The terms allow non-commercial use: "You may only use the free API services for non-commercial purposes." This resolves the personal-vs-product open question for this tool. ERA5 gust values are model output of unverified accuracy, so fitted effects carry their standard errors |
 | 2026-10-23 | MTC-05 / ENV-01 to ENV-04 are fitted in Phase 5 as fit v5, league-wide per window, from ERA5 game-window values (labelled observed\_as\_forecast\_proxy). Wind, gusts, temperature, precipitation and snowfall act on completion and deep-attempt share; wind, gusts, temperature and snowfall act on field-goal make by distance; surface acts on explosive rates and yards per carry. Each effect has its standard error, and a 95% interval that includes 0 means no-signal (zero effect, listed). Every non-ENV value in v5 must equal v4. Schedules temp and wind are a cross-check only: the report shows their agreement with ERA5. Live inputs come from the NWS forecast with the same aggregation. Approved by Rhys 2026-10-23 | One source for every fitted weather value keeps the units and the game window consistent, and gives gusts and precipitation a history. The NWS forecast supplies the same fields live |
 | 2026-10-23 | "Weather risk not modelled" is a fallback only. An outdoor game (or one whose roof is unknown) is flagged when it has no NWS forecast at decision time, or when an effect came out no-signal and the forecast shows that weather in the game window: precipitation or snow no-signal with forecast precipitation, snowfall, or precipitation probability ≥ 40%; gusts no-signal with gusts ≥ 40 km/h. Window kickoff to kickoff + 4 h. All three thresholds are params, status initial, Rhys's judgment. In a flagged game, passing and receiving props (passing yards and TDs, receiving yards, receptions, ladders, escalators, and combos with such a leg) are excluded from the shadow log and from recommendations, and every market in the game shows the flag with its reason. Approved by Rhys 2026-10-23 | With gusts and precipitation now fittable, the flag only covers what the model cannot price: a missing forecast, or weather whose effect the data could not detect. Passing and receiving props are the most weather-exposed. Showing the flag on every market keeps the gap visible where other markets stay in |
@@ -726,6 +806,7 @@ Backtesting follows BT-07 with its own tiers: college game lines are **Full** on
 - [ ] Week-1 player metrics (Phase 5): the Phase 3 metric engine still raises in week 1 for teams that have not played, because their play-caller change is unknown (decision 2026-10-14). Week-1 props cannot be priced until this is solved. Decide in Phase 5 whether the engine takes the same target-teams scope as PRJ-01a, or uses COA-01 rows effective at the team's first game
 - [ ] Protected props and liquidity (before Phase 6): read Kalshi's contract terms for the Protected prop series (who sets the pre-kickoff fair price, when, and exactly what counts as not finishing the game); find out whether ordinary, unprotected NFL player-prop series exist on Kalshi and how much they trade; and record typical per-market depth at the bid and ask, since roughly 27 contracts per market average volume may cap position size below the 1% stake
 - [ ] PRJ-06 RB, WR and TE missed-game pools (0.13 / 0.11 / 0.09) still use "played the previous game" and may be inflated by backups the way the QB rate was; resolved 2026-10-09: pools require at least 25% of team offensive snaps in the previous game (decisions log)
+- [ ] Kalshi player-prop settlement when a player is inactive: the rules text read on 2026-11-19 covers "active but no live play" (settles to the fair price before game start) but not inactive players. Save one market's full rules per series as a fixture; until resolved, any settlement that isn't 0 or 1 is not_binary (SHD-13)
 
 ## Sources
 

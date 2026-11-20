@@ -14,13 +14,17 @@ PARAMS_PATH = REPO_ROOT / "config" / "params.yaml"
 FEES_PATH = REPO_ROOT / "config" / "fees.yaml"
 
 # ENV- added 2026-09-29 with spec section 6b (ENV-01 to ENV-04).
-SPEC_ID_RE = re.compile(r"\b(?:(?:DATA|OFF|DEF|PLY|COA|MTC|ENV|PRJ|EDG|BT)-\d{2}[a-z]?|G[1-7])\b")
+# PRV- and SHD- added 2026-11-19 with spec section 9b (PRV-01 to PRV-12, SHD-01 to SHD-18).
+SPEC_ID_RE = re.compile(
+    r"\b(?:(?:DATA|OFF|DEF|PLY|COA|MTC|ENV|PRJ|EDG|BT|PRV|SHD)-\d{2}[a-z]?|G[1-7])\b"
+)
 
-# Order matters: m:ss before plain numbers, \tfrac{a}{b} and a/b before plain numbers.
+# Order matters: m:ss, \tfrac{a}{b}, a/b and 1e-6 before plain numbers.
 _TOKEN_RE = re.compile(
     r"\\tfrac\{(?P<fn>\d+)\}\{(?P<fd>\d+)\}"
     r"|(?P<min>\d+):(?P<sec>\d{2})\b"
     r"|(?P<num>\d+)/(?P<den>\d+)"
+    r"|(?P<sci>\d+(?:\.\d+)?[eE][-+]?\d+)\b"
     r"|(?P<plain>\d[\d,]*(?:\.\d+)?)"
     r"|\b(?P<word>one|two|three|four|five|six|seven|eight|nine|ten)\b",
     re.IGNORECASE,
@@ -52,7 +56,8 @@ def spec_ids() -> set[str]:
 
 
 def numbers_in(text: str) -> list[float]:
-    """Every number written in spec text: 20,000 / 0.25 / 1/3 / 2:00 / \\tfrac{1}{4} / four."""
+    """Every number written in spec text: 20,000 / 0.25 / 1/3 / 2:00 / \\tfrac{1}{4} / four /
+    1e-6 (scientific notation added 2026-11-19 for PRV-12)."""
     out: list[float] = []
     for m in _TOKEN_RE.finditer(text):
         if m.group("fn"):
@@ -61,6 +66,8 @@ def numbers_in(text: str) -> list[float]:
             out.append(int(m.group("min")) * 60 + int(m.group("sec")))
         elif m.group("num"):
             out.append(int(m.group("num")) / int(m.group("den")))
+        elif m.group("sci"):
+            out.append(float(m.group("sci")))
         elif m.group("word"):
             out.append(_WORDS[m.group("word").lower()])
         else:

@@ -1,4 +1,4 @@
-# Every numeric constant in docs/MODEL_SPEC.md (sections 0-9).
+# Every numeric constant in docs/MODEL_SPEC.md (sections 0-9b).
 # Each entry: spec_id, value, status (initial | fitted), source = verbatim quote from the spec.
 # Units: *_cc = integer centicents (1/10,000 of a dollar); percentages as fractions;
 # *_seconds / *_minutes / *_hours / *_games / *_plays etc. as named.
@@ -346,3 +346,81 @@ fitting:
   bt_02_min_entities: {spec_id: BT-02, value: 30, status: initial, source: 'a fitted value needs at least 30 entities (k, priors) or 200 events (logistic models, base rates)'}
   bt_02_min_events: {spec_id: BT-02, value: 200, status: initial, source: 'a fitted value needs at least 30 entities (k, priors) or 200 events (logistic models, base rates)'}
   bt_02_no_signal_confidence: {spec_id: BT-02, value: 0.95, status: initial, source: 'a 95% Fisher-z interval for r is computed from the number of entities'}
+
+# Spec section 9b (synced 2026-11-19). Reused, not duplicated: SHD-01 offsets are BT-01's,
+# SHD-10 thresholds are EDG-03's yardage row, SHD-16 depth is EDG-04's, 2025 is BT-01's holdout,
+# and PRV-03's k is PLY-35's fitted value in params_fitted.
+pricer_v0:
+  prv_01_strike_offset: {spec_id: PRV-01, value: 0.5, status: initial, source: 'YES means the stat is at least X = floor_strike + 0.5.'}
+  prv_03_min_prior_games_in_stint: {spec_id: PRV-03, value: 3, status: initial, source: 'A player needs at least 3 prior games in the stint to be priced.'}
+  prv_min_player_games_per_position_group: {spec_id: [PRV-04, PRV-05, PRV-06], value: 500, status: initial, source: 'Each fitted family needs at least 500 player-games per position group in its training window.'}
+  prv_07_continuity_offset: {spec_id: PRV-07, value: 0.5, status: initial, source: 'p = P(Y ≥ X) for discrete models and 1 − F(X − 0.5) for continuous ones.'}
+  prv_07_monte_carlo_draws: {spec_id: PRV-07, value: 10000, status: initial, source: 'Monte Carlo models use n_draws = 10,000, seeded from game_id and model_version, with yards rounded to whole numbers before comparing.'}
+  prv_09_receptions_min_strike: {spec_id: PRV-09, value: 1, status: initial, source: 'Receptions X = 1 to 14.'}
+  prv_09_receptions_max_strike: {spec_id: PRV-09, value: 14, status: initial, source: 'Receptions X = 1 to 14.'}
+  prv_09_rec_yards_strike_1: {spec_id: PRV-09, value: 10, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_2: {spec_id: PRV-09, value: 15, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_3: {spec_id: PRV-09, value: 20, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_4: {spec_id: PRV-09, value: 25, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_5: {spec_id: PRV-09, value: 30, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_6: {spec_id: PRV-09, value: 40, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_7: {spec_id: PRV-09, value: 50, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_8: {spec_id: PRV-09, value: 55, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_9: {spec_id: PRV-09, value: 60, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_10: {spec_id: PRV-09, value: 65, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_strike_11: {spec_id: PRV-09, value: 70, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_step: {spec_id: PRV-09, value: 10, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rec_yards_max_strike: {spec_id: PRV-09, value: 190, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}
+  prv_09_rush_yards_strike_1: {spec_id: PRV-09, value: 5, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_2: {spec_id: PRV-09, value: 10, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_3: {spec_id: PRV-09, value: 15, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_4: {spec_id: PRV-09, value: 20, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_5: {spec_id: PRV-09, value: 25, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_6: {spec_id: PRV-09, value: 30, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_7: {spec_id: PRV-09, value: 40, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_8: {spec_id: PRV-09, value: 45, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_9: {spec_id: PRV-09, value: 50, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_10: {spec_id: PRV-09, value: 60, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_11: {spec_id: PRV-09, value: 65, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_strike_12: {spec_id: PRV-09, value: 70, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_step: {spec_id: PRV-09, value: 10, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_rush_yards_max_strike: {spec_id: PRV-09, value: 180, status: initial, source: 'Rushing yards X = 5, 10, 15, 20, 25, 30, 40, 45, 50, 60, 65, 70, then every 10 to 180.'}
+  prv_09_min_scored_p: {spec_id: PRV-09, value: 0.03, status: initial, source: 'Only pairs with 0.03 ≤ p ≤ 0.97 are scored.'}
+  prv_09_max_scored_p: {spec_id: PRV-09, value: 0.97, status: initial, source: 'Only pairs with 0.03 ≤ p ≤ 0.97 are scored.'}
+  prv_10_first_scored_season: {spec_id: PRV-10, value: 2022, status: initial, source: 'Walk-forward: season S (2022, 2023, 2024) is scored with distribution parameters fitted on 2021 to S − 1 and PLY-35 k from that season''s params_fitted/v4 window file.'}
+  prv_10_last_scored_season: {spec_id: PRV-10, value: 2024, status: initial, source: 'Walk-forward: season S (2022, 2023, 2024) is scored with distribution parameters fitted on 2021 to S − 1 and PLY-35 k from that season''s params_fitted/v4 window file.'}
+  prv_10_first_fit_season: {spec_id: PRV-10, value: 2021, status: initial, source: 'Walk-forward: season S (2022, 2023, 2024) is scored with distribution parameters fitted on 2021 to S − 1 and PLY-35 k from that season''s params_fitted/v4 window file.'}
+  prv_10_live_last_fit_season: {spec_id: PRV-10, value: 2024, status: initial, source: 'The live model uses distribution parameters fitted on 2021–2024 and k from live.yaml, frozen for the season.'}
+  prv_11_min_scored_pairs: {spec_id: PRV-11, value: 1000, status: initial, source: 'At least 1,000 scored pairs and at least 50 per bin used.'}
+  prv_11_min_pairs_per_bin: {spec_id: PRV-11, value: 50, status: initial, source: 'At least 1,000 scored pairs and at least 50 per bin used.'}
+  prv_11_min_recalibration_slope: {spec_id: PRV-11, value: 0.85, status: initial, source: 'Logistic recalibration slope between 0.85 and 1.15.'}
+  prv_11_max_recalibration_slope: {spec_id: PRV-11, value: 1.15, status: initial, source: 'Logistic recalibration slope between 0.85 and 1.15.'}
+  prv_11_max_abs_calibration_in_the_large: {spec_id: PRV-11, value: 0.02, status: initial, source: 'Absolute calibration-in-the-large at most 0.02.'}
+  prv_11_bin_tolerance_floor: {spec_id: PRV-11, value: 0.05, status: initial, source: 'Every bin with at least 50 pairs within max(0.05, 2.58 × clustered SE) of its mean p, with standard errors clustered by player-game.'}
+  prv_11_bin_tolerance_z: {spec_id: PRV-11, value: 2.58, status: initial, source: 'Every bin with at least 50 pairs within max(0.05, 2.58 × clustered SE) of its mean p, with standard errors clustered by player-game.'}
+  prv_12_log_loss_clip_eps: {spec_id: PRV-12, value: 1.0e-6, status: initial, source: 'For scoring only, p is clipped to [ε, 1 − ε] with ε = 1e-6; logged probabilities are not clipped.'}
+
+shadow:
+  shd_02_t24h_early_minutes: {spec_id: SHD-02, value: 15, status: initial, source: 'A T−24h snapshot is valid from 15 min early to 60 min late.'}
+  shd_02_t24h_late_minutes: {spec_id: SHD-02, value: 60, status: initial, source: 'A T−24h snapshot is valid from 15 min early to 60 min late.'}
+  shd_02_t90m_early_minutes: {spec_id: SHD-02, value: 10, status: initial, source: 'A T−90m snapshot is valid from 10 min early to 25 min late.'}
+  shd_02_t90m_late_minutes: {spec_id: SHD-02, value: 25, status: initial, source: 'A T−90m snapshot is valid from 10 min early to 25 min late.'}
+  shd_03_tick_minutes: {spec_id: SHD-03, value: 5, status: initial, source: 'A tick runs every 5 minutes.'}
+  shd_03_schedule_max_age_hours: {spec_id: SHD-03, value: 6, status: initial, source: 'The tick re-pulls schedules into the shadow store when the newest stored copy is more than 6 h old.'}
+  shd_04_close_capture_minutes_before_kickoff: {spec_id: SHD-04, value: 5, status: initial, source: 'An order-book capture is taken at kickoff − 5 min, valid within ±4 min.'}
+  shd_04_close_capture_tolerance_minutes: {spec_id: SHD-04, value: 4, status: initial, source: 'An order-book capture is taken at kickoff − 5 min, valid within ±4 min.'}
+  shd_06_fallback_candle_minutes: {spec_id: SHD-06, value: 1, status: initial, source: 'The 1-minute candle is used as a fallback only after its fields are confirmed on a saved fixture.'}
+  shd_07_contract_payout_cc: {spec_id: SHD-07, value: 10000, status: initial, source: 'Buy NO: E = no_ask, C = 100¢ − closing YES price.'}
+  shd_08_fee_contracts: {spec_id: SHD-08, value: 1, status: initial, source: 'F is the EDG-02 taker fee for one contract, rounded up to the whole cent.'}
+  shd_08_sensitivity_fee_contracts: {spec_id: SHD-08, value: 100, status: initial, source: 'The 100-contract fee is shown as a sensitivity column.'}
+  shd_09_interval_confidence: {spec_id: SHD-09, value: 0.95, status: initial, source: '95% interval by percentile bootstrap clustered by game, with B = 10,000 resamples seeded from shadow_version, market type and week.'}
+  shd_09_bootstrap_resamples: {spec_id: SHD-09, value: 10000, status: initial, source: '95% interval by percentile bootstrap clustered by game, with B = 10,000 resamples seeded from shadow_version, market type and week.'}
+  shd_09_min_distinct_games: {spec_id: SHD-09, value: 20, status: initial, source: 'With fewer than 20 distinct games, the report shows "interval not reliable" instead of an interval.'}
+  shd_11_tiebreak_ask_target_cc: {spec_id: SHD-11, value: 5000, status: initial, source: 'Ties go to the ask closest to 50¢, then the lower X.'}
+  shd_12_week_flag_miss_share: {spec_id: SHD-12, value: 0.10, status: initial, source: 'A week whose infrastructure misses exceed 10% of at least 10 planned snapshots is flagged.'}
+  shd_12_week_flag_min_planned_snapshots: {spec_id: SHD-12, value: 10, status: initial, source: 'A week whose infrastructure misses exceed 10% of at least 10 planned snapshots is flagged.'}
+  shd_12_week_exclude_miss_share: {spec_id: SHD-12, value: 0.25, status: initial, source: 'A week whose infrastructure misses exceed 25% is excluded from SHD-17.'}
+  shd_17_min_counted_positions: {spec_id: SHD-17, value: 300, status: initial, source: 'It is evaluated once, when a market type first reaches 300 counted positions from at least 20 distinct games; weekly reports before that inform but decide nothing.'}
+  shd_17_min_distinct_games: {spec_id: SHD-17, value: 20, status: initial, source: 'It is evaluated once, when a market type first reaches 300 counted positions from at least 20 distinct games; weekly reports before that inform but decide nothing.'}
+  shd_17_lower_bound_percentile: {spec_id: SHD-17, value: 0.05, status: initial, source: 'A market type continues only if the one-sided 95% lower bound of mean net CLV (the 5th percentile of the SHD-09 bootstrap) is above 0¢; otherwise it stops for that shadow version.'}
+  shd_17_min_lower_bound_clv_cc: {spec_id: SHD-17, value: 0, status: initial, source: 'A market type continues only if the one-sided 95% lower bound of mean net CLV (the 5th percentile of the SHD-09 bootstrap) is above 0¢; otherwise it stops for that shadow version.'}
