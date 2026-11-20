@@ -100,6 +100,12 @@ def _timeout_game() -> pl.DataFrame:
         "score_differential": [-3.0] * 5,
         "posteam_timeouts_remaining": [2.0, 2.0, 2.0, 1.0, 1.0],
         "defteam_timeouts_remaining": [3.0] * 5,
+        # data correction D (2026-11-20): a pre-2022 season keeps the timeout-row order
+        "season": [2019] * 5,
+        "home_team": ["AAA"] * 5,
+        "away_team": ["BBB"] * 5,
+        "home_timeouts_remaining": [2.0, 2.0, 2.0, 1.0, 1.0],
+        "away_timeouts_remaining": [3.0] * 5,
         "out_of_bounds": [0] * 5,
         "complete_pass": [0] * 5,
         "incomplete_pass": [0, 0, 0, 0, 1],
@@ -125,7 +131,7 @@ def test_timeout_rows_are_not_snaps() -> None:
 def test_offense_timeout_rate_inside_two_minutes() -> None:
     """The only running-clock play inside 2:00 (play 3, Q4, offense trailing with timeouts) is
     followed by an offense timeout: the offense-trailing Q4 rate is 1, the defense's 0."""
-    rates, _ = timeout_rates(_timeout_game(), two_minute=120)
+    rates, _ = timeout_rates(_timeout_game(), two_minute=120, drop_from=2022)
     assert rates[1, 0, 0] == pytest.approx(1.0)  # second half, offense, trailing
     assert rates[1, 1, 2] == pytest.approx(0.0)  # second half, defense, leading
 

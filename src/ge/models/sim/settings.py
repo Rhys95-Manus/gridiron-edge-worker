@@ -29,6 +29,7 @@ class LeagueSettings(_Group):
     punt_bucket_yards: IntSetting
     fg_miss_bucket_yards: IntSetting
     late_kickoff_seconds: IntSetting
+    timeout_drop_from_season: IntSetting  # data correction D (Rhys 2026-11-20)
     min_category_events: IntSetting
 
 

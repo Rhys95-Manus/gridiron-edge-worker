@@ -271,6 +271,10 @@ CORE_COLUMNS = (
     "score_differential",
     "posteam_timeouts_remaining",
     "defteam_timeouts_remaining",
+    "home_team",  # data correction D (Rhys 2026-11-20): timeouts from the remaining-count drop
+    "away_team",
+    "home_timeouts_remaining",
+    "away_timeouts_remaining",
     "wp",
     "pass",
     "rush",
@@ -787,7 +791,12 @@ def build_league(
     xp = d.filter(_is1("extra_point_attempt"))
     tp = d.filter(_is1("two_point_attempt"))
 
-    clock, timeout_rate, spike_rate = clock_tables(d, two_minute_seconds, min_events)
+    clock, timeout_rate, spike_rate = clock_tables(
+        d,
+        two_minute_seconds,
+        min_events,
+        drop_from=int(load_sim().league.timeout_drop_from_season.value),  # correction D
+    )
     return LeagueTables(
         run_yards=run_yards,
         air_yards=air,
@@ -864,17 +873,18 @@ def build_league(
 
 
 def clock_tables(
-    d: pl.DataFrame, two_minute: int, min_events: int
+    d: pl.DataFrame, two_minute: int, min_events: int, *, drop_from: int
 ) -> tuple[Packed, FloatArray, float]:
     """Clock runoff from each play to the next snap with no timeout between (C1, E10), by the
     play's outcome class and whether it starts inside the last two minutes of a half; the rate
     at which each team calls a timeout after a running-clock play inside the last two minutes,
-    by half, role and score state; and the rate of spiking the next snap there."""
-    _, nxt = _snap_pairs(d)
+    by half, role and score state; and the rate of spiking the next snap there. "No timeout
+    between" comes from snap_pairs (data correction D, from season drop_from)."""
+    _, nxt = snap_pairs(d, drop_from=drop_from)
     cat_idx = {c: i for i, c in enumerate(CLOCK_CATEGORIES)}
     nc = len(CLOCK_CATEGORIES)
     inside = (pl.col("half_seconds_remaining") <= two_minute).fill_null(False)
-    runoff = nxt.filter(pl.col("_gsr_n").is_not_null() & (pl.col("_to_n") == pl.col("_to"))).select(
+    runoff = nxt.filter(pl.col("_gsr_n").is_not_null() & ~pl.col("_tb")).select(
         (
             pl.col("cat_name").replace_strict(cat_idx, return_dtype=pl.Int64)
             + nc * inside.cast(pl.Int64)
@@ -888,7 +898,7 @@ def clock_tables(
     other_regime = [*(k + nc for k in range(nc)), *range(nc)]  # the same outcome, other regime
     clock = pack_categories(runoff, n_categories=2 * nc, parent=other_regime, min_events=min_events)
 
-    rates, spike_rate = timeout_rates(d, two_minute)
+    rates, spike_rate = timeout_rates(d, two_minute, drop_from=drop_from)
     return clock, rates, spike_rate
 
 
@@ -908,14 +918,55 @@ def _snap_pairs(d: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     return rows, nxt
 
 
-def timeout_rates(d: pl.DataFrame, two_minute: int) -> tuple[FloatArray, float]:
+def snap_pairs(d: pl.DataFrame, *, drop_from: int) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """PRJ-02 data correction D (approved by Rhys 2026-11-20): _snap_pairs plus, per snap, whether
+    a timeout came before the next snap in the same game half (_tb; null with no next snap) and
+    whether the snap's offense (_tb_off) or defense (_tb_def) called one. Seasons >= drop_from
+    (config/sim.yaml league.timeout_drop_from_season): a drop in home/away_timeouts_remaining
+    from this snap to the next, the side whose count dropped called it (nflverse lists many
+    timeout rows one snap late from 2022). Earlier seasons: the timeout-row order, the team of
+    the last timeout row before the next snap."""
+    rows, nxt = _snap_pairs(d)
+    last = rows.filter(_is1("timeout")).select(
+        "game_id", pl.col("_to").alias("_to_n"), pl.col("timeout_team").alias("_last_team")
+    )
+    nxt = nxt.join(last, on=["game_id", "_to_n"], how="left", maintain_order="left")
+    nxt = nxt.with_columns(
+        pl.col("home_timeouts_remaining").shift(-1).over("game_id", "game_half").alias("_h_n"),
+        pl.col("away_timeouts_remaining").shift(-1).over("game_id", "game_half").alias("_a_n"),
+    )
+    old = pl.col("_to_n") > pl.col("_to")
+    home_drop = (pl.col("_h_n") < pl.col("home_timeouts_remaining")).fill_null(False)
+    away_drop = (pl.col("_a_n") < pl.col("away_timeouts_remaining")).fill_null(False)
+    off_home = (pl.col("posteam") == pl.col("home_team")).fill_null(False)
+    off_away = (pl.col("posteam") == pl.col("away_team")).fill_null(False)
+    new_era = pl.col("season") >= drop_from
+    has_next = pl.col("_to_n").is_not_null()
+
+    def pick(new: pl.Expr, before: pl.Expr) -> pl.Expr:
+        return pl.when(~has_next).then(None).when(new_era).then(new).otherwise(before)
+
+    return rows, nxt.with_columns(
+        pick(home_drop | away_drop, old).alias("_tb"),
+        pick(
+            (off_home & home_drop) | (off_away & away_drop),
+            old & (pl.col("_last_team") == pl.col("posteam")).fill_null(False),
+        ).alias("_tb_off"),
+        pick(
+            (off_home & away_drop) | (off_away & home_drop),
+            old & (pl.col("_last_team") == pl.col("defteam")).fill_null(False),
+        ).alias("_tb_def"),
+    )
+
+
+def timeout_rates(d: pl.DataFrame, two_minute: int, *, drop_from: int) -> tuple[FloatArray, float]:
     """C9: after a running-clock play inside the last two minutes of the 2nd or 4th period,
     the rate at which a team with timeouts left calls one before the next snap, by [half,
     role (0 offense, 1 defense), score state from that team's side (trailing, tied, leading)];
     and the rate at which a trailing or tied offense spikes the next snap. A cell with no plays
     uses the same role and state in either half, then the same role in any state; with none
-    at all it raises."""
-    rows, nxt = _snap_pairs(d)
+    at all it raises. Who called a timeout comes from snap_pairs (data correction D)."""
+    _, nxt = snap_pairs(d, drop_from=drop_from)
     inside = (pl.col("half_seconds_remaining") <= two_minute).fill_null(False)
     after = nxt.filter(
         inside
@@ -923,21 +974,16 @@ def timeout_rates(d: pl.DataFrame, two_minute: int) -> tuple[FloatArray, float]:
         & pl.col("qtr").is_in([2, 4])
         & pl.col("_to_n").is_not_null()
     )
-    tos = rows.filter(_is1("timeout")).select("game_id", "_to", "timeout_team")
-    after = after.drop("timeout_team").join(
-        tos.rename({"_to": "_to_n"}), on=["game_id", "_to_n"], how="left"
-    )
-    called = (pl.col("_to_n") > pl.col("_to")).fill_null(False)
     rates = np.full((2, 2, 3), np.nan)
     for role in (0, 1):
-        team, left = (
-            ("posteam", "posteam_timeouts_remaining")
+        called, left = (
+            ("_tb_off", "posteam_timeouts_remaining")
             if role == 0
-            else ("defteam", "defteam_timeouts_remaining")
+            else ("_tb_def", "defteam_timeouts_remaining")
         )
         sd = pl.col("score_differential") * (1 if role == 0 else -1)
         states = (sd < 0, sd == 0, sd > 0)
-        flag = called & (pl.col("timeout_team") == pl.col(team)).fill_null(False)
+        flag = pl.col(called).fill_null(False)
         mine = after.filter(pl.col(left) > 0)
         for h, q in enumerate((2, 4)):
             for s, cond in enumerate(states):
