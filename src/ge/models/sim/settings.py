@@ -83,6 +83,7 @@ class DiagnosticSettings(_Group):  # diagnostic counters approved 2026-10-30
     fourth_yardline_upper: IntListSetting
     early_deep_air_min: IntSetting
     fg_distance_lower: IntListSetting
+    early_fg_seconds_upper: IntListSetting  # approved 2026-11-19 (option B)
 
 
 class SimSettings(_Strict):

@@ -141,7 +141,9 @@ LA_GO_TRAIL0 = LA_SIT_EDGE0 + SIT_DIST_BINS - 1
 LA_GO_LATE0 = LA_GO_TRAIL0 + A.GO_TRAIL_BINS - 1
 # early-down field goals (Rhys 2026-11-16): 1.0 for each eligible period 1-4
 LA_EFG_PER0 = LA_GO_LATE0 + A.GO_TIME_BINS
-NLA = LA_EFG_PER0 + 4
+# early-down FG diagnostic seconds bins (approved 2026-11-19): upper edges (EFG_SEC_BINS - 1)
+LA_EFG_SEC0 = LA_EFG_PER0 + 4
+NLA = LA_EFG_SEC0 + A.EFG_SEC_BINS - 1
 C_RUN_IN = CLOCK_CATEGORIES.index("run_inbounds")
 C_COMP_IN = CLOCK_CATEGORIES.index("complete_inbounds")
 C_INC = CLOCK_CATEGORIES.index("incomplete")
@@ -289,6 +291,9 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     efg = sim.early_fg
     if not set(efg.periods.value) <= {1, 2, 3, 4}:
         raise ValueError("PRJ-02: early_fg.periods must be regulation periods 1-4 (ruling Q3)")
+    efg_sec = dg.early_fg_seconds_upper.value
+    if len(efg_sec) != A.EFG_SEC_BINS - 1:
+        raise ValueError("PRJ-02: the early-FG seconds bins do not match the counter layout")
     ls = np.zeros(NLS)
     ls[LS_FUM_RUN] = t.fumble_run_rate
     ls[LS_FUM_COMP] = t.fumble_completion_rate
@@ -334,6 +339,7 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     la = np.zeros(NLA)
     for q in efg.periods.value:
         la[LA_EFG_PER0 + q - 1] = 1.0
+    la[LA_EFG_SEC0:NLA] = efg_sec
     la[LA_4TH_TOGO0 : LA_4TH_TOGO0 + 2] = f_togo
     la[LA_4TH_YL0 : LA_4TH_YL0 + 2] = f_yl
     la[LA_FG_DIST0 : LA_FG_DIST0 + len(fg_lower)] = fg_lower
@@ -578,6 +584,13 @@ def early_fg_eligible(down, qtr, in_ot, half_sec, yl, sd, periods, max_sec, max_
 
 
 @njit(cache=True, nogil=True)
+def efg_sec_cell(half_sec, has_timeout, edges):
+    """PRJ-02 early-down FG diagnostic cell (approved 2026-11-19): seconds bin (first inclusive
+    upper edge at or above half_sec; beyond the last, the last bin) x 2 + 1 with a timeout left."""
+    return xpass_bin(half_sec, edges) * 2 + (1 if has_timeout else 0)
+
+
+@njit(cache=True, nogil=True)
 def lower_bin(v, edges):
     """Diagnostic bin from lower edges (approved 2026-10-30): the number of edges at or below v."""
     k = 0
@@ -717,7 +730,8 @@ def _game(
     sit_edges = la[LA_SIT_EDGE0:LA_GO_TRAIL0]
     go_trail_edges = la[LA_GO_TRAIL0:LA_GO_LATE0]
     go_late_edges = la[LA_GO_LATE0:LA_EFG_PER0]
-    efg_periods = la[LA_EFG_PER0:NLA]
+    efg_periods = la[LA_EFG_PER0:LA_EFG_SEC0]
+    efg_sec_edges = la[LA_EFG_SEC0:NLA]
     efg_missed = False  # the last snap was a missed early-down field goal (ruling Q6)
     rz_on = False  # the current drive has had a red-zone snap (diagnostic)
     bandp = np.zeros(4)
@@ -914,6 +928,7 @@ def _game(
         ):
             out_team[off, A.R_EFG_ELIG] += 1
             t_on = 1.0 if tos[off] >= 1 else 0.0
+            out_team[off, A.R_EFG_ELIG_S0 + efg_sec_cell(half_sec, t_on > 0.5, efg_sec_edges)] += 1
             pk_e = _expit(
                 early_fg[0] + early_fg[1] * half_sec + early_fg[2] * t_on
                 + early_fg[3] * half_sec * t_on

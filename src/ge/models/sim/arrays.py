@@ -139,7 +139,12 @@ R_FG_MADE_D0 = 143
 # Early-down field goals (Rhys 2026-11-16, Q7; they read the play, never draw)
 R_EFG_ELIG = 147  # eligible early-down snaps (counted only with the path on)
 R_EFG_ATT = 148  # early-down field-goal attempts
-NTEAM = 149
+# Eligible early-down snaps by seconds left in the half x offense timeout left (approved
+# 2026-11-19, option B; bins from config/sim.yaml diagnostics.early_fg_seconds_upper, the last
+# bin runs to early_fg.max_seconds): cell = bin x 2 + timeout (0 none, 1 at least one)
+EFG_SEC_BINS = 4
+R_EFG_ELIG_S0 = 149
+NTEAM = 157
 
 # ---- PRJ-02 4th-down go model (ruling 2026-10-31): one logit per distance x field cell
 # (config/sim.yaml `fourth_go`; cell = distance bin x 3 + field bin), then the slopes on

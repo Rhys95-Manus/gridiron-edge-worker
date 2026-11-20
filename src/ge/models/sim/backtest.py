@@ -84,6 +84,14 @@ _TEAM_STATS = {
     "end_half": A.R_END_HALF,
     **{f"fg_att_d{b}": A.R_FG_ATT_D0 + b for b in range(A.FG_DIST_BINS)},
     **{f"fg_made_d{b}": A.R_FG_MADE_D0 + b for b in range(A.FG_DIST_BINS)},
+    # early-down field goals (Rhys 2026-11-16, Q7; output and seconds cells approved 2026-11-19)
+    "efg_elig": A.R_EFG_ELIG,
+    "efg_att": A.R_EFG_ATT,
+    **{
+        f"efg_elig_s{b}_t{t}": A.R_EFG_ELIG_S0 + b * 2 + t
+        for b in range(A.EFG_SEC_BINS)
+        for t in (0, 1)
+    },
 }
 SUMMARY_COLUMNS = (
     "game_id", "season", "week", "home", "away", "postseason", "neutral",

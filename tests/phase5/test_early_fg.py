@@ -261,7 +261,8 @@ def test_engine_early_fg_counters_do_not_draw() -> None:
     equals the path off."""
     off = _sim(synthetic_game(), synthetic_league())
     on = _sim(_on((-1e6, 0.0, 0.0, 0.0)), synthetic_league())
-    keep = [k for k in range(A.NTEAM) if k not in (A.R_EFG_ELIG, A.R_EFG_ATT)]
+    efg = (A.R_EFG_ELIG, A.R_EFG_ATT, *range(A.R_EFG_ELIG_S0, A.R_EFG_ELIG_S0 + 2 * A.EFG_SEC_BINS))
+    keep = [k for k in range(A.NTEAM) if k not in efg]  # seconds cells added 2026-11-19
     assert np.array_equal(off.team[..., keep], on.team[..., keep])
     assert np.array_equal(off.player, on.player) and np.array_equal(off.ot, on.ot)
     assert np.array_equal(off.first_td, on.first_td)
