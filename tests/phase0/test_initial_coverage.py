@@ -3,7 +3,8 @@
 Read straight from docs/MODEL_SPEC.md, not from a hand-typed list:
 - every k in the Shrink column and every number in the Min n column of the
   OFF / DEF / PLY / COA tables (section 2 says these k are all initial until BT-02);
-- every "initial <number>" phrase, and the G3 half-lives.
+- every "initial <number>" and "initial <symbol> = <number>" phrase outside the Decisions
+  log, each covered by an entry whose source holds the phrase itself, and the G3 half-lives.
 """
 
 import re
@@ -67,17 +68,45 @@ def test_every_table_k_and_min_n_is_in_params() -> None:
     assert not missing, "not in params.yaml:\n" + "\n".join(missing)
 
 
-def test_every_initial_phrase_is_in_params() -> None:
-    entries = _entries()
-    found = []
+# "initial 0.5", "(initial 4)", and the symbol form "initial h = 3" (approved 2026-11-19).
+_INITIAL_RE = re.compile(
+    r"initial\W{0,3}(\d+(?:\.\d+)?)|initial\s+[^\W\d]\w*\s*=\s*(\d+(?:\.\d+)?)"
+)
+_DECISIONS_LOG = "## Decisions log"
+
+
+def _rules_text() -> str:
+    """The spec without its Decisions log section (ruling 2026-11-19)."""
+    text = spec_text()
+    start = text.index(f"\n{_DECISIONS_LOG}\n")
+    end = text.index("\n## ", start + 1)
+    return text[:start] + text[end:]
+
+
+def _initial_matches(line: str) -> list[tuple[str, float]]:
+    return [(m.group(0), float(m.group(1) or m.group(2))) for m in _INITIAL_RE.finditer(line)]
+
+
+def _initial_missing(text: str, entries: list[dict[str, Any]]) -> list[str]:
+    """Initial phrases with no entry whose source holds the phrase and whose value matches.
+    Requiring the phrase in the source stops another number on the same line (e.g. PRV-03's
+    minimum of 3 prior games) from covering it."""
     missing = []
-    for line in spec_text().splitlines():
-        for m in re.finditer(r"initial\W{0,3}(\d+(?:\.\d+)?)", line):
-            number = float(m.group(1))
-            found.append(number)
-            if not _covered(None, number, line, entries):
-                missing.append(f"initial {m.group(1)} in: {line[:90]}...")
+    for line in text.splitlines():
+        for phrase, number in _initial_matches(line):
+            if not any(
+                phrase in e["source"] and e["source"] in line and value_matches(e["value"], number)
+                for e in entries
+            ):
+                missing.append(f"{phrase} in: {line[:90]}...")
+    return missing
+
+
+def test_every_initial_phrase_is_in_params() -> None:
+    text = _rules_text()
+    found = [m for line in text.splitlines() for m in _initial_matches(line)]
     assert len(found) >= 5, f"only {len(found)} 'initial N' phrases parsed"
+    missing = _initial_missing(text, _entries())
     assert not missing, "\n".join(missing)
 
 
@@ -95,3 +124,35 @@ def test_one_lambda_per_matchup_adjustment() -> None:
     lambdas = [e for e in _entries() if "λ (initial 0.5)" in e["source"]]
     assert sorted(i for e in lambdas for i in _ids(e)) == ["MTC-01", "MTC-02", "MTC-03"]
     assert all(e["value"] == 0.5 for e in lambdas)
+
+
+# The PRV-03 sentence that sync #2 (2026-11-19) replaced; it slipped past the old regex.
+_OLD_PRV03 = "The usage half-life is initial h = 3 games."
+_NEW_PRV03 = (
+    "The usage half-life is G3's fitted usage half-life from the same params_fitted window file"
+    " as k."
+)
+
+
+def test_initial_phrase_regex_reads_symbol_form() -> None:
+    """Approved 2026-11-19: "initial <symbol> = N" counts as an initial phrase."""
+    assert [(t, n) for t, n in _initial_matches(_OLD_PRV03)] == [("initial h = 3", 3.0)]
+    assert [(t, n) for t, n in _initial_matches("λ (initial 0.5)")] == [("initial 0.5", 0.5)]
+
+
+def test_old_prv03_line_would_have_failed() -> None:
+    """The pre-sync PRV-03 line, rebuilt from today's spec, is reported missing even though
+    the same line holds another 3 (PRV-03's minimum prior games)."""
+    line = next(ln for ln in _rules_text().splitlines() if ln.startswith("**PRV-03 "))
+    assert line.count(_NEW_PRV03) == 1
+    old_line = line.replace(_NEW_PRV03, _OLD_PRV03)
+    assert _initial_missing(old_line, _entries()) == [f"initial h = 3 in: {old_line[:90]}..."]
+
+
+def test_rules_text_skips_only_the_decisions_log() -> None:
+    """Ruling 2026-11-19: the Decisions log records history (it quotes replaced wording), so
+    the initial-phrase scan reads every other section."""
+    text = _rules_text()
+    assert "## Decisions log" not in text
+    assert "## Open questions" in text and "## Sources" in text
+    assert "**PRV-03 " in text

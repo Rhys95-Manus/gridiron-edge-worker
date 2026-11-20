@@ -429,7 +429,8 @@ Phase 7 turns probabilities into sized recommendations, Phase 8 decides whether 
 ### Phase 6b — Shadow log (no money)
 
 ```text
-Phase 6b. As soon as Phase 6 prices any market type, start a shadow log on
+Phase 6b. Started early as the shadow track (decision 2026-11-13): pricer v0
+(MODEL_SPEC 9b, PRV-01 to PRV-12) and the shadow log run on
 live 2026 games. No money, no recommendations shown as live. A scheduled
 job records, at each decision time (kickoff - 24 h and kickoff - 90 min),
 for every priced Kalshi market: our probability, the model and data
@@ -444,7 +445,8 @@ timestamped; the model is never tuned on shadow results; any model change
 starts a new shadow version, reported separately. The shadow log is
 evidence alongside Phase 8, never a replacement for its go-live test.
 Tests first, including that a row written before kickoff can never be
-changed afterwards.
+changed afterwards. Exact rules: MODEL_SPEC SHD-01 to SHD-18. When Phase 6
+prices a market type, it joins the shadow log as a new shadow version.
 ```
 
 ### Phase 7 — Edge and decision layer

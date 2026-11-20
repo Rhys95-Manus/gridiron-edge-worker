@@ -62,6 +62,7 @@ markers = [
     "phase8: backtest harness",
     "phase9: Base44 sync, scheduler, paper mode",
     "phase10: live operations",
+    "shadow: shadow track, pricer v0 and shadow log (MODEL_SPEC 9b, PRV- and SHD-)",
     "realdata: needs the local data/ store from `ge ingest`; run locally, not in CI",
 ]
 

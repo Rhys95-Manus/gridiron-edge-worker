@@ -1,0 +1,22 @@
+{
+ "source": "data/raw/kalshi_markets/season=2026/pulled_at=20261120T020003Z/part.parquet (DATA-08, via ge ingest)",
+ "pulled_at": "2026-11-20T02:00:03.872021+00:00",
+ "anonymised": "player names -> 'Player NN', ticker player segment -> <team>PLAYERNN, Kalshi player UUID -> placeholder; everything else as downloaded",
+ "rules": {
+  "KXNFLRECYDS": {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-HOUPLAYER02-10",
+   "rules_primary": "If Player 02 records 10+ receiving yards in the Indianapolis vs Houston Pro Football game originally scheduled for Nov 19, 2026, then the market resolves to Yes.",
+   "rules_secondary": "The following market refers to Player 02 in the Indianapolis vs Houston Pro Football game originally scheduled for Nov 19, 2026. If Player 02 is active but does not appear in any live play, the market settles to the fair market price before game start. Once Player 02 appears in at least one live play, even if nullified by penalty, the market settles based on receiving yards recorded.\n\nKalshi is not affiliated, associated, authorized, endorsed by, or in any way officially connected with the Governing League. All trademarks, logos, and brand names are the property of their respective owners."
+  },
+  "KXNFLRSHYDS": {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-ARIPLAYER03-10",
+   "rules_primary": "If Player 03 records 10+ rushing yards in the Arizona vs Kansas City professional football game originally scheduled for Nov 22, 2026, then the market resolves to Yes.",
+   "rules_secondary": "The following market refers to Player 03 in the Arizona vs Kansas City professional football game originally scheduled for Nov 22, 2026. If Player 03 is active but does not appear in any live play, the market settles to the fair market price before game start. Once Player 03 appears in at least one live play, even if nullified by penalty, the market settles based on rushing yards recorded.\n\nKalshi is not affiliated, associated, authorized, endorsed by, or in any way officially connected with the Governing League. All trademarks, logos, and brand names are the property of their respective owners."
+  },
+  "KXNFLREC": {
+   "ticker": "KXNFLREC-26NOV19INDHOU-HOUPLAYER02-1",
+   "rules_primary": "If Player 02 records 1+ receptions in the Indianapolis vs Houston Pro Football game originally scheduled for Nov 19, 2026, then the market resolves to Yes.",
+   "rules_secondary": "The following market refers to Player 02 in the Indianapolis vs Houston Pro Football game originally scheduled for Nov 19, 2026. If Player 02 is active but does not appear in any live play, the market settles to the fair market price before game start. Once Player 02 appears in at least one live play, even if nullified by penalty, the market settles based on receptions recorded.\n\nKalshi is not affiliated, associated, authorized, endorsed by, or in any way officially connected with the Governing League. All trademarks, logos, and brand names are the property of their respective owners."
+  }
+ }
+}

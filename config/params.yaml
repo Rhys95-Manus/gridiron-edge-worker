@@ -349,7 +349,9 @@ fitting:
 
 # Spec section 9b (synced 2026-11-19). Reused, not duplicated: SHD-01 offsets are BT-01's,
 # SHD-10 thresholds are EDG-03's yardage row, SHD-16 depth is EDG-04's, 2025 is BT-01's holdout,
-# and PRV-03's k is PLY-35's fitted value in params_fitted.
+# and PRV-03's k is PLY-35's fitted value in params_fitted. PRV-03's usage half-life is G3's
+# fitted conventions.g3_usage_half_life_games from the same params_fitted window file as k
+# (sync #2, 2026-11-19); no entry here.
 pricer_v0:
   prv_01_strike_offset: {spec_id: PRV-01, value: 0.5, status: initial, source: 'YES means the stat is at least X = floor_strike + 0.5.'}
   prv_03_min_prior_games_in_stint: {spec_id: PRV-03, value: 3, status: initial, source: 'A player needs at least 3 prior games in the stint to be priced.'}

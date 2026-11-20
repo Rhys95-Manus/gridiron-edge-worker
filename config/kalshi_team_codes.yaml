@@ -1,0 +1,11 @@
+# PRV-01 (ruling 2026-11-19, pending spec wording): Kalshi's NFL team codes, used to split a
+# prop ticker's game code (e.g. 26NOV22ARIKC -> ARI, KC) and read the player's team code from
+# the player segment. The spec defines no split rule; a 2-or-3-letter rule is ambiguous on
+# about 10% of 2026 tickers (LA|CKC vs LAC|KC), so the codes are listed.
+# These are Kalshi's codes, not nflverse's (Kalshi uses JAC and LAR); mapping them to
+# rosters_weekly is PRV-02's job. Codes are quoted: YAML reads a bare NO as false.
+spec_id: PRV-01
+status: initial
+source: last segment of every KXNFLGAME ticker in data/raw/kalshi_markets/season=2026, partitions pulled_at=20260929T211431Z to pulled_at=20261120T020003Z (DATA-08, via ge ingest)
+pulled_at: '2026-11-20T02:00:03+00:00'
+codes: ['ARI', 'ATL', 'BAL', 'BUF', 'CAR', 'CHI', 'CIN', 'CLE', 'DAL', 'DEN', 'DET', 'GB', 'HOU', 'IND', 'JAC', 'KC', 'LAC', 'LAR', 'LV', 'MIA', 'MIN', 'NE', 'NO', 'NYG', 'NYJ', 'PHI', 'PIT', 'SEA', 'SF', 'TB', 'TEN', 'WAS']

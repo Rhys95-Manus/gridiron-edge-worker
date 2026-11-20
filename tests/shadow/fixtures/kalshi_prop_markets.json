@@ -1,0 +1,295 @@
+{
+ "source": "data/raw/kalshi_markets/season=2026/pulled_at=20261120T020003Z/part.parquet (DATA-08, via ge ingest)",
+ "pulled_at": "2026-11-20T02:00:03.872021+00:00",
+ "anonymised": "player names -> 'Player NN', ticker player segment -> <team>PLAYERNN, Kalshi player UUID -> placeholder; everything else as downloaded",
+ "markets": [
+  {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-INDPLAYER01-5",
+   "event_ticker": "KXNFLRECYDS-26NOV19INDHOU",
+   "series_ticker": "KXNFLRECYDS",
+   "title": "Player 01: 5+ receiving yards",
+   "yes_sub_title": "Player 01: 5+",
+   "no_sub_title": "Player 01: 5+",
+   "floor_strike": 4.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000001",
+    "football_team": "fe5f8219-fef4-4498-83d5-f6cc6f2cb7bf"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-INDPLAYER01-10",
+   "event_ticker": "KXNFLRECYDS-26NOV19INDHOU",
+   "series_ticker": "KXNFLRECYDS",
+   "title": "Player 01: 10+ receiving yards",
+   "yes_sub_title": "Player 01: 10+",
+   "no_sub_title": "Player 01: 10+",
+   "floor_strike": 9.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000001",
+    "football_team": "fe5f8219-fef4-4498-83d5-f6cc6f2cb7bf"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-INDPLAYER01-15",
+   "event_ticker": "KXNFLRECYDS-26NOV19INDHOU",
+   "series_ticker": "KXNFLRECYDS",
+   "title": "Player 01: 15+ receiving yards",
+   "yes_sub_title": "Player 01: 15+",
+   "no_sub_title": "Player 01: 15+",
+   "floor_strike": 14.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000001",
+    "football_team": "fe5f8219-fef4-4498-83d5-f6cc6f2cb7bf"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-HOUPLAYER02-5",
+   "event_ticker": "KXNFLRECYDS-26NOV19INDHOU",
+   "series_ticker": "KXNFLRECYDS",
+   "title": "Player 02: 5+ receiving yards",
+   "yes_sub_title": "Player 02: 5+",
+   "no_sub_title": "Player 02: 5+",
+   "floor_strike": 4.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000002",
+    "football_team": "96edbad3-1be5-4528-a3ed-c6e0c28c5fa0"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-HOUPLAYER02-10",
+   "event_ticker": "KXNFLRECYDS-26NOV19INDHOU",
+   "series_ticker": "KXNFLRECYDS",
+   "title": "Player 02: 10+ receiving yards",
+   "yes_sub_title": "Player 02: 10+",
+   "no_sub_title": "Player 02: 10+",
+   "floor_strike": 9.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000002",
+    "football_team": "96edbad3-1be5-4528-a3ed-c6e0c28c5fa0"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRECYDS-26NOV19INDHOU-HOUPLAYER02-15",
+   "event_ticker": "KXNFLRECYDS-26NOV19INDHOU",
+   "series_ticker": "KXNFLRECYDS",
+   "title": "Player 02: 15+ receiving yards",
+   "yes_sub_title": "Player 02: 15+",
+   "no_sub_title": "Player 02: 15+",
+   "floor_strike": 14.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000002",
+    "football_team": "96edbad3-1be5-4528-a3ed-c6e0c28c5fa0"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-ARIPLAYER03-10",
+   "event_ticker": "KXNFLRSHYDS-26NOV22ARIKC",
+   "series_ticker": "KXNFLRSHYDS",
+   "title": "Player 03: 10+ rushing yards",
+   "yes_sub_title": "Player 03: 10+",
+   "no_sub_title": "Player 03: 10+",
+   "floor_strike": 9.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000003",
+    "football_team": "d73dae4f-1f08-4b5e-bf23-4e25e9b6a69c"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-ARIPLAYER03-15",
+   "event_ticker": "KXNFLRSHYDS-26NOV22ARIKC",
+   "series_ticker": "KXNFLRSHYDS",
+   "title": "Player 03: 15+ rushing yards",
+   "yes_sub_title": "Player 03: 15+",
+   "no_sub_title": "Player 03: 15+",
+   "floor_strike": 14.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000003",
+    "football_team": "d73dae4f-1f08-4b5e-bf23-4e25e9b6a69c"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-ARIPLAYER03-20",
+   "event_ticker": "KXNFLRSHYDS-26NOV22ARIKC",
+   "series_ticker": "KXNFLRSHYDS",
+   "title": "Player 03: 20+ rushing yards",
+   "yes_sub_title": "Player 03: 20+",
+   "no_sub_title": "Player 03: 20+",
+   "floor_strike": 19.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000003",
+    "football_team": "d73dae4f-1f08-4b5e-bf23-4e25e9b6a69c"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-KCPLAYER04-10",
+   "event_ticker": "KXNFLRSHYDS-26NOV22ARIKC",
+   "series_ticker": "KXNFLRSHYDS",
+   "title": "Player 04: 10+ rushing yards",
+   "yes_sub_title": "Player 04: 10+",
+   "no_sub_title": "Player 04: 10+",
+   "floor_strike": 9.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000004",
+    "football_team": "64f72720-2e4a-4cc8-a39b-ca148aecb389"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-KCPLAYER04-15",
+   "event_ticker": "KXNFLRSHYDS-26NOV22ARIKC",
+   "series_ticker": "KXNFLRSHYDS",
+   "title": "Player 04: 15+ rushing yards",
+   "yes_sub_title": "Player 04: 15+",
+   "no_sub_title": "Player 04: 15+",
+   "floor_strike": 14.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000004",
+    "football_team": "64f72720-2e4a-4cc8-a39b-ca148aecb389"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLRSHYDS-26NOV22ARIKC-KCPLAYER04-20",
+   "event_ticker": "KXNFLRSHYDS-26NOV22ARIKC",
+   "series_ticker": "KXNFLRSHYDS",
+   "title": "Player 04: 20+ rushing yards",
+   "yes_sub_title": "Player 04: 20+",
+   "no_sub_title": "Player 04: 20+",
+   "floor_strike": 19.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000004",
+    "football_team": "64f72720-2e4a-4cc8-a39b-ca148aecb389"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLREC-26NOV19INDHOU-INDPLAYER01-1",
+   "event_ticker": "KXNFLREC-26NOV19INDHOU",
+   "series_ticker": "KXNFLREC",
+   "title": "Player 01: 1+ receptions",
+   "yes_sub_title": "Player 01: 1+",
+   "no_sub_title": "Player 01: 1+",
+   "floor_strike": 0.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000001",
+    "football_team": "fe5f8219-fef4-4498-83d5-f6cc6f2cb7bf"
+   },
+   "market_type": "binary",
+   "status": "finalized"
+  },
+  {
+   "ticker": "KXNFLREC-26NOV19INDHOU-INDPLAYER01-2",
+   "event_ticker": "KXNFLREC-26NOV19INDHOU",
+   "series_ticker": "KXNFLREC",
+   "title": "Player 01: 2+ receptions",
+   "yes_sub_title": "Player 01: 2+",
+   "no_sub_title": "Player 01: 2+",
+   "floor_strike": 1.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000001",
+    "football_team": "fe5f8219-fef4-4498-83d5-f6cc6f2cb7bf"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLREC-26NOV19INDHOU-INDPLAYER01-3",
+   "event_ticker": "KXNFLREC-26NOV19INDHOU",
+   "series_ticker": "KXNFLREC",
+   "title": "Player 01: 3+ receptions",
+   "yes_sub_title": "Player 01: 3+",
+   "no_sub_title": "Player 01: 3+",
+   "floor_strike": 2.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000001",
+    "football_team": "fe5f8219-fef4-4498-83d5-f6cc6f2cb7bf"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLREC-26NOV19INDHOU-HOUPLAYER02-1",
+   "event_ticker": "KXNFLREC-26NOV19INDHOU",
+   "series_ticker": "KXNFLREC",
+   "title": "Player 02: 1+ receptions",
+   "yes_sub_title": "Player 02: 1+",
+   "no_sub_title": "Player 02: 1+",
+   "floor_strike": 0.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000002",
+    "football_team": "96edbad3-1be5-4528-a3ed-c6e0c28c5fa0"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLREC-26NOV19INDHOU-HOUPLAYER02-2",
+   "event_ticker": "KXNFLREC-26NOV19INDHOU",
+   "series_ticker": "KXNFLREC",
+   "title": "Player 02: 2+ receptions",
+   "yes_sub_title": "Player 02: 2+",
+   "no_sub_title": "Player 02: 2+",
+   "floor_strike": 1.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000002",
+    "football_team": "96edbad3-1be5-4528-a3ed-c6e0c28c5fa0"
+   },
+   "market_type": "binary",
+   "status": "active"
+  },
+  {
+   "ticker": "KXNFLREC-26NOV19INDHOU-HOUPLAYER02-3",
+   "event_ticker": "KXNFLREC-26NOV19INDHOU",
+   "series_ticker": "KXNFLREC",
+   "title": "Player 02: 3+ receptions",
+   "yes_sub_title": "Player 02: 3+",
+   "no_sub_title": "Player 02: 3+",
+   "floor_strike": 2.5,
+   "strike_type": "greater",
+   "custom_strike": {
+    "football_player": "00000000-0000-4000-8000-000000000002",
+    "football_team": "96edbad3-1be5-4528-a3ed-c6e0c28c5fa0"
+   },
+   "market_type": "binary",
+   "status": "active"
+  }
+ ]
+}
