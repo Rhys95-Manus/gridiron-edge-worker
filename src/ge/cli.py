@@ -384,6 +384,26 @@ def sim_season(
     print(ATTRIBUTION)
 
 
+@app.command("sim-gate")
+def sim_gate(
+    model_version: Annotated[str, typer.Option(help="Tag of the gate run.")],
+    seasons: Annotated[str, typer.Option(help="Seasons, e.g. 2021-2024 (never 2025).")],
+    out_dir: Annotated[Path | None, typer.Option(hidden=True)] = None,
+) -> None:
+    """PRJ-02 calibration gate: league averages vs the PRJ-02 tolerances per season (gated)
+    plus the reported checks; writes reports/phase5/gate/<model-version>/gate.md. Read-only."""
+    from ge.config import REPO_ROOT
+    from ge.models.sim.gate import write_report
+    from ge.store.holdout import refuse_holdout
+
+    years = _seasons(seasons)
+    for s in years:
+        refuse_holdout(s, "ge sim-gate")  # BT-07b: before any read
+    path = write_report(model_version, years, out_dir or REPO_ROOT / "reports" / "phase5" / "gate")
+    print(path.read_text(encoding="utf-8"))
+    print(f"report: {path}")
+
+
 def _when(as_of: str | None) -> dt.datetime | None:
     if as_of is None:
         return None
