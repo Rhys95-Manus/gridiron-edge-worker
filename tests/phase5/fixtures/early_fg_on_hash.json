@@ -1,0 +1,8 @@
+{
+  "source": "synthetic: tests/phase5/sim_synth.py synthetic_game() with early_fg_on=True and the planted M4 coefficients below, synthetic_league(), simulate(..., 2000, game_id='G_DIAG_HASH', model_version='m1'), default chunks from config/sim.yaml, late-half timeouts off; no football data",
+  "generated": "2026-11-21, on commit 8f144aa (after the approved early-FG build f8f4ea2, fix round 2 1b0739d and F4) with no tracked changes (ruling Q8, Rhys 2026-11-16: pin the path-on hash after the approved build); 430 early-down attempts in the 2,000 runs",
+  "hashed": "SHA-256 over the bytes of team[:, :, :171] (every team column at capture), player, first_td, ot, in that order",
+  "coefficients": [2.7, -0.43, 3.65, -0.62],
+  "nteam_at_capture": 171,
+  "regular": "a8b45e5a7100c357110586e0fa7466e33ba53489af5cfa906dbb569a585e6d2e"
+}

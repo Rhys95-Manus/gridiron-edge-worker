@@ -256,6 +256,22 @@ def test_engine_early_fg_off_leaves_outputs_identical() -> None:
     assert t[..., A.R_EFG_ELIG].sum() == 0 and t[..., A.R_EFG_ATT].sum() == 0
 
 
+GOLDEN_ON = Path(__file__).parent / "fixtures" / "early_fg_on_hash.json"
+
+
+def test_engine_early_fg_on_hash() -> None:
+    """Ruling Q8: the path-on full-output hash, pinned after the approved build (planted M4
+    coefficients TRUE, late-half timeouts off), so any later change to the early-FG path shows."""
+    want = json.loads(GOLDEN_ON.read_text(encoding="utf-8"))
+    assert want["coefficients"] == list(TRUE)
+    game = replace(synthetic_game(), early_fg_on=True, early_fg=np.array(TRUE, dtype=np.float64))
+    r = _sim(game, synthetic_league(), 2000, gid="G_DIAG_HASH")
+    h = hashlib.sha256()
+    for a in (r.team[:, :, : want["nteam_at_capture"]], r.player, r.first_td, r.ot):
+        h.update(np.ascontiguousarray(a).tobytes())
+    assert h.hexdigest() == want["regular"]
+
+
 def test_engine_early_fg_counters_do_not_draw() -> None:
     """Ruling Q7: on with P = 0 exactly draws nothing, so every output but the two new counters
     equals the path off."""
