@@ -465,5 +465,117 @@ def backtest(season: Season = None, week: Week = None, as_of: AsOf = None) -> No
     _not_built("backtest", "Phase 8")
 
 
+shadow = typer.Typer(
+    help="Shadow log (MODEL_SPEC 9b, SHD-01 to SHD-19): no money, public market data only.",
+    no_args_is_help=True,
+)
+app.add_typer(shadow, name="shadow")
+ShadowVersion = Annotated[str, typer.Option("--shadow-version", help="SHD-15 shadow version.")]
+# SHD-15: the version on shadow/v0 before pricer v0 exists (open question Q2, session 4).
+DEFAULT_SHADOW_VERSION = "0"
+
+
+@shadow.command("plan")
+def shadow_plan_cmd(
+    hours: Annotated[float, typer.Option(help="Show windows opening within this many hours.")] = 24,
+    shadow_version: ShadowVersion = DEFAULT_SHADOW_VERSION,
+) -> None:
+    """SHD-01/02/04: upcoming snapshot windows from the newest stored schedules. No network."""
+    from ge.config import load_params
+    from ge.ingest.nflverse import current_season
+    from ge.shadow.schedule import ShadowWindows, windows
+    from ge.shadow.store import ShadowStore
+    from ge.shadow.tick import (
+        TickDeps,
+        _games,
+        _pull_schedules,
+        _raw_schedules,
+        newest_schedules,
+        roster_mapper,
+    )
+
+    now = dt.datetime.now(dt.UTC)
+    deps = TickDeps(
+        ShadowStore(shadow_version),
+        None,
+        lambda: now,
+        current_season(),
+        _raw_schedules,
+        _pull_schedules,
+        roster_mapper,
+        None,
+    )
+    kicks, _ = _games(newest_schedules(deps, now, allow_pull=False))
+    cfg = ShadowWindows.from_params(load_params())
+    horizon = now + dt.timedelta(hours=hours)
+    for g in sorted(kicks, key=lambda x: x.kickoff_utc):
+        for w in windows(g.kickoff_utc, cfg):
+            if w.close >= now and w.open <= horizon:
+                print(
+                    f"{g.game_id:<18} {w.snapshot_type:<13} open {w.open:%a %H:%M}Z "
+                    f"target {w.target:%H:%M}Z close {w.close:%H:%M}Z"
+                )
+
+
+def _shadow_run(job: str, shadow_version: str, only_game: str | None) -> None:
+    import logging
+
+    from ge.config import load_ingest
+    from ge.ingest.jobs import kalshi_http
+    from ge.shadow.tick import live_deps, run_close, run_settle, run_tick
+
+    logging.basicConfig(level=logging.WARNING)
+    with kalshi_http(load_ingest()) as http:
+        deps = live_deps(shadow_version, http)
+        try:
+            if job == "tick":
+                rep = run_tick(deps, {only_game} if only_game else None)
+                print(f"tick: {rep.summary()}")
+                for e in rep.errors:
+                    print(f"  ERROR {e}")
+            if job in ("tick", "close") and not only_game:
+                print(f"close: {run_close(deps)} rows")
+            if job in ("tick", "settle") and not only_game:
+                print(f"settle: {run_settle(deps)} rows")
+        finally:
+            print(f"requests {http.attempts}, HTTP 429 x{http.retryable_by_status.get(429, 0)}")
+    print(ATTRIBUTION)
+
+
+@shadow.command("tick")
+def shadow_tick_cmd(
+    shadow_version: ShadowVersion = DEFAULT_SHADOW_VERSION,
+    only_game: Annotated[
+        str | None, typer.Option("--only-game", help="Plan only this game_id (manual tick).")
+    ] = None,
+) -> None:
+    """SHD-03: one tick (schedules, misses, due snapshots), then close and settle."""
+    _shadow_run("tick", shadow_version, only_game)
+
+
+@shadow.command("close")
+def shadow_close_cmd(shadow_version: ShadowVersion = DEFAULT_SHADOW_VERSION) -> None:
+    """SHD-05: closing prices for snapshots whose game has kicked off."""
+    _shadow_run("close", shadow_version, None)
+
+
+@shadow.command("settle")
+def shadow_settle_cmd(shadow_version: ShadowVersion = DEFAULT_SHADOW_VERSION) -> None:
+    """SHD-13: Kalshi's settled results for closed markets."""
+    _shadow_run("settle", shadow_version, None)
+
+
+@shadow.command("verify")
+def shadow_verify_cmd(shadow_version: ShadowVersion = DEFAULT_SHADOW_VERSION) -> None:
+    """SHD-14: recompute every hash in the shadow store and its manifest chain."""
+    from ge.shadow.store import SHADOW_BASE, verify_store
+
+    problems = verify_store(SHADOW_BASE, shadow_version)
+    for p in problems:
+        print(f"PROBLEM {p}")
+    print(f"verify v{shadow_version}: {'OK' if not problems else f'{len(problems)} problems'}")
+    raise typer.Exit(1 if problems else 0)
+
+
 if __name__ == "__main__":
     app()

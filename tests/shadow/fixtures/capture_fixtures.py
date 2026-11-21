@@ -2,6 +2,7 @@
 
     uv run python tests/shadow/fixtures/capture_fixtures.py
     uv run python tests/shadow/fixtures/capture_fixtures.py team-map   (PRV-02 games only)
+    uv run python tests/shadow/fixtures/capture_fixtures.py shadow     (SHD snapshot/settle)
 
 Reads data/raw/kalshi_markets/season=2026 (DATA-08 public market data, written by
 `ge ingest`) and, for team-map, data/raw/schedules/season=2026 (DATA-01); 2025 is the holdout
@@ -226,6 +227,142 @@ def team_map_games() -> None:
     print(f"{len(events)} KXNFLGAME events, {len(games)} games from {sched_part.name}")
 
 
+BOOK_DIR = REPO / "data" / "raw" / "kalshi_orderbook" / "season=2026"
+# SHD snapshot fields read from a /markets record (as downloaded), on top of KEEP.
+SHADOW_KEEP = (
+    *KEEP,
+    "close_time",
+    "occurrence_datetime",
+    "yes_bid_dollars",
+    "yes_ask_dollars",
+    "no_bid_dollars",
+    "no_ask_dollars",
+    "yes_bid_size_fp",
+    "yes_ask_size_fp",
+    "last_price_dollars",
+    "volume_fp",
+    "volume_24h_fp",
+    "open_interest_fp",
+    "result",
+    "settlement_value_dollars",
+)
+
+
+def _shadow_market(anon: Anonymiser, j: dict[str, Any], codes: set[str]) -> dict[str, Any]:
+    g = GAME.match(j["event_ticker"])
+    assert g, j["event_ticker"]
+    away, home = _split(g.group(1), codes)
+    out = anon.market(j, _team(j, away, home))
+    out |= {k: j[k] for k in SHADOW_KEEP if k in j and k not in out}
+    return out
+
+
+def shadow_game() -> None:
+    """SHD-01 / SHD-13 / SHD-16 inputs: one 2026 game's three PRV-01 events (every market, as
+    downloaded) and their order books, rebuilt exactly from kalshi_orderbook (bid_cc -> the
+    API's 4-decimal dollar string, qty as stored), from the newest partition that has books for
+    all three series; the game's schedules row; and settled markets (yes, no, a fair-price
+    scalar) plus an active one from any 2026 partition."""
+    codes, _, _ = team_codes()
+    code_set = set(codes)
+    assert BOOK_DIR.name == "season=2026", BOOK_DIR
+    book_parts = sorted(p for p in BOOK_DIR.iterdir() if p.name.startswith("pulled_at="))
+    chosen = None
+    for bp in reversed(book_parts):
+        books = pl.read_parquet(bp / "part.parquet")
+        books = books.with_columns(
+            pl.col("ticker").str.extract(r"^([A-Z0-9]+-\d{2}[A-Z]{3}\d{2}[A-Z]+)-", 1).alias("ev"),
+            pl.col("ticker").str.extract(r"^([A-Z0-9]+)-", 1).alias("series"),
+        ).filter(pl.col("series").is_in(SERIES))
+        if books.is_empty():
+            continue
+        books = books.with_columns(pl.col("ev").str.extract(r"-(.+)$", 1).alias("game"))
+        per_game = books.group_by("game").agg(pl.col("series").n_unique().alias("n"))
+        full = sorted(per_game.filter(pl.col("n") == len(SERIES))["game"].to_list())
+        if full:
+            chosen = (bp, books, full[0])
+            break
+    assert chosen, "no partition has books for all three series of one game"
+    bp, books, game = chosen
+    mpart = SEASON_DIR / bp.name
+    df = pl.read_parquet(mpart / "part.parquet").filter(pl.col("series_ticker").is_in(SERIES))
+    rows = [json.loads(r) for r in df["raw_json"]]
+    rows = sorted(
+        (j for j in rows if j["event_ticker"].split("-", 1)[1] == game), key=lambda j: j["ticker"]
+    )
+    anon = Anonymiser()
+    real_by_anon: dict[str, str] = {}
+    markets = []
+    for j in rows:
+        m = _shadow_market(anon, j, code_set)
+        real_by_anon[m["ticker"]] = j["ticker"]
+        markets.append(m)
+    orderbooks: dict[str, dict[str, list[list[str]]]] = {}
+    for m in markets:
+        mine = books.filter(pl.col("ticker") == real_by_anon[m["ticker"]]).sort("bid_cc")
+        if mine.is_empty():
+            continue
+        orderbooks[m["ticker"]] = {
+            f"{side}_dollars": [
+                [f"{cc / 10000:.4f}", str(q)]
+                for cc, q in mine.filter(pl.col("side") == side).select("bid_cc", "qty").iter_rows()
+            ]
+            for side in ("yes", "no")
+        }
+    assert SCHEDULES_DIR.name == "season=2026", SCHEDULES_DIR
+    sched_part = sorted(p for p in SCHEDULES_DIR.iterdir() if p.name.startswith("pulled_at="))[-1]
+    sched = pl.read_parquet(sched_part / "part.parquet")
+    ev0 = GAME.match(rows[0]["event_ticker"])
+    assert ev0
+    date = dt_date(rows[0]["event_ticker"])
+    sched_rows = (
+        sched.filter(pl.col("gameday") == date)
+        .select(*SCHEDULE_COLUMNS, "gametime")
+        .sort("game_id")
+        .to_dicts()
+    )
+    settled: list[dict[str, Any]] = []
+    want = {("finalized", "yes"), ("finalized", "no"), ("finalized", "scalar"), ("active", "")}
+    for p in reversed(_partitions()):
+        part = pl.read_parquet(p / "part.parquet", columns=["series_ticker", "raw_json"])
+        for r in part.filter(pl.col("series_ticker").is_in(SERIES))["raw_json"]:
+            j = json.loads(r)
+            k = (j.get("status"), j.get("result"))
+            if k in want and TITLE.match(j["title"]):
+                want.discard(k)
+                settled.append(_shadow_market(anon, j, code_set) | {"from_partition": p.name})
+        if not want:
+            break
+    assert not want, want
+    body = {
+        "source": f"{_source(mpart)}; order books from data/raw/kalshi_orderbook/season=2026/"
+        f"{bp.name}/part.parquet; schedules from data/raw/schedules/season=2026/"
+        f"{sched_part.name}/part.parquet (DATA-01); settled markets from the kalshi_markets "
+        "partition named in each row's from_partition (DATA-08, via ge ingest)",
+        "pulled_at": _pulled_at(df),
+        "schedules_pulled_at": _pulled_at(sched),
+        "anonymised": "player names -> 'Player NN', ticker player segment -> <team>PLAYERNN, "
+        "Kalshi player UUID -> placeholder; everything else as downloaded",
+        "orderbook_note": "orderbook_fp rebuilt from stored levels: price = bid_cc / 10000 as a "
+        "4-decimal string, quantity as stored; levels ascending by price as the API sends them",
+        "schedules": sched_rows,
+        "markets": markets,
+        "orderbooks": orderbooks,
+        "settled": settled,
+    }
+    anon.check(json.dumps(body, ensure_ascii=False))
+    _save("kalshi_shadow_game.json", body)
+    print(f"{len(markets)} markets, {len(orderbooks)} books, {len(settled)} settled from {bp.name}")
+
+
+def dt_date(event_ticker: str) -> str:
+    import datetime as _dt
+
+    m = re.search(r"-(\d{2}[A-Z]{3}\d{2})", event_ticker)
+    assert m
+    return _dt.datetime.strptime(m.group(1).title(), "%y%b%d").date().isoformat()
+
+
 def _team(j: dict[str, Any], away: str, home: str) -> str:
     player = j["ticker"].split("-")[2]
     hits = [t for t in (away, home) if player.startswith(t)]
@@ -238,5 +375,7 @@ if __name__ == "__main__":
 
     if sys.argv[1:] == ["team-map"]:
         team_map_games()
+    elif sys.argv[1:] == ["shadow"]:
+        shadow_game()
     else:
         main()
