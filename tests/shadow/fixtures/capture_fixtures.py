@@ -1,9 +1,11 @@
 """Save the shadow-track fixtures from the local raw store. Run once, by hand:
 
     uv run python tests/shadow/fixtures/capture_fixtures.py
+    uv run python tests/shadow/fixtures/capture_fixtures.py team-map   (PRV-02 games only)
 
-Reads data/raw/kalshi_markets/season=2026 only (DATA-08 public market data, written by
-`ge ingest`); 2025 is the holdout and is never opened. Uses polars directly (not ge code) so
+Reads data/raw/kalshi_markets/season=2026 (DATA-08 public market data, written by
+`ge ingest`) and, for team-map, data/raw/schedules/season=2026 (DATA-01); 2025 is the holdout
+and is never opened. Uses polars directly (not ge code) so
 fixtures don't depend on the code under test. Every file records its source and pull time
 (CLAUDE.md rule 2). Player names, the name part of the ticker's player segment and Kalshi
 player UUIDs are replaced with placeholders (Player 01, PLAYER01, a fixed placeholder UUID).
@@ -189,6 +191,41 @@ def main() -> None:
     print(f"{len(markets)} markets, {len(rules)} rules, {len(codes)} team codes from {newest.name}")
 
 
+SCHEDULES_DIR = REPO / "data" / "raw" / "schedules" / "season=2026"
+GAME_EVENT = re.compile(r"^KXNFLGAME-\d{2}[A-Z]{3}\d{2}[A-Z]+$")
+SCHEDULE_COLUMNS = ("game_id", "season", "game_type", "week", "gameday", "away_team", "home_team")
+
+
+def team_map_games() -> None:
+    """PRV-02 inputs: every distinct 2026 KXNFLGAME event ticker (all season=2026 kalshi_markets
+    partitions) and every game in the newest 2026 schedules pull (ID, week, date and teams only;
+    no scores, lines or names)."""
+    parts = _partitions()
+    events: set[str] = set()
+    for p in parts:
+        df = pl.read_parquet(p / "part.parquet", columns=["series_ticker", "event_ticker"])
+        events |= set(df.filter(pl.col("series_ticker") == "KXNFLGAME")["event_ticker"])
+    assert all(GAME_EVENT.match(e) for e in events)
+    assert SCHEDULES_DIR.name == "season=2026", SCHEDULES_DIR
+    sched_part = sorted(p for p in SCHEDULES_DIR.iterdir() if p.name.startswith("pulled_at="))[-1]
+    sched = pl.read_parquet(sched_part / "part.parquet")
+    games = sched.select(SCHEDULE_COLUMNS).sort("game_id").to_dicts()
+    _save(
+        "kalshi_nflverse_games.json",
+        {
+            "source": "event_ticker of every KXNFLGAME market in data/raw/kalshi_markets/"
+            f"season=2026, partitions {parts[0].name} to {parts[-1].name} (DATA-08, via ge "
+            f"ingest); games from data/raw/schedules/season=2026/{sched_part.name}/part.parquet "
+            "(DATA-01 nflverse schedules, via ge ingest)",
+            "pulled_at": _pulled_at(sched),
+            "kalshi_pulled_at": _pulled_at(pl.read_parquet(parts[-1] / "part.parquet")),
+            "events": sorted(events),
+            "games": games,
+        },
+    )
+    print(f"{len(events)} KXNFLGAME events, {len(games)} games from {sched_part.name}")
+
+
 def _team(j: dict[str, Any], away: str, home: str) -> str:
     player = j["ticker"].split("-")[2]
     hits = [t for t in (away, home) if player.startswith(t)]
@@ -197,4 +234,9 @@ def _team(j: dict[str, Any], away: str, home: str) -> str:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if sys.argv[1:] == ["team-map"]:
+        team_map_games()
+    else:
+        main()

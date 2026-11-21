@@ -86,6 +86,8 @@ class _TeamCodes(BaseModel):
     codes: Annotated[
         list[Annotated[str, StringConstraints(pattern=r"^[A-Z]+$")]], Field(min_length=2)
     ]
+    # PRV-02's Kalshi -> nflverse map lives in the same file; ge.pricer_v0.teams validates it.
+    nflverse: dict[str, Any] | None = None
 
 
 def load_team_codes(path: Path = TEAM_CODES_PATH) -> frozenset[str]:
@@ -104,17 +106,24 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool)
 
 
-def _team_code(teams: str, player: str, codes: frozenset[str]) -> str | None:
-    """PRV-01: the player's team code. The game code must split into exactly one pair of
-    listed codes, and the player segment must start with exactly one of the two."""
+def split_game_code(teams: str, codes: frozenset[str]) -> tuple[str, str] | None:
+    """PRV-01: the game code's pair of Kalshi team codes, or None unless it splits into
+    exactly one pair of listed codes."""
     splits = [
         (teams[:i], teams[i:])
         for i in range(1, len(teams))
         if teams[:i] in codes and teams[i:] in codes
     ]
-    if len(splits) != 1:
+    return splits[0] if len(splits) == 1 else None
+
+
+def _team_code(teams: str, player: str, codes: frozenset[str]) -> str | None:
+    """PRV-01: the player's team code. The game code must split into exactly one pair of
+    listed codes, and the player segment must start with exactly one of the two."""
+    pair = split_game_code(teams, codes)
+    if pair is None:
         return None
-    hits = [c for c in splits[0] if player.startswith(c) and len(player) > len(c)]
+    hits = [c for c in pair if player.startswith(c) and len(player) > len(c)]
     return hits[0] if len(hits) == 1 else None
 
 

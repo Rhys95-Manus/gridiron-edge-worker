@@ -1,11 +1,56 @@
-# PRV-01 (ruling 2026-11-19, pending spec wording): Kalshi's NFL team codes, used to split a
+# PRV-01 (spec rev 119, decision 2026-11-20): Kalshi's NFL team codes, used to split a
 # prop ticker's game code (e.g. 26NOV22ARIKC -> ARI, KC) and read the player's team code from
-# the player segment. The spec defines no split rule; a 2-or-3-letter rule is ambiguous on
-# about 10% of 2026 tickers (LA|CKC vs LAC|KC), so the codes are listed.
-# These are Kalshi's codes, not nflverse's (Kalshi uses JAC and LAR); mapping them to
-# rosters_weekly is PRV-02's job. Codes are quoted: YAML reads a bare NO as false.
+# the player segment. A 2-or-3-letter rule is ambiguous on about 10% of 2026 tickers
+# (LA|CKC vs LAC|KC), so the codes are listed. These are Kalshi's codes, not nflverse's;
+# mapping them to nflverse is PRV-02's job (the nflverse block below).
+# Codes are quoted: YAML reads a bare NO as false.
 spec_id: PRV-01
 status: initial
 source: last segment of every KXNFLGAME ticker in data/raw/kalshi_markets/season=2026, partitions pulled_at=20260929T211431Z to pulled_at=20261120T020003Z (DATA-08, via ge ingest)
 pulled_at: '2026-11-20T02:00:03+00:00'
 codes: ['ARI', 'ATL', 'BAL', 'BUF', 'CAR', 'CHI', 'CIN', 'CLE', 'DAL', 'DEN', 'DET', 'GB', 'HOU', 'IND', 'JAC', 'KC', 'LAC', 'LAR', 'LV', 'MIA', 'MIN', 'NE', 'NO', 'NYG', 'NYJ', 'PHI', 'PIT', 'SEA', 'SF', 'TB', 'TEN', 'WAS']
+
+# PRV-02 (spec rev 119, decision 2026-11-20): each Kalshi code's nflverse team abbreviation,
+# derived by ge.pricer_v0.teams.derive_team_map from matching every 2026 KXNFLGAME event to the
+# schedules game on the same date (ticker date = gameday, no time-zone shift) with the same two
+# teams. tests/shadow/test_prv02_team_map.py re-derives it from the saved fixture
+# tests/shadow/fixtures/kalshi_nflverse_games.json and fails the build on any difference.
+nflverse:
+  spec_id: PRV-02
+  status: initial
+  source: "event_ticker of every KXNFLGAME market in data/raw/kalshi_markets/season=2026, partitions pulled_at=20260929T211431Z to pulled_at=20261121T140010Z (DATA-08, via ge ingest); games from data/raw/schedules/season=2026/pulled_at=20261121T140928Z/part.parquet (DATA-01 nflverse schedules, via ge ingest)"
+  pulled_at: '2026-11-21T14:09:28.178096+00:00'
+  kalshi_pulled_at: '2026-11-21T14:00:10.681215+00:00'
+  teams:
+    'ARI': 'ARI'
+    'ATL': 'ATL'
+    'BAL': 'BAL'
+    'BUF': 'BUF'
+    'CAR': 'CAR'
+    'CHI': 'CHI'
+    'CIN': 'CIN'
+    'CLE': 'CLE'
+    'DAL': 'DAL'
+    'DEN': 'DEN'
+    'DET': 'DET'
+    'GB': 'GB'
+    'HOU': 'HOU'
+    'IND': 'IND'
+    'JAC': 'JAX'
+    'KC': 'KC'
+    'LAC': 'LAC'
+    'LAR': 'LA'
+    'LV': 'LV'
+    'MIA': 'MIA'
+    'MIN': 'MIN'
+    'NE': 'NE'
+    'NO': 'NO'
+    'NYG': 'NYG'
+    'NYJ': 'NYJ'
+    'PHI': 'PHI'
+    'PIT': 'PIT'
+    'SEA': 'SEA'
+    'SF': 'SF'
+    'TB': 'TB'
+    'TEN': 'TEN'
+    'WAS': 'WAS'
