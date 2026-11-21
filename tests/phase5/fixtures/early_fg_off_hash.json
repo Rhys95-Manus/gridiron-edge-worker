@@ -1,8 +1,8 @@
 {
   "source": "synthetic: tests/phase5/sim_synth.py synthetic_game() and synthetic_league(), simulate(..., 2000, game_id='G_DIAG_HASH', model_version='m1'), default chunks from config/sim.yaml; no football data",
-  "generated": "2026-11-16, on commit 69f2d5a with no tracked changes, before any early-down field-goal code (ruling F3 (ii), Rhys 2026-11-16); the early-FG path off must reproduce it",
+  "generated": "2026-11-16, on commit 69f2d5a with no tracked changes, before any early-down field-goal code (ruling F3 (ii), Rhys 2026-11-16); the early-FG path off must reproduce it. Updated 2026-11-21 for ruling F4 (a missed kick on any down that ends the half is not a possession alive at the end of the half), approved by Rhys 2026-11-21: on 1b0739d + F4 only column R_END_HALF (138) changed; every other team column, player, first_td and ot byte-identical. Previous: regular c97582e584a78b8030df8b1c05509024a34670656b65e348cc683086e8ab58d6, postseason 7db99b258c67e2d05b33e39db0770a03b8f2770f4b74e1ea78f0e7fe24c7583f",
   "hashed": "SHA-256 over the bytes of team[:, :, :147] (every team column at capture), player, first_td, ot, in that order",
   "nteam_at_capture": 147,
-  "regular": "c97582e584a78b8030df8b1c05509024a34670656b65e348cc683086e8ab58d6",
-  "postseason": "7db99b258c67e2d05b33e39db0770a03b8f2770f4b74e1ea78f0e7fe24c7583f"
+  "regular": "f0b62832610af7d99a127845a28ec0afa197f77d06a8acbdde75f6d60a2ccd22",
+  "postseason": "cfd7e1e54746edee021f1a51b2574d8f91e8a1fd78ee12ffd11a200c17312427"
 }

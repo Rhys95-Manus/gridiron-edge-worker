@@ -291,6 +291,36 @@ def test_missed_early_fg_at_the_gun() -> None:
     assert (end_half + att <= 2 + r.ot.astype(np.int64) * max_ot).all()
 
 
+def test_missed_fourth_down_kick_at_the_gun() -> None:
+    """Ruling F4 (2026-11-16, done 2026-11-21): a missed 4th-down kick that ends the half is not
+    a possession alive at the end of the half either, as nflverse's drive results count it (the
+    drive ends "Missed field goal"; the defense gets no drive). Every 4th down kicks (fg-vs-punt
+    and go models at +-30), every kick misses, and a kick takes 900 s (test settings), so a kick
+    ends Q1 or Q3, at most one kick per half stops at the two-minute warning, and any later kick
+    in the half ends it. Per run without overtime: end-of-half possessions + kicks <= 6."""
+    lg = synthetic_league()
+    nc = len(CLOCK_CATEGORIES)
+    clock = [[30.0, 40.0]] * nc + [[5.0, 10.0]] * nc
+    i = CLOCK_CATEGORIES.index("field_goal")
+    clock[i] = [900.0]
+    clock[nc + i] = [900.0]
+    lg = replace(lg, clock=_packed(clock), fg_intercept=-30.0)
+    g = synthetic_game()
+    game = replace(
+        g,
+        fg_punt=np.array([30.0, 0.0]),
+        p_go=np.array([-30.0] * A.FOURTH_CELLS + [0.0] * (len(g.p_go) - A.FOURTH_CELLS)),
+    )
+    r = _sim(game, lg, 2000)
+    t = r.team.astype(np.int64)
+    att = t[..., A.R_FG_ATT].sum(-1)
+    end_half = t[..., A.R_END_HALF].sum(-1)
+    assert att.sum() > 0 and t[..., A.R_FG_MADE].sum() == 0
+    no_ot = r.ot.astype(np.int64) == 0
+    assert no_ot.sum() > 0
+    assert (end_half + att <= 6)[no_ot].all()
+
+
 # ---------------------------------------------------------------- realdata (section e)
 
 

@@ -801,7 +801,7 @@ def _game(
     lt_left = la[LA_LT_LEFT0:LA_LT_SEC0]
     lt_sec_edges = la[LA_LT_SEC0:NLA]
     lt_done = np.zeros(2, dtype=np.bool_)  # T3 applied in Q2 / Q4
-    efg_missed = False  # the last snap was a missed early-down field goal (ruling Q6)
+    efg_missed = False  # the last snap was a missed field goal, any down (rulings Q6, F4)
     rz_on = False  # the current drive has had a red-zone snap (diagnostic)
     bandp = np.zeros(4)
     cellp = np.zeros(8)
@@ -1506,9 +1506,9 @@ def _game(
         if clock < 0.0:
             clock = 0.0
         prev_running = running and scored == 0 and not turnover and not ended and not lt_called
-        # a missed early-down kick is an attempt, not a possession alive at the end of the half
-        # (ruling Q6); cleared at the next snap or period end
-        efg_missed = kind == 3 and down <= 3 and scored == 0
+        # a missed kick on any down is an attempt, not a possession alive at the end of the half
+        # (rulings Q6 and F4); cleared at the next snap or period end
+        efg_missed = kind == 3 and scored == 0
 
         # ---------------- scores and possession changes
         if scored == 1 or scored == 2:
