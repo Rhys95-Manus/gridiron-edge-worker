@@ -10,7 +10,7 @@ seasons:
 - 2020
 data_as_of: '2026-10-24T00:00:00+00:00'
 data_digest: dca5faa37f1ecd699a0baa861dbaef1035fb5a65fccd5a3832973d4ad4ab1ec3
-code_commit: 9c7929ddaec95308f1b96944a13175ac6a3edeaf+uncommitted
+code_commit: 17ac50c9702808f1ec2b131c0640a51452d71eea+uncommitted
 attribution: 'Data: nflverse; charting: FTN Data via nflverse; expected points: ffopportunity (ffverse)
   via nflverse; data license not stated by the source'
 values:

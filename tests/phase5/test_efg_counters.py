@@ -28,7 +28,8 @@ def test_seconds_edges_come_from_config() -> None:
 def test_counter_layout() -> None:
     assert A.EFG_SEC_BINS == 4
     assert A.R_EFG_ELIG_S0 == A.R_EFG_ATT + 1
-    assert A.NTEAM == A.R_EFG_ELIG_S0 + CELLS
+    # the next block starts right after the cells (late-half timeouts, 2026-11-20)
+    assert A.R_LT_CALLED0 == A.R_EFG_ELIG_S0 + CELLS
 
 
 def test_seconds_cell() -> None:

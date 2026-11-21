@@ -10,6 +10,7 @@ from ge.models.sim import arrays as A
 from ge.models.sim.arrays import CompiledLogit, GameArrays
 from ge.models.sim.league import (
     CLOCK_CATEGORIES,
+    RUNNING_CLOCK,
     LeagueTables,
     Packed,
     pack_categories,
@@ -113,6 +114,10 @@ def synthetic_league() -> LeagueTables:
         clock=_packed(clock),
         timeout_rate=np.full((2, 2, 3), 0.1),
         spike_rate=0.05,
+        # late-half timeouts (fix round 2, Rhys 2026-11-20; test settings)
+        timeout_clock=_packed([[5.0, 8.0]] * (2 * len(RUNNING_CLOCK))),
+        timeout_cells=np.full((2, 2, A.LT_SEC_BINS, 3), 0.1),
+        timeouts_left=np.tile(np.array([0.0, 0.0, 0.0, 1.0]), (2, 2, 1)),
         punt_bucket_yards=5,
         fg_miss_bucket_yards=5,
         late_kickoff_seconds=300,
@@ -194,6 +199,7 @@ def synthetic_game(
         sticks_q=np.zeros(2),  # no spot-short (ruling 2026-11-12, S-1; test setting)
         early_fg_on=False,  # early-down field goals off (Rhys 2026-11-16; test setting)
         early_fg=np.zeros(4),
+        late_timeouts_on=False,  # late-half timeouts off (Rhys 2026-11-20; test setting)
         rules=rules,
         ot=ot,
         player_ids=(ROSTER, ROSTER),

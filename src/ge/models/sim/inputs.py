@@ -113,6 +113,12 @@ def early_fg_inputs(
     return True, early_fg_model(fit_value)
 
 
+def late_timeouts_on() -> bool:
+    """PRJ-02 late-half timeouts (fix round 2, Rhys 2026-11-20, Q6): config/sim.yaml
+    late_timeouts.enabled. The league tables carry the T1-T3 arrays either way."""
+    return bool(load_sim().late_timeouts.enabled.value)
+
+
 def _fit_value(key: str, spec_id: str) -> float:
     """A fit-only value; no-signal contributes zero (BT-02); missing raises."""
     status, value, reason = current_params().fit_status(key)
@@ -446,6 +452,7 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
         sticks_q=sticks_model(_fit_value),
         early_fg_on=efg_on,
         early_fg=efg_coef,
+        late_timeouts_on=late_timeouts_on(),
         rules=rules,
         ot=ot,
         player_ids=ids,

@@ -12,7 +12,7 @@ seasons:
 - 2022
 data_as_of: '2026-10-24T00:00:00+00:00'
 data_digest: bd6f418b1a78a13be0dbb3e3def24417f51e6a1a3071b97907af6a56b36d72e8
-code_commit: 9c7929ddaec95308f1b96944a13175ac6a3edeaf+uncommitted
+code_commit: 17ac50c9702808f1ec2b131c0640a51452d71eea+uncommitted
 attribution: 'Data: nflverse; charting: FTN Data via nflverse; expected points: ffopportunity (ffverse)
   via nflverse; data license not stated by the source'
 values:

@@ -50,6 +50,8 @@ def test_counter_layout_is_contiguous_and_keeps_the_old_counters() -> None:
         (A.R_FG_ATT_D0, A.FG_DIST_BINS), (A.R_FG_MADE_D0, A.FG_DIST_BINS),
         (A.R_EFG_ELIG, 1), (A.R_EFG_ATT, 1),  # early-down field goals (Rhys 2026-11-16, Q7)
         (A.R_EFG_ELIG_S0, 2 * A.EFG_SEC_BINS),  # seconds x timeout cells (2026-11-19)
+        (A.R_LT_CALLED0, 4), (A.R_LT_LEFT0, 2),  # late-half timeouts (2026-11-20)
+        (A.R_EFG_ATT_S0, 2 * A.EFG_SEC_BINS),  # early-FG attempt cells (2026-11-20, Q7)
     ]  # fmt: skip
     idx = [i for start, width in blocks for i in range(start, start + width)]
     assert idx == list(range(OLD_NTEAM, A.NTEAM))

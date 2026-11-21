@@ -554,6 +554,12 @@ class LeagueTables:
     clock: Packed  # category = CLOCK_CATEGORIES index + len(CLOCK_CATEGORIES) * inside_2min
     timeout_rate: FloatArray  # [half 0/1, role 0 offense/1 defense, score state]
     spike_rate: float
+    # late-half timeouts (fix round 2, Rhys 2026-11-20): T1 snap-to-snap seconds with a timeout
+    # between, category = RUNNING_CLOCK index + len(RUNNING_CLOCK) x inside two minutes; T2 rates
+    # [half, role, seconds bin, score state]; T3 P(timeouts left = k) [half, role, k]
+    timeout_clock: Packed
+    timeout_cells: FloatArray
+    timeouts_left: FloatArray
     punt_bucket_yards: int
     fg_miss_bucket_yards: int
     late_kickoff_seconds: int
@@ -791,12 +797,20 @@ def build_league(
     xp = d.filter(_is1("extra_point_attempt"))
     tp = d.filter(_is1("two_point_attempt"))
 
+    drop_from = int(load_sim().league.timeout_drop_from_season.value)  # correction D
     clock, timeout_rate, spike_rate = clock_tables(
+        d, two_minute_seconds, min_events, drop_from=drop_from
+    )
+    # late-half timeouts (fix round 2, Rhys 2026-11-20)
+    timeout_clock = timeout_clock_table(d, two_minute_seconds, min_events, drop_from=drop_from)
+    timeout_cells = timeout_cell_rates(
         d,
         two_minute_seconds,
+        load_sim().late_timeouts.seconds_upper.value,
         min_events,
-        drop_from=int(load_sim().league.timeout_drop_from_season.value),  # correction D
+        drop_from=drop_from,
     )
+    timeouts_left = timeouts_left_dist(d, two_minute_seconds)
     return LeagueTables(
         run_yards=run_yards,
         air_yards=air,
@@ -865,6 +879,9 @@ def build_league(
         clock=clock,
         timeout_rate=timeout_rate,
         spike_rate=spike_rate,
+        timeout_clock=timeout_clock,
+        timeout_cells=timeout_cells,
+        timeouts_left=timeouts_left,
         punt_bucket_yards=punt_bucket_yards,
         fg_miss_bucket_yards=fg_miss_bucket_yards,
         late_kickoff_seconds=late_kickoff_seconds,
@@ -1002,6 +1019,123 @@ def timeout_rates(d: pl.DataFrame, two_minute: int, *, drop_from: int) -> tuple[
     sp = after.filter((pl.col("score_differential") <= 0) & (pl.col("_pos_n") == pl.col("posteam")))
     spike_rate = _rate(sp, (pl.col("_pt_n") == "qb_spike").fill_null(False))
     return rates, spike_rate
+
+
+def timeout_clock_table(
+    d: pl.DataFrame, two_minute: int, min_events: int, *, drop_from: int
+) -> Packed:
+    """PRJ-02 T1 (fix round 2, Rhys 2026-11-20): seconds from a running-clock snap to the next
+    snap when a timeout came between them (snap_pairs, data correction D), by category =
+    RUNNING_CLOCK index + len(RUNNING_CLOCK) x inside the last two minutes of a half; a category
+    with fewer than min_events plays uses the same outcome in the other regime (the C1 rule)."""
+    _, nxt = snap_pairs(d, drop_from=drop_from)
+    nr = len(RUNNING_CLOCK)
+    idx = {c: i for i, c in enumerate(RUNNING_CLOCK)}
+    inside = (pl.col("half_seconds_remaining") <= two_minute).fill_null(False)
+    rows = nxt.filter(
+        pl.col("_gsr_n").is_not_null() & pl.col("_tb") & pl.col("cat_name").is_in(RUNNING_CLOCK)
+    ).select(
+        (
+            pl.col("cat_name").replace_strict(idx, return_dtype=pl.Int64)
+            + nr * inside.cast(pl.Int64)
+        ).alias("cat"),
+        (pl.col("game_seconds_remaining") - pl.col("_gsr_n"))
+        .clip(0, None)
+        .cast(pl.Float64)
+        .alias("value"),
+        "w",
+    )
+    other = [*(k + nr for k in range(nr)), *range(nr)]
+    return pack_categories(rows, n_categories=2 * nr, parent=other, min_events=min_events)
+
+
+def timeout_cell_rates(
+    d: pl.DataFrame,
+    two_minute: int,
+    seconds_upper: Sequence[int],
+    min_events: int,
+    *,
+    drop_from: int,
+) -> FloatArray:
+    """PRJ-02 T2 (fix round 2, Rhys 2026-11-20): after a running-clock play inside the last two
+    minutes of the 2nd or 4th quarter, the weighted rate at which a team with a timeout left
+    calls one before the next snap (snap_pairs, data correction D), per [half (Q2, Q4), role
+    (offense, defense), seconds bin (inclusive upper edges seconds_upper, the last bin to two
+    minutes), score state from that team's side (trailing, tied, leading)]. A cell with fewer
+    than min_events plays uses the same cell without score state, then the cell without the
+    seconds bin, then the role in that half; if that too has fewer than min_events it raises."""
+    _, nxt = snap_pairs(d, drop_from=drop_from)
+    inside = (pl.col("half_seconds_remaining") <= two_minute).fill_null(False)
+    after = nxt.filter(
+        inside
+        & pl.col("cat_name").is_in(RUNNING_CLOCK)
+        & pl.col("qtr").is_in([2, 4])
+        & pl.col("_to_n").is_not_null()
+    )
+    sec = pl.lit(len(seconds_upper))
+    for k in reversed(range(len(seconds_upper))):
+        sec = pl.when(pl.col("half_seconds_remaining") <= seconds_upper[k]).then(k).otherwise(sec)
+    after = after.with_columns(sec.alias("_sec"))
+    n_bins = len(seconds_upper) + 1
+    rates = np.full((2, 2, n_bins, 3), np.nan)
+    for role in (0, 1):
+        called, left = (
+            ("_tb_off", "posteam_timeouts_remaining")
+            if role == 0
+            else ("_tb_def", "defteam_timeouts_remaining")
+        )
+        sd = pl.col("score_differential") * (1 if role == 0 else -1)
+        states = (sd < 0, sd == 0, sd > 0)
+        flag = pl.col(called).fill_null(False)
+        mine = after.filter(pl.col(left) > 0)
+        for h, q in enumerate((2, 4)):
+            half = mine.filter(pl.col("qtr") == q)
+            for b in range(n_bins):
+                for s, cond in enumerate(states):
+                    for part in (
+                        half.filter((pl.col("_sec") == b) & cond),
+                        half.filter(pl.col("_sec") == b),
+                        half.filter(cond),
+                        half,
+                    ):
+                        if part.height >= min_events:
+                            rates[h, role, b, s] = _rate(part, flag)
+                            break
+                    else:
+                        raise NotImplementedError(
+                            f"PRJ-02: T2 has fewer than {min_events} running-clock plays inside "
+                            f"two minutes for role {role} in quarter {q}"
+                        )
+    return rates
+
+
+def timeouts_left_dist(d: pl.DataFrame, two_minute: int) -> FloatArray:
+    """PRJ-02 T3 (fix round 2, Rhys 2026-11-20): at the first scrimmage snap (run, pass, kneel,
+    spike, field goal, punt) inside the last two minutes of each 2nd and 4th quarter, the
+    weighted share of offenses (role 0) and defenses (role 1) with k timeouts left, k =
+    0..TL_VALUES - 1, per [half, role, k]. Raises on a larger count or an empty half."""
+    from ge.models.sim.arrays import TL_VALUES
+
+    snaps = d.filter(
+        pl.col("qtr").is_in([2, 4])
+        & (pl.col("half_seconds_remaining") <= two_minute).fill_null(False)
+        & pl.col("posteam").is_not_null()
+        & pl.col("play_type").is_in(["run", "pass", "qb_kneel", "qb_spike", "field_goal", "punt"])
+    )
+    first = snaps.sort("game_id", "play_id").group_by("game_id", "qtr", maintain_order=True).first()
+    out = np.zeros((2, 2, TL_VALUES))
+    for h, q in enumerate((2, 4)):
+        part = first.filter(pl.col("qtr") == q)
+        if part.height == 0:
+            raise NotImplementedError(f"PRJ-02: T3 has no snap inside two minutes in quarter {q}")
+        w = part["w"].to_numpy().astype(np.float64)
+        for role, col in enumerate(("posteam_timeouts_remaining", "defteam_timeouts_remaining")):
+            k = part[col].to_numpy().astype(np.float64)
+            if np.isnan(k).any() or k.max() > TL_VALUES - 1 or k.min() < 0:
+                raise NotImplementedError(f"PRJ-02: T3 timeouts left outside 0-{TL_VALUES - 1}")
+            for v in range(TL_VALUES):
+                out[h, role, v] = float(w[k == v].sum()) / float(w.sum())
+    return out
 
 
 # ---------------------------------------------------------------- storage

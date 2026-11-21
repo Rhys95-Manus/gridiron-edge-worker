@@ -57,6 +57,7 @@ from ge.models.sim.league import (
     RUN_CATEGORIES,
     RUN_CELL_COUNT,
     RUN_SIT0,
+    RUNNING_CLOCK,
     SACK_DIST_BINS,
     SACK_DOWN_GROUPS,
     SHORT_YARDAGE,
@@ -74,7 +75,8 @@ IntArray = npt.NDArray[np.int64]
 # ---- merged packed tables: base category index of each table in lo / hi
 TB_RUN, TB_AIR, TB_YAC, TB_SACK, TB_SCR, TB_KNEEL, TB_INTRET, TB_FUMRET = range(8)
 TB_PEN_OFF, TB_PEN_DEF, TB_PUNT, TB_KO, TB_FGOFF, TB_MISS, TB_CLOCK = range(8, 15)
-NTB = 15
+TB_TOCLOCK = 15  # late-half timeouts T1 (Rhys 2026-11-20): runoff with a timeout between
+NTB = 16
 # ---- league scalars
 (
     LS_FUM_RUN,
@@ -143,7 +145,17 @@ LA_GO_LATE0 = LA_GO_TRAIL0 + A.GO_TRAIL_BINS - 1
 LA_EFG_PER0 = LA_GO_LATE0 + A.GO_TIME_BINS
 # early-down FG diagnostic seconds bins (approved 2026-11-19): upper edges (EFG_SEC_BINS - 1)
 LA_EFG_SEC0 = LA_EFG_PER0 + 4
-NLA = LA_EFG_SEC0 + A.EFG_SEC_BINS - 1
+# late-half timeouts (fix round 2, Rhys 2026-11-20): T2 rates [half, role, seconds bin, state],
+# T3 P(timeouts left = k) [half, role, k], T2 seconds upper edges
+LA_LT_RATE0 = LA_EFG_SEC0 + A.EFG_SEC_BINS - 1
+LA_LT_LEFT0 = LA_LT_RATE0 + 2 * 2 * A.LT_SEC_BINS * 3
+LA_LT_SEC0 = LA_LT_LEFT0 + 2 * 2 * A.TL_VALUES
+NLA = LA_LT_SEC0 + A.LT_SEC_BINS - 1
+NRC = len(RUNNING_CLOCK)  # T1 runoff table: running category index + NRC x inside two minutes
+RC_RUN_IN = RUNNING_CLOCK.index("run_inbounds")
+RC_COMP_IN = RUNNING_CLOCK.index("complete_inbounds")
+RC_SACK = RUNNING_CLOCK.index("sack")
+RC_KNEEL = RUNNING_CLOCK.index("kneel")
 C_RUN_IN = CLOCK_CATEGORIES.index("run_inbounds")
 C_COMP_IN = CLOCK_CATEGORIES.index("complete_inbounds")
 C_INC = CLOCK_CATEGORIES.index("incomplete")
@@ -218,6 +230,7 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
         t.fg_offset,
         t.fg_miss,
         t.clock,
+        t.timeout_clock,  # TB_TOCLOCK (late-half timeouts, Rhys 2026-11-20)
     )
     if len(t.run_yards.lo) == SHORT_YARDAGE + 1:
         raise ValueError(
@@ -291,6 +304,22 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     efg = sim.early_fg
     if not set(efg.periods.value) <= {1, 2, 3, 4}:
         raise ValueError("PRJ-02: early_fg.periods must be regulation periods 1-4 (ruling Q3)")
+    # late-half timeouts (fix round 2, Rhys 2026-11-20)
+    lt_sec = sim.late_timeouts.seconds_upper.value
+    if len(lt_sec) != A.LT_SEC_BINS - 1:
+        raise ValueError("PRJ-02: late_timeouts.seconds_upper does not match the T2 cells")
+    if len(t.timeout_clock.lo) != 2 * len(RUNNING_CLOCK):
+        raise ValueError("PRJ-02: the T1 timeout runoff table needs 2 x the running categories")
+    tc = np.asarray(t.timeout_cells, dtype=np.float64)
+    if tc.shape != (2, 2, A.LT_SEC_BINS, 3) or not ((tc >= 0.0) & (tc <= 1.0)).all():
+        raise ValueError("PRJ-02: the T2 timeout rates need shape (2, 2, 3, 3) in [0, 1]")
+    tl = np.asarray(t.timeouts_left, dtype=np.float64)
+    if (
+        tl.shape != (2, 2, A.TL_VALUES)
+        or not (tl >= 0.0).all()
+        or not np.allclose(tl.sum(axis=-1), 1.0, rtol=0.0, atol=1e-9)
+    ):
+        raise ValueError("PRJ-02: the T3 timeouts-left distributions must each sum to 1")
     efg_sec = dg.early_fg_seconds_upper.value
     if len(efg_sec) != A.EFG_SEC_BINS - 1:
         raise ValueError("PRJ-02: the early-FG seconds bins do not match the counter layout")
@@ -339,7 +368,10 @@ def league_arrays(t: LeagueTables) -> tuple[object, ...]:
     la = np.zeros(NLA)
     for q in efg.periods.value:
         la[LA_EFG_PER0 + q - 1] = 1.0
-    la[LA_EFG_SEC0:NLA] = efg_sec
+    la[LA_EFG_SEC0:LA_LT_RATE0] = efg_sec
+    la[LA_LT_RATE0:LA_LT_LEFT0] = t.timeout_cells.reshape(-1)
+    la[LA_LT_LEFT0:LA_LT_SEC0] = t.timeouts_left.reshape(-1)
+    la[LA_LT_SEC0:NLA] = lt_sec
     la[LA_4TH_TOGO0 : LA_4TH_TOGO0 + 2] = f_togo
     la[LA_4TH_YL0 : LA_4TH_YL0 + 2] = f_yl
     la[LA_FG_DIST0 : LA_FG_DIST0 + len(fg_lower)] = fg_lower
@@ -591,6 +623,38 @@ def efg_sec_cell(half_sec, has_timeout, edges):
 
 
 @njit(cache=True, nogil=True)
+def lt_left_draw(probs, u):
+    """PRJ-02 T3 (Rhys 2026-11-20): the timeouts-left value k drawn from P(k) with uniform u."""
+    c = 0.0
+    for k in range(probs.shape[0]):
+        c += probs[k]
+        if u < c:
+            return k
+    return probs.shape[0] - 1
+
+
+@njit(cache=True, nogil=True)
+def t3_timeouts(cur, probs, u):
+    """PRJ-02 T3: a team's timeouts at two minutes, the smaller of what it has and the draw."""
+    k = lt_left_draw(probs, u)
+    return cur if cur < k else k
+
+
+@njit(cache=True, nogil=True)
+def lt_running_index(cat):
+    """PRJ-02 T1: the RUNNING_CLOCK index of a clock category, -1 if it is not running-clock."""
+    if cat == C_RUN_IN:
+        return RC_RUN_IN
+    if cat == C_COMP_IN:
+        return RC_COMP_IN
+    if cat == C_SACK:
+        return RC_SACK
+    if cat == C_KNEEL:
+        return RC_KNEEL
+    return -1
+
+
+@njit(cache=True, nogil=True)
 def lower_bin(v, edges):
     """Diagnostic bin from lower edges (approved 2026-10-30): the number of edges at or below v."""
     k = 0
@@ -670,6 +734,7 @@ def _game(
     sticks_q,
     early_fg_on,
     early_fg,
+    late_timeouts_on,
     rules,
     ot,
     values,
@@ -731,7 +796,11 @@ def _game(
     go_trail_edges = la[LA_GO_TRAIL0:LA_GO_LATE0]
     go_late_edges = la[LA_GO_LATE0:LA_EFG_PER0]
     efg_periods = la[LA_EFG_PER0:LA_EFG_SEC0]
-    efg_sec_edges = la[LA_EFG_SEC0:NLA]
+    efg_sec_edges = la[LA_EFG_SEC0:LA_LT_RATE0]
+    lt_rates = la[LA_LT_RATE0:LA_LT_LEFT0]  # late-half timeouts (Rhys 2026-11-20)
+    lt_left = la[LA_LT_LEFT0:LA_LT_SEC0]
+    lt_sec_edges = la[LA_LT_SEC0:NLA]
+    lt_done = np.zeros(2, dtype=np.bool_)  # T3 applied in Q2 / Q4
     efg_missed = False  # the last snap was a missed early-down field goal (ruling Q6)
     rz_on = False  # the current drive has had a red-zone snap (diagnostic)
     bandp = np.zeros(4)
@@ -868,6 +937,19 @@ def _game(
         dfn = 1 - off
         sd = float(score[off] - score[dfn])
         efg_missed = False
+        # ---------------- T3 (Rhys 2026-11-20): timeouts left at the first scrimmage snap inside
+        # two minutes of Q2 / Q4; counted on both paths, drawn only with the path on
+        if inside and (qtr == 2 or qtr == 4) and not in_ot:
+            hh = 0 if qtr == 2 else 1
+            if not lt_done[hh]:
+                lt_done[hh] = True
+                if late_timeouts_on:
+                    o0 = (hh * 2 + 0) * A.TL_VALUES
+                    d0 = (hh * 2 + 1) * A.TL_VALUES
+                    tos[off] = t3_timeouts(tos[off], lt_left[o0 : o0 + A.TL_VALUES], rng.random())
+                    tos[dfn] = t3_timeouts(tos[dfn], lt_left[d0 : d0 + A.TL_VALUES], rng.random())
+                out_team[off, A.R_LT_LEFT0 + hh] += tos[off]
+                out_team[dfn, A.R_LT_LEFT0 + hh] += tos[dfn]
         # ---------------- features
         x[A.F_DOWN] = down
         x[A.F_YDSTOGO] = togo
@@ -892,17 +974,20 @@ def _game(
             pace = team[off, A.T_PACE_N]
         clock_before = clock
 
-        # ---------------- timeouts after a running-clock play inside two minutes (C9)
-        if prev_running and inside and (qtr == 2 or qtr == 4):
+        # ---------------- timeouts after a running-clock play inside two minutes (C9; the path
+        # off only: with late_timeouts on they are decided at the end of the play, T1/T2)
+        if not late_timeouts_on and prev_running and inside and (qtr == 2 or qtr == 4):
             h = 0 if qtr == 2 else 1
             st_off = 0 if sd < 0 else (1 if sd == 0 else 2)
             st_def = 2 - st_off
             if tos[off] > 0 and rng.random() < la[LA_TO0 + h * 6 + 0 * 3 + st_off]:
                 tos[off] -= 1
                 prev_running = False
+                out_team[off, A.R_LT_CALLED0 + h * 2 + 0] += 1
             elif tos[dfn] > 0 and rng.random() < la[LA_TO0 + h * 6 + 1 * 3 + st_def]:
                 tos[dfn] -= 1
                 prev_running = False
+                out_team[dfn, A.R_LT_CALLED0 + h * 2 + 1] += 1
 
         kind = 0  # 0 normal, 1 kneel, 2 spike, 3 field goal, 4 punt
         if (in_ot or qtr == 4) and sd > 0 and clock <= (5 - down - tos[dfn]) * ls[LS_KNEEL_RUNOFF]:
@@ -928,7 +1013,8 @@ def _game(
         ):
             out_team[off, A.R_EFG_ELIG] += 1
             t_on = 1.0 if tos[off] >= 1 else 0.0
-            out_team[off, A.R_EFG_ELIG_S0 + efg_sec_cell(half_sec, t_on > 0.5, efg_sec_edges)] += 1
+            efg_cell = efg_sec_cell(half_sec, t_on > 0.5, efg_sec_edges)
+            out_team[off, A.R_EFG_ELIG_S0 + efg_cell] += 1
             pk_e = _expit(
                 early_fg[0] + early_fg[1] * half_sec + early_fg[2] * t_on
                 + early_fg[3] * half_sec * t_on
@@ -936,6 +1022,7 @@ def _game(
             if pk_e > 0.0 and rng.random() < pk_e:
                 kind = 3
                 out_team[off, A.R_EFG_ATT] += 1
+                out_team[off, A.R_EFG_ATT_S0 + efg_cell] += 1  # outcome check (Q7, 2026-11-20)
         if (
             kind == 0
             and prev_running
@@ -1365,8 +1452,45 @@ def _game(
         if scored != 0:
             cat_clock = C_SCORE if scored != 2 else C_FG
             running = False
-        idx = cat_clock + (NCLK if inside else 0)
-        run_off = _draw(values, cum, lo, hi, base, TB_CLOCK, idx, rng.random())
+        # T1/T2 (Rhys 2026-11-20): after a running-clock play inside two minutes of Q2 / Q4 that
+        # keeps the ball with the offense, the offense then the defense may call a timeout before
+        # the runoff; a timeout draws the time to the next snap from the timeout runoff table
+        lt_called = False
+        lt_ri = -1
+        if (
+            late_timeouts_on
+            and inside
+            and (qtr == 2 or qtr == 4)
+            and running
+            and scored == 0
+            and not turnover
+            and not ended
+        ):
+            lt_ri = lt_running_index(cat_clock)
+            if lt_ri >= 0:
+                hh = 0 if qtr == 2 else 1
+                sb = xpass_bin(half_sec, lt_sec_edges)
+                st_off = 0 if sd < 0 else (1 if sd == 0 else 2)
+                st_def = 2 - st_off
+                if (
+                    tos[off] > 0
+                    and rng.random() < lt_rates[((hh * 2 + 0) * A.LT_SEC_BINS + sb) * 3 + st_off]
+                ):
+                    tos[off] -= 1
+                    lt_called = True
+                    out_team[off, A.R_LT_CALLED0 + hh * 2 + 0] += 1
+                elif (
+                    tos[dfn] > 0
+                    and rng.random() < lt_rates[((hh * 2 + 1) * A.LT_SEC_BINS + sb) * 3 + st_def]
+                ):
+                    tos[dfn] -= 1
+                    lt_called = True
+                    out_team[dfn, A.R_LT_CALLED0 + hh * 2 + 1] += 1
+        if lt_called:
+            run_off = _draw(values, cum, lo, hi, base, TB_TOCLOCK, lt_ri + NRC, rng.random())
+        else:
+            idx = cat_clock + (NCLK if inside else 0)
+            run_off = _draw(values, cum, lo, hi, base, TB_CLOCK, idx, rng.random())
         if (
             running
             and not inside
@@ -1381,7 +1505,7 @@ def _game(
             clock = two_min  # two-minute warning
         if clock < 0.0:
             clock = 0.0
-        prev_running = running and scored == 0 and not turnover and not ended
+        prev_running = running and scored == 0 and not turnover and not ended and not lt_called
         # a missed early-down kick is an attempt, not a possession alive at the end of the half
         # (ruling Q6); cleared at the next snap or period end
         efg_missed = kind == 3 and down <= 3 and scored == 0
@@ -1473,6 +1597,7 @@ def _chunk(
     sticks_q,
     early_fg_on,
     early_fg,
+    late_timeouts_on,
     rules,
     ot,
     values,
@@ -1505,6 +1630,7 @@ def _chunk(
             sticks_q,
             early_fg_on,
             early_fg,
+            late_timeouts_on,
             rules,
             ot,
             values,
@@ -1585,6 +1711,7 @@ def simulate(
             game.sticks_q,
             bool(game.early_fg_on),
             efg,
+            bool(game.late_timeouts_on),
             game.rules,
             game.ot,
             *lg,

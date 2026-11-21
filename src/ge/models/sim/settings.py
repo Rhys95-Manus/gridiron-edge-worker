@@ -78,6 +78,11 @@ class EarlyFgSettings(_Group):  # early-down field goals (Rhys 2026-11-16)
     periods: IntListSetting
 
 
+class LateTimeoutsSettings(_Group):  # fix round 2 (Rhys 2026-11-20)
+    enabled: BoolSetting
+    seconds_upper: IntListSetting
+
+
 class DiagnosticSettings(_Group):  # diagnostic counters approved 2026-10-30
     red_zone_max_yardline: IntSetting
     fourth_togo_upper: IntListSetting
@@ -98,6 +103,7 @@ class SimSettings(_Strict):
     fourth_go: FourthGoSettings
     sticks: SticksSettings
     early_fg: EarlyFgSettings
+    late_timeouts: LateTimeoutsSettings
     diagnostics: DiagnosticSettings
 
 

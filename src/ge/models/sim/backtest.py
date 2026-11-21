@@ -92,6 +92,18 @@ _TEAM_STATS = {
         for b in range(A.EFG_SEC_BINS)
         for t in (0, 1)
     },
+    # late-half timeouts (fix round 2, Rhys 2026-11-20) and the Q7 outcome-check cells
+    **{
+        f"lt_called_h{q}_{role}": A.R_LT_CALLED0 + h * 2 + r
+        for h, q in enumerate((2, 4))
+        for r, role in enumerate(("off", "def"))
+    },
+    **{f"lt_left_h{q}": A.R_LT_LEFT0 + h for h, q in enumerate((2, 4))},
+    **{
+        f"efg_att_s{b}_t{t}": A.R_EFG_ATT_S0 + b * 2 + t
+        for b in range(A.EFG_SEC_BINS)
+        for t in (0, 1)
+    },
 }
 SUMMARY_COLUMNS = (
     "game_id", "season", "week", "home", "away", "postseason", "neutral",

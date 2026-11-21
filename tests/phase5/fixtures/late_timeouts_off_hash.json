@@ -1,0 +1,8 @@
+{
+  "source": "synthetic: tests/phase5/sim_synth.py synthetic_game() and synthetic_league(), simulate(..., 2000, game_id='G_DIAG_HASH', model_version='m1'), default chunks from config/sim.yaml; no football data",
+  "generated": "2026-11-20, on commit 17ac50c (after data correction D) with no tracked changes, before any late-timeouts code (ruling Q6, Rhys 2026-11-20); the late-timeouts path off must reproduce it",
+  "hashed": "SHA-256 over the bytes of team[:, :, :157] (every team column at capture), player, first_td, ot, in that order",
+  "nteam_at_capture": 157,
+  "regular": "8877042dd3a2ab07ec393fcf840a5895bd858dfb6174ce74a0fa9c7da04a772d",
+  "postseason": "9b6066af1b87fb05309fe4703a8a971db0aafb887420495ce8a983782ee2819c"
+}

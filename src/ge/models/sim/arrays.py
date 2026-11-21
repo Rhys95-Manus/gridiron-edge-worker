@@ -144,7 +144,13 @@ R_EFG_ATT = 148  # early-down field-goal attempts
 # bin runs to early_fg.max_seconds): cell = bin x 2 + timeout (0 none, 1 at least one)
 EFG_SEC_BINS = 4
 R_EFG_ELIG_S0 = 149
-NTEAM = 157
+# Late-half timeouts (fix round 2, Rhys 2026-11-20; they read the state, never draw):
+R_LT_CALLED0 = 157  # timeouts called inside two minutes of Q2/Q4: [half 0 Q2 / 1 Q4] x 2 + role
+R_LT_LEFT0 = 161  # timeouts left at the first scrimmage snap inside two minutes, per half
+R_EFG_ATT_S0 = 163  # early-down FG attempts by the R_EFG_ELIG_S0 cells (outcome check, Q7)
+NTEAM = 171
+LT_SEC_BINS = 3  # T2 seconds bins (config/sim.yaml late_timeouts.seconds_upper + two minutes)
+TL_VALUES = 4  # T3: timeouts left 0..3 (the league builder raises on any larger count)
 
 # ---- PRJ-02 4th-down go model (ruling 2026-10-31): one logit per distance x field cell
 # (config/sim.yaml `fourth_go`; cell = distance bin x 3 + field bin), then the slopes on
@@ -310,6 +316,7 @@ class GameArrays:
     sticks_q: FloatArray  # ruling 2026-11-12 (S-1): spot-short q, STICKS_KINDS order
     early_fg_on: bool  # config/sim.yaml early_fg.enabled (Rhys 2026-11-16, Q5)
     early_fg: FloatArray  # early-down field goals, EARLY_FG_TERMS order (zeros when off)
+    late_timeouts_on: bool  # config/sim.yaml late_timeouts.enabled (Rhys 2026-11-20, Q6)
     rules: IntArray  # (NG,)
     ot: IntArray  # (NO,)
     player_ids: tuple[tuple[str, ...], tuple[str, ...]]  # gsis ids per side, for the outputs
