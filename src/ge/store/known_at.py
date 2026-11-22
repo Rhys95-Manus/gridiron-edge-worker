@@ -221,7 +221,16 @@ def visible_weekly(
     df: pl.DataFrame, tw: pl.DataFrame, as_of: dt.datetime, team_col: str
 ) -> pl.DataFrame:
     """BT-01: rows of an undated weekly report whose team-week report time is <= as_of.
-    Weeks with no game for that team (byes) have no report time and are left out."""
+    Weeks with no game for that team (byes) have no report time and are left out. Season and
+    week are cast to the team-week types first (stored injuries hold them as doubles for
+    2016-2020); a value that is not a whole number raises rather than being rounded."""
+    for c in ("season", "week"):
+        if df.schema[c] != tw.schema[c]:
+            if df.schema[c].is_float():
+                v = df[c].drop_nulls()
+                if not (v == v.round(0)).all():
+                    raise ValueError(f"BT-01: {c} in a weekly report is not a whole number")
+            df = df.with_columns(pl.col(c).cast(tw.schema[c], strict=True))
     keys = tw.select(
         "season", "week", pl.col("team").alias(team_col), pl.col("known_at").alias("_known_at")
     )

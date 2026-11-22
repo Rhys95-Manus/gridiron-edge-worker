@@ -190,6 +190,27 @@ def test_weekly_reports_become_visible_at_noon_the_day_before() -> None:
     assert max(weeks_before) == 1
 
 
+def test_weekly_report_with_float_keys_joins_like_integer_keys() -> None:
+    """BT-01: the stored injuries files hold season and week as doubles for 2016-2020 and as
+    int32 from 2021 (Phase 5 gate run, 2026-11-21). A report with whole-number float keys
+    gives the same visible rows as the integer one, with the keys back in the team-week
+    types; a key that is not a whole number raises instead of being rounded."""
+    depth = load_parquet_fixture("depth_weekly_2023")
+    tw = team_weeks(_sched(), BT).filter(pl.col("season") == 2023)
+    as_of = tw.filter(pl.col("week") == 3)["known_at"].max()
+    want = visible_weekly(depth, tw, as_of, "club_code")
+    floats = depth.with_columns(pl.col("season", "week").cast(pl.Float64))
+    got = visible_weekly(floats, tw, as_of, "club_code")
+    assert got.schema["season"] == tw.schema["season"]
+    assert got.schema["week"] == tw.schema["week"]
+    assert got.equals(want.with_columns(pl.col("season", "week").cast(got.schema["season"])))
+    bad = floats.with_columns(
+        pl.when(pl.int_range(pl.len()) == 0).then(2.5).otherwise(pl.col("week")).alias("week")
+    )
+    with pytest.raises(ValueError, match=r"BT-01.*whole"):
+        visible_weekly(bad, tw, as_of, "club_code")
+
+
 def test_latest_weekly_chart_per_team() -> None:
     depth = load_parquet_fixture("depth_weekly_2023")
     tw = team_weeks(_sched(), BT).filter(pl.col("season") == 2023)
