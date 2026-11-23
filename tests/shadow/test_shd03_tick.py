@@ -12,10 +12,19 @@ import httpx
 import polars as pl
 import pytest
 
+from ge.config import load_params
+from ge.shadow.cadence import Cadence, settle_slot
 from ge.shadow.reader import read_table
 from ge.shadow.snapshot import MapResult
 from ge.shadow.store import ShadowStore, verify_store
-from ge.shadow.tick import TickDeps, run_close, run_settle, run_tick
+from ge.shadow.tick import (
+    TickDeps,
+    roster_mapper,
+    run_close,
+    run_scheduled,
+    run_settle,
+    run_tick,
+)
 from ge.store.known_at import kickoff_utc
 from tests.shadow.conftest import load_fixture
 
@@ -56,6 +65,7 @@ class FakeKalshi:
                 "503", request=req, response=httpx.Response(503, request=req)
             )
         if "event_ticker" in f:
+            self.requests["event_markets"] += 1  # settle's per-event read
             yield from (
                 self.final.get(m["ticker"], m)
                 for m in FIX["markets"]
@@ -245,6 +255,98 @@ def test_settle_writes_results_once(tmp_path: Path) -> None:
     assert got == {t0: ("yes", 1), t1: ("not_binary", None)}
     assert run_settle(_deps(tmp_path, k, K + 6 * H)) == 0
     assert verify_store(tmp_path, "0") == []
+
+
+def _snapshot_then(tmp_path: Path, k: FakeKalshi) -> None:
+    run_tick(_deps(tmp_path, k, K - 24 * H))
+
+
+def test_close_only_for_games_kicked_off_in_the_last_48h(tmp_path: Path) -> None:
+    """SHD-03: "Close checks run hourly, for games that kicked off in the last 48 h."."""
+    k = FakeKalshi()
+    _snapshot_then(tmp_path, k)
+    assert run_close(_deps(tmp_path, k, K + 48 * H + M)) == 0
+    assert k.requests["trades"] == 0
+    assert run_close(_deps(tmp_path, k, K + 48 * H - M)) == len(FIX["markets"])
+
+
+def test_close_hourly_and_settle_daily_from_the_tick(tmp_path: Path) -> None:
+    """SHD-03: the tick runs close once per clock hour and settle once a day at 09:00 ET,
+    catching up at the next tick if the 09:00 run was missed. Each check is a job_runs row."""
+    k = FakeKalshi()
+    _snapshot_then(tmp_path, k)
+    t = (K + 2 * H).replace(minute=10, second=0, microsecond=0)
+    first = run_scheduled(_deps(tmp_path, k, t))
+    assert first.close_rows == len(FIX["markets"]) and first.settle_rows == 0  # never ran before
+    mk, tr = k.requests["event_markets"], k.requests["trades"]
+    assert mk > 0
+    for later in (t + 5 * M, t + 45 * M):  # same clock hour: neither check runs
+        rep = run_scheduled(_deps(tmp_path, k, later))
+        assert (rep.close_rows, rep.settle_rows) == (None, None)
+    assert (k.requests["event_markets"], k.requests["trades"]) == (mk, tr)
+    nxt = run_scheduled(_deps(tmp_path, k, t + 55 * M))  # next clock hour: close only
+    assert nxt.close_rows == 0 and nxt.settle_rows is None
+    # Next day's 09:00 ET slot, laptop off at 09:00: the first tick after it settles.
+    next_0900 = settle_slot(t, Cadence.from_params(load_params())) + 24 * H
+    late = run_scheduled(_deps(tmp_path, k, next_0900 + 3 * H))
+    assert late.settle_rows == 0
+    assert k.requests["event_markets"] > mk
+    runs = read_table(tmp_path / "v0", "job_runs")
+    assert Counter(runs["job"]) == Counter({"close": 3, "settle": 2})
+    assert set(runs["outcome"]) == {"ok"}
+    assert set(runs["pricing_mode"]) == {"live"}
+    assert verify_store(tmp_path, "0") == []
+
+
+class BrokenBookKalshi(FakeKalshi):
+    def orderbook(self, ticker: str) -> dict[str, Any]:
+        raise RuntimeError("unexpected parse failure")
+
+
+def test_unexpected_snapshot_error_is_recorded_then_missed_error(tmp_path: Path) -> None:
+    """SHD-12: a tick that ran but failed with an unexpected error is missed_error, not
+    missed_not_run; the error does not stop the other snapshots."""
+    rep = run_tick(_deps(tmp_path, BrokenBookKalshi(), K - 24 * H))
+    assert rep.errors and "RuntimeError" in rep.errors[0]
+    att = read_table(tmp_path / "v0", "attempts").filter(pl.col("game_id") == GAME_ID)
+    assert att["outcome"].to_list() == ["error"]
+    run_tick(_deps(tmp_path, FakeKalshi(), K - 23 * H + M))
+    st = _status(tmp_path).filter(pl.col("game_id") == GAME_ID)
+    assert st.select("snapshot_type", "status").rows() == [("T-24h", "missed_error")]
+
+
+def test_failed_tick_is_recorded_then_missed_error(tmp_path: Path) -> None:
+    """A tick that fails before reaching any snapshot (here: reading schedules) writes a
+    job_runs error row and re-raises; windows open at that time become missed_error."""
+    d = _deps(tmp_path, FakeKalshi(), K - 24 * H)
+
+    def broken(season: int) -> tuple[pl.DataFrame, dt.datetime]:
+        raise RuntimeError("schedules unreadable")
+
+    d.raw_schedules = broken
+    with pytest.raises(RuntimeError, match="schedules unreadable"):
+        run_scheduled(d)
+    runs = read_table(tmp_path / "v0", "job_runs")
+    assert runs.select("job", "outcome").rows() == [("tick", "error")]
+    assert "RuntimeError" in runs["detail"][0]
+    run_tick(_deps(tmp_path, FakeKalshi(), K - 23 * H + M))
+    st = _status(tmp_path).filter(pl.col("game_id") == GAME_ID)
+    assert st.select("snapshot_type", "status").rows() == [("T-24h", "missed_error")]
+
+
+def test_roster_mapper_without_a_roster_pull_is_no_roster_pull(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PRV-02: "A team with no roster pull stored at as_of is unmapped as no_roster_pull."."""
+    import ge.pricer_v0.player_map as pm
+
+    def none(season: int, as_of: dt.datetime) -> Any:
+        raise FileNotFoundError("no 2026 rosters_weekly pull")
+
+    monkeypatch.setattr(pm, "roster_as_of", none)
+    out = roster_mapper(2026, K - 24 * H)("Any Name", "ARI", 11)
+    assert (out.mapped, out.reason) == (False, pm.NO_ROSTER_PULL)
+    assert pm.NO_ROSTER_PULL == "no_roster_pull"
 
 
 @pytest.mark.parametrize("table", ["snapshots", "closes"])

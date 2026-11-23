@@ -5,12 +5,14 @@ using BT-01's offsets and kickoff from the newest stored nflverse schedules."
 SHD-02: "A T−24h snapshot is valid from 15 min early to 60 min late. A T−90m snapshot is valid
 from 10 min early to 25 min late."
 SHD-04: "An order-book capture is taken at kickoff − 5 min, valid within ±4 min."
-SHD-12: "Every planned snapshot gets a status row: ok, ok_late, missed_not_run,
-missed_api_error, missed_no_markets or invalid_kickoff_moved."
+SHD-12: "Every planned snapshot gets a status row: ok, ok_late, missed_not_run, missed_error,
+missed_api_error, missed_no_markets or invalid_kickoff_moved. A snapshot taken at or before its
+target is ok; one taken after its target but inside its window is ok_late. Capture starts at
+the store's first write; only windows closing at or after it are planned. A window with no tick
+run is missed_not_run; one where a tick ran but failed with an unexpected error is
+missed_error; both count as infrastructure misses."
 
-Session-4 choices (open questions in session4-report.md): a snapshot is planned when its window
-closes at or after the shadow version's capture start; ok means taken at or before the target,
-ok_late after it; a window that closes without an ok row takes its miss reason from the last
+Session-4 choices: a window that closes without an ok row takes its miss reason from the last
 attempt inside it; a snapshot whose taken_ts falls outside the window of the newest kickoff is
 invalid_kickoff_moved and the snapshot is planned again for the new window."""  # noqa: RUF002
 
@@ -24,8 +26,7 @@ from typing import Any
 
 from ge.config import Params
 
-# SHD-19 names live and after_the_fact only; capture rows logged at the snapshot use live
-# (open question Q1 in session4-report.md).
+# SHD-19: "Snapshot rows logged unpriced at the snapshot carry pricing_mode live."
 PRICING_MODE_CAPTURE = "live"
 
 
@@ -107,7 +108,7 @@ class StatusRec:
 
 @dataclass(frozen=True)
 class Attempt:
-    """One snapshot try: outcome ok, api_error or no_markets."""
+    """One snapshot try: outcome ok, api_error, no_markets or error (unexpected)."""
 
     ts: dt.datetime
     outcome: str
@@ -143,7 +144,12 @@ def judge(taken: dt.datetime, w: Window) -> str | None:
 
 
 _TAKEN = frozenset({"ok", "ok_late"})
-_MISS = {"api_error": "missed_api_error", "no_markets": "missed_no_markets"}
+# SHD-12 (sync 5): "one where a tick ran but failed with an unexpected error is missed_error".
+_MISS = {
+    "api_error": "missed_api_error",
+    "no_markets": "missed_no_markets",
+    "error": "missed_error",
+}
 
 
 def plan_tick(
@@ -153,9 +159,13 @@ def plan_tick(
     attempts: Mapping[tuple[str, str], Sequence[Attempt]],
     start: dt.datetime,
     cfg: ShadowWindows,
+    *,
+    tick_errors: Sequence[Attempt] = (),
 ) -> TickPlan:
     """SHD-03 / SHD-12: the snapshots due now and the status rows to write (misses and
-    invalid_kickoff_moved). Pure: reads nothing but its arguments."""
+    invalid_kickoff_moved). tick_errors are ticks that failed before reaching any snapshot;
+    they count as an error attempt for every window open at that time. The last attempt in
+    the window decides the miss reason. Pure: reads nothing but its arguments."""
     if now.tzinfo is None or start.tzinfo is None:
         raise ValueError("now and start must be timezone-aware")
     due: list[Due] = []
@@ -177,7 +187,9 @@ def plan_tick(
             if w.open <= now <= w.close:
                 due.append(Due(g, w))
             elif now > w.close:
-                tries = [a for a in attempts.get(key, ()) if w.open <= a.ts <= w.close]
+                tries = [
+                    a for a in (*attempts.get(key, ()), *tick_errors) if w.open <= a.ts <= w.close
+                ]
                 last = max(tries, key=lambda a: a.ts) if tries else None
                 status = _MISS.get(last.outcome, "missed_not_run") if last else "missed_not_run"
                 rows.append(status_row(g, w, status, None, last.detail if last else ""))

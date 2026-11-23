@@ -3,6 +3,7 @@
     uv run python tests/shadow/fixtures/capture_fixtures.py
     uv run python tests/shadow/fixtures/capture_fixtures.py team-map   (PRV-02 games only)
     uv run python tests/shadow/fixtures/capture_fixtures.py shadow     (SHD snapshot/settle)
+    uv run python tests/shadow/fixtures/capture_fixtures.py closes <live store v0 dir>  (SHD-05)
 
 Reads data/raw/kalshi_markets/season=2026 (DATA-08 public market data, written by
 `ge ingest`) and, for team-map, data/raw/schedules/season=2026 (DATA-01); 2025 is the holdout
@@ -370,6 +371,60 @@ def _team(j: dict[str, Any], away: str, home: str) -> str:
     return hits[0]
 
 
+CLOSE_KEEP = (
+    "game_id",
+    "snapshot_type",
+    "taken_ts",
+    "kickoff_utc",
+    "close_status",
+    "close_yes_cc",
+    "last_trade_ts",
+    "n_pre_kickoff_trades",
+)
+PER_STATUS = 4  # closes rows kept per close_status
+
+
+def real_closes(vdir: Path) -> None:
+    """SHD-05 outputs as captured live: PER_STATUS closes rows per close_status from the live
+    shadow store's closes table (read only; the store keeps no raw trades). Rows are spread
+    over the status's rows sorted by (game_id, snapshot_type, ticker). Tickers become
+    <series>-MNN and trade ids are dropped; timestamps and prices are as stored."""
+    assert vdir.name == "v0" and (vdir / "MANIFEST.jsonl").exists(), vdir
+    parts = sorted((vdir / "closes").rglob("part.parquet"))
+    df = pl.concat([pl.read_parquet(p) for p in parts], how="diagonal_relaxed")
+    assert set(df["season"].unique().to_list()) == {2026}, "only 2026 rows may be read"
+    df = df.sort("game_id", "snapshot_type", "ticker")
+    rows: list[dict[str, Any]] = []
+    for status in sorted(df["close_status"].unique().to_list()):
+        mine = df.filter(pl.col("close_status") == status)
+        n = mine.height
+        picks = sorted({round(i * (n - 1) / (PER_STATUS - 1)) for i in range(PER_STATUS)})
+        for i in picks:
+            r = mine.row(i, named=True)
+            out = {k: r[k] for k in CLOSE_KEEP}
+            for k in ("taken_ts", "kickoff_utc", "last_trade_ts"):
+                out[k] = None if out[k] is None else out[k].isoformat()
+            out["ticker"] = f"{r['ticker'].split('-')[0]}-M{len(rows) + 1:02d}"
+            rows.append(out)
+    manifest = (vdir / "MANIFEST.jsonl").read_text(encoding="utf-8").splitlines()
+    import datetime as _dt
+
+    body = {
+        "source": "live shadow store C:/gridiron-edge-shadow-live/data/shadow/v0, table closes "
+        f"({len(parts)} partitions, {df.height} rows; written by ge shadow close from DATA-08 "
+        "GET /markets/trades), read only",
+        "pulled_at": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
+        "manifest_lines_at_read": len(manifest),
+        "anonymised": "ticker -> <series>-MNN; last_trade_id dropped; everything else as stored",
+        "status_counts": dict(sorted(df.group_by("close_status").len().iter_rows())),
+        "closes": rows,
+    }
+    text = json.dumps(body, indent=1, ensure_ascii=False)
+    assert "PLAYER" not in text and not re.search(r"-\d{2}[A-Z]{3}\d{2}[A-Z]+-[A-Z]", text)
+    _save("shadow_real_closes.json", body)
+    print(f"{len(rows)} closes rows from {df.height}")
+
+
 if __name__ == "__main__":
     import sys
 
@@ -377,5 +432,7 @@ if __name__ == "__main__":
         team_map_games()
     elif sys.argv[1:] == ["shadow"]:
         shadow_game()
+    elif sys.argv[1:2] == ["closes"] and len(sys.argv) == 3:
+        real_closes(Path(sys.argv[2]))
     else:
         main()

@@ -522,21 +522,25 @@ def _shadow_run(job: str, shadow_version: str, only_game: str | None) -> None:
 
     from ge.config import load_ingest
     from ge.ingest.jobs import kalshi_http
-    from ge.shadow.tick import live_deps, run_close, run_settle, run_tick
+    from ge.shadow.tick import live_deps, run_job, run_scheduled
+
+    def rows(n: int | None) -> str:
+        return "not due" if n is None else f"{n} rows"
 
     logging.basicConfig(level=logging.WARNING)
     with kalshi_http(load_ingest()) as http:
         deps = live_deps(shadow_version, http)
         try:
             if job == "tick":
-                rep = run_tick(deps, {only_game} if only_game else None)
-                print(f"tick: {rep.summary()}")
-                for e in rep.errors:
+                rep = run_scheduled(deps, {only_game} if only_game else None)
+                print(f"tick: {rep.tick.summary()}")
+                for e in rep.tick.errors:
                     print(f"  ERROR {e}")
-            if job in ("tick", "close") and not only_game:
-                print(f"close: {run_close(deps)} rows")
-            if job in ("tick", "settle") and not only_game:
-                print(f"settle: {run_settle(deps)} rows")
+                if not only_game:
+                    print(f"close: {rows(rep.close_rows)}")
+                    print(f"settle: {rows(rep.settle_rows)}")
+            else:
+                print(f"{job}: {rows(run_job(deps, job))}")
         finally:
             print(f"requests {http.attempts}, HTTP 429 x{http.retryable_by_status.get(429, 0)}")
     print(ATTRIBUTION)
@@ -549,7 +553,7 @@ def shadow_tick_cmd(
         str | None, typer.Option("--only-game", help="Plan only this game_id (manual tick).")
     ] = None,
 ) -> None:
-    """SHD-03: one tick (schedules, misses, due snapshots), then close and settle."""
+    """SHD-03: one tick (schedules, misses, due snapshots), then close and settle when due."""
     _shadow_run("tick", shadow_version, only_game)
 
 

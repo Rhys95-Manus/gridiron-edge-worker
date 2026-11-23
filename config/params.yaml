@@ -409,6 +409,9 @@ shadow:
   shd_02_t90m_late_minutes: {spec_id: SHD-02, value: 25, status: initial, source: 'A T−90m snapshot is valid from 10 min early to 25 min late.'}
   shd_03_tick_minutes: {spec_id: SHD-03, value: 5, status: initial, source: 'A tick runs every 5 minutes.'}
   shd_03_schedule_max_age_hours: {spec_id: SHD-03, value: 6, status: initial, source: 'The tick re-pulls schedules into the shadow store when the newest stored copy is more than 6 h old.'}
+  shd_03_close_lookback_hours: {spec_id: SHD-03, value: 48, status: initial, source: 'Close checks run hourly, for games that kicked off in the last 48 h.'}
+  # 09:00 ET as minutes after midnight ET (9 x 60 = 540).
+  shd_03_settle_et_minute_of_day: {spec_id: SHD-03, value: 540, status: initial, source: 'Settle checks run once a day, at 09:00 ET.'}
   shd_04_close_capture_minutes_before_kickoff: {spec_id: SHD-04, value: 5, status: initial, source: 'An order-book capture is taken at kickoff − 5 min, valid within ±4 min.'}
   shd_04_close_capture_tolerance_minutes: {spec_id: SHD-04, value: 4, status: initial, source: 'An order-book capture is taken at kickoff − 5 min, valid within ±4 min.'}
   shd_06_fallback_candle_minutes: {spec_id: SHD-06, value: 1, status: initial, source: 'The 1-minute candle is used as a fallback only after its fields are confirmed on a saved fixture.'}

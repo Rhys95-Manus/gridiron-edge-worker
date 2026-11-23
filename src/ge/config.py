@@ -491,6 +491,8 @@ class Shadow(_Group):
     shd_02_t90m_late_minutes: Param
     shd_03_tick_minutes: Param
     shd_03_schedule_max_age_hours: Param
+    shd_03_close_lookback_hours: Param
+    shd_03_settle_et_minute_of_day: Param
     shd_04_close_capture_minutes_before_kickoff: Param
     shd_04_close_capture_tolerance_minutes: Param
     shd_06_fallback_candle_minutes: Param

@@ -2,9 +2,12 @@
 
 SHD-05: "The YES price of the last trade created after the snapshot was taken and before
 kickoff. No such trade before kickoff: no_trade. Last pre-kickoff trade at or before the
-snapshot: stale." Trades are synthetic, shaped as docs.kalshi.com GET /markets/trades
-documents them (trade_id, ticker, count_fp, yes_price_dollars, no_price_dollars,
-created_time); no live trades response is saved yet (open question in session4-report.md).
+snapshot: stale. ... Last pre-kickoff trades with the same time but different prices:
+ambiguous_last_trade". Edge-case trades are synthetic, shaped as docs.kalshi.com GET
+/markets/trades documents them (trade_id, ticker, count_fp, yes_price_dollars,
+no_price_dollars, created_time). shadow_real_closes.json holds closes rows written live by
+`ge shadow close` (anonymised); the store keeps no raw trades, so those tests check the live
+rows against SHD-05 and rebuild trades at their real timestamps.
 SHD-13: "The result is Kalshi's settled result. A fair-price settlement or a void is
 not_binary." Settled markets come from the saved 2026 fixture."""
 
@@ -78,6 +81,69 @@ def test_tied_last_trades_with_different_prices_are_ambiguous() -> None:
 def test_sub_centicent_price_raises() -> None:
     with pytest.raises(ValueError):
         closing_price([trade(K - S, "0.400001")], K, TAKEN)
+
+
+REAL = load_fixture("shadow_real_closes.json")["closes"]
+
+
+def _ts(v: str | None) -> dt.datetime | None:
+    return None if v is None else dt.datetime.fromisoformat(v)
+
+
+def test_real_fixture_covers_every_close_status() -> None:
+    assert {r["close_status"] for r in REAL} == {"ok", "stale", "no_trade", "ambiguous_last_trade"}
+
+
+@pytest.mark.parametrize("row", REAL, ids=lambda r: f"{r['close_status']}-{r['ticker']}")
+def test_live_closes_obey_shd05(row: dict[str, Any]) -> None:
+    """The rows `ge shadow close` wrote on the live store follow SHD-05's definitions."""
+    taken, kick, last = _ts(row["taken_ts"]), _ts(row["kickoff_utc"]), _ts(row["last_trade_ts"])
+    assert taken is not None and kick is not None and taken < kick
+    status, price, n = row["close_status"], row["close_yes_cc"], row["n_pre_kickoff_trades"]
+    if status == "no_trade":
+        assert (price, last, n) == (None, None, 0)
+        return
+    assert last is not None and last < kick and n >= 1
+    if status == "ok":
+        assert taken < last and isinstance(price, int) and 0 < price < 10000
+    elif status == "stale":
+        assert last <= taken and price is None
+    else:  # ambiguous_last_trade: two last trades, so at least two pre-kickoff trades
+        assert taken < last and price is None and n >= 2
+
+
+@pytest.mark.parametrize("row", REAL, ids=lambda r: f"{r['close_status']}-{r['ticker']}")
+def test_closing_price_reproduces_live_rows_at_real_timestamps(row: dict[str, Any]) -> None:
+    """Trades rebuilt from each live row (the store keeps no raw trades) at the row's real
+    microsecond timestamps give back the stored status, price and last-trade time."""
+    taken, kick, last = _ts(row["taken_ts"]), _ts(row["kickoff_utc"]), _ts(row["last_trade_ts"])
+    assert taken is not None and kick is not None
+    status, n = row["close_status"], row["n_pre_kickoff_trades"]
+    us = dt.timedelta(microseconds=1)
+    after_kick = [trade(kick, "0.9900", "after"), trade(kick + us, "0.0100", "after2")]
+    if status == "no_trade":
+        c = closing_price(after_kick, kick, taken)
+        assert (c.status, c.close_yes_cc, c.last_trade_ts, c.n_pre_kickoff) == (
+            "no_trade",
+            None,
+            None,
+            0,
+        )
+        return
+    assert last is not None
+    if status == "ambiguous_last_trade":
+        lasts = [trade(last, "0.4000", "l1"), trade(last, "0.4100", "l2")]
+    else:
+        price = row["close_yes_cc"] if status == "ok" else 5000
+        lasts = [trade(last, f"{price / 10000:.4f}", "l1")]
+    earlier = [trade(last - (i + 1) * us, "0.5000", f"e{i}") for i in range(n - len(lasts))]
+    c = closing_price([*earlier, *lasts, *after_kick], kick, taken)
+    assert (c.status, c.close_yes_cc, c.last_trade_ts, c.n_pre_kickoff) == (
+        status,
+        row["close_yes_cc"],
+        last,
+        n,
+    )
 
 
 SETTLED = {

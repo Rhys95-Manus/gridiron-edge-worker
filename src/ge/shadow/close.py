@@ -2,14 +2,14 @@
 
 SHD-05: "The YES price of the last trade created after the snapshot was taken and before
 kickoff. No such trade before kickoff: no_trade. Last pre-kickoff trade at or before the
-snapshot: stale. Both are excluded from CLV and counted in the report."
+snapshot: stale. Both are excluded from CLV and counted in the report. Last pre-kickoff trades
+with the same time but different prices: ambiguous_last_trade, also excluded from CLV and
+counted."
 
 Trade fields as documented at docs.kalshi.com GET /markets/trades (read 2026-11-21):
 trade_id, yes_price_dollars, created_time. The page does not say whether min_ts/max_ts are
 inclusive, so callers ask past kickoff and this function filters created_time < kickoff
-itself. Session-4 choice (open question): several trades at the latest pre-kickoff
-created_time with different YES prices have no single last trade, so the close is
-ambiguous_last_trade and carries no price."""
+itself. An ambiguous_last_trade close carries no price."""
 
 from __future__ import annotations
 

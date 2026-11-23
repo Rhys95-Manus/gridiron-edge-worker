@@ -39,10 +39,20 @@ _GENESIS = "0" * 64
 # SHD-19: "These rows carry pricing_mode after_the_fact; rows priced at the snapshot carry
 # pricing_mode live."
 PRICING_MODES = frozenset({"live", "after_the_fact"})
-# Planning report 4.6 tables, plus attempts (each snapshot try, for SHD-12 miss reasons) and
-# schedules (SHD-03 re-pulls into the shadow store).
+# Planning report 4.6 tables, plus attempts (each snapshot try, for SHD-12 miss reasons),
+# schedules (SHD-03 re-pulls into the shadow store) and job_runs (SHD-03 close and settle
+# checks, and ticks that failed with an unexpected error, for SHD-12 missed_error).
 TABLES = frozenset(
-    {"snapshots", "book_levels", "snapshot_status", "attempts", "closes", "results", "schedules"}
+    {
+        "snapshots",
+        "book_levels",
+        "snapshot_status",
+        "attempts",
+        "closes",
+        "results",
+        "schedules",
+        "job_runs",
+    }
 )
 # SHD-14: "No snapshot row for a game can be written after its kickoff."
 KICKOFF_TABLES = frozenset({"snapshots", "book_levels"})

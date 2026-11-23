@@ -1,0 +1,190 @@
+{
+ "source": "live shadow store C:/gridiron-edge-shadow-live/data/shadow/v0, table closes (13 partitions, 3264 rows; written by ge shadow close from DATA-08 GET /markets/trades), read only",
+ "pulled_at": "2026-11-23T19:44:02+00:00",
+ "manifest_lines_at_read": 190,
+ "anonymised": "ticker -> <series>-MNN; last_trade_id dropped; everything else as stored",
+ "status_counts": {
+  "ambiguous_last_trade": 211,
+  "no_trade": 674,
+  "ok": 1887,
+  "stale": 492
+ },
+ "closes": [
+  {
+   "game_id": "2026_11_ARI_KC",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:43:15.074028+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "ambiguous_last_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-22T17:44:10.280421+00:00",
+   "n_pre_kickoff_trades": 9,
+   "ticker": "KXNFLREC-M01"
+  },
+  {
+   "game_id": "2026_11_LV_DEN",
+   "snapshot_type": "T-24h",
+   "taken_ts": "2026-11-21T21:15:55.589763+00:00",
+   "kickoff_utc": "2026-11-22T21:25:00+00:00",
+   "close_status": "ambiguous_last_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-22T21:06:48.762865+00:00",
+   "n_pre_kickoff_trades": 10,
+   "ticker": "KXNFLRSHYDS-M02"
+  },
+  {
+   "game_id": "2026_11_MIN_SF",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T23:41:34.397270+00:00",
+   "kickoff_utc": "2026-11-23T01:20:00+00:00",
+   "close_status": "ambiguous_last_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-23T01:14:15.813631+00:00",
+   "n_pre_kickoff_trades": 8,
+   "ticker": "KXNFLREC-M03"
+  },
+  {
+   "game_id": "2026_11_TEN_DAL",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:49:25.111270+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "ambiguous_last_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-22T17:59:12.373983+00:00",
+   "n_pre_kickoff_trades": 13,
+   "ticker": "KXNFLRSHYDS-M04"
+  },
+  {
+   "game_id": "2026_11_ARI_KC",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:43:15.074028+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "no_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": null,
+   "n_pre_kickoff_trades": 0,
+   "ticker": "KXNFLREC-M05"
+  },
+  {
+   "game_id": "2026_11_JAX_NYG",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:45:48.309813+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "no_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": null,
+   "n_pre_kickoff_trades": 0,
+   "ticker": "KXNFLRECYDS-M06"
+  },
+  {
+   "game_id": "2026_11_NO_CHI",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:47:35.032996+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "no_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": null,
+   "n_pre_kickoff_trades": 0,
+   "ticker": "KXNFLREC-M07"
+  },
+  {
+   "game_id": "2026_11_TEN_DAL",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:49:25.111270+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "no_trade",
+   "close_yes_cc": null,
+   "last_trade_ts": null,
+   "n_pre_kickoff_trades": 0,
+   "ticker": "KXNFLRSHYDS-M08"
+  },
+  {
+   "game_id": "2026_11_ARI_KC",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:43:15.074028+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "ok",
+   "close_yes_cc": 4100,
+   "last_trade_ts": "2026-11-22T17:37:57.339956+00:00",
+   "n_pre_kickoff_trades": 82,
+   "ticker": "KXNFLREC-M09"
+  },
+  {
+   "game_id": "2026_11_LV_DEN",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T19:46:51.459298+00:00",
+   "kickoff_utc": "2026-11-22T21:25:00+00:00",
+   "close_status": "ok",
+   "close_yes_cc": 5500,
+   "last_trade_ts": "2026-11-22T21:24:37.960231+00:00",
+   "n_pre_kickoff_trades": 188,
+   "ticker": "KXNFLREC-M10"
+  },
+  {
+   "game_id": "2026_11_MIN_SF",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T23:41:34.397270+00:00",
+   "kickoff_utc": "2026-11-23T01:20:00+00:00",
+   "close_status": "ok",
+   "close_yes_cc": 5300,
+   "last_trade_ts": "2026-11-23T01:19:27.044827+00:00",
+   "n_pre_kickoff_trades": 93,
+   "ticker": "KXNFLRECYDS-M11"
+  },
+  {
+   "game_id": "2026_11_TEN_DAL",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:49:25.111270+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "ok",
+   "close_yes_cc": 3400,
+   "last_trade_ts": "2026-11-22T17:57:43.199106+00:00",
+   "n_pre_kickoff_trades": 60,
+   "ticker": "KXNFLRSHYDS-M12"
+  },
+  {
+   "game_id": "2026_11_ARI_KC",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:43:15.074028+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "stale",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-22T16:42:14.233520+00:00",
+   "n_pre_kickoff_trades": 9,
+   "ticker": "KXNFLREC-M13"
+  },
+  {
+   "game_id": "2026_11_JAX_NYG",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:45:48.309813+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "stale",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-22T15:18:11.929851+00:00",
+   "n_pre_kickoff_trades": 3,
+   "ticker": "KXNFLRECYDS-M14"
+  },
+  {
+   "game_id": "2026_11_NO_CHI",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:47:35.032996+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "stale",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-22T15:48:53.397072+00:00",
+   "n_pre_kickoff_trades": 11,
+   "ticker": "KXNFLRECYDS-M15"
+  },
+  {
+   "game_id": "2026_11_TEN_DAL",
+   "snapshot_type": "T-90m",
+   "taken_ts": "2026-11-22T16:49:25.111270+00:00",
+   "kickoff_utc": "2026-11-22T18:00:00+00:00",
+   "close_status": "stale",
+   "close_yes_cc": null,
+   "last_trade_ts": "2026-11-18T00:13:07.966522+00:00",
+   "n_pre_kickoff_trades": 3,
+   "ticker": "KXNFLRSHYDS-M16"
+  }
+ ]
+}

@@ -39,6 +39,10 @@ _SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv"})
 ROSTER_COLUMNS = ("season", "week", "team", "full_name", "gsis_id", "position")
 
 
+# PRV-02: "A team with no roster pull stored at as_of is unmapped as no_roster_pull."
+NO_ROSTER_PULL = "no_roster_pull"
+
+
 class Unmapped(StrEnum):
     """PRV-02 unmapped sub-reasons (the market is unpriced as unmapped)."""
 

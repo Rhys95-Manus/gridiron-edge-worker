@@ -1,12 +1,15 @@
 """SHD-03 tick, SHD-05 close and SHD-13 settle jobs.
 
 SHD-03: "A tick runs every 5 minutes. The tick re-pulls schedules into the shadow store when the
-newest stored copy is more than 6 h old." Kickoffs come from the newest stored schedules: the
-collector's copy in data/raw (read only) or the tick's own copy in data/shadow, whichever was
-pulled later (SHD-01). The tick writes SHD-12 status rows, takes the snapshots that are due,
-and records every attempt so a window that closes without a snapshot gets its miss reason.
-Close (SHD-05) and settle (SHD-13) are retrospective and run after the tick's snapshots.
-Public GET endpoints only (CLAUDE.md rule 8)."""
+newest stored copy is more than 6 h old. Close checks run hourly, for games that kicked off in
+the last 48 h. Settle checks run once a day, at 09:00 ET." Kickoffs come from the newest stored
+schedules: the collector's copy in data/raw (read only) or the tick's own copy in data/shadow,
+whichever was pulled later (SHD-01). The tick writes SHD-12 status rows, takes the snapshots
+that are due, and records every attempt so a window that closes without a snapshot gets its
+miss reason. Close (SHD-05) and settle (SHD-13) are retrospective and run after the tick's
+snapshots, at the SHD-03 cadence (ge.shadow.cadence); each check is a job_runs row, and so is a
+tick that failed with an unexpected error (SHD-12 missed_error). Public GET endpoints only
+(CLAUDE.md rule 8)."""
 
 from __future__ import annotations
 
@@ -27,7 +30,8 @@ from ge.config import REPO_ROOT, load_params
 from ge.ingest.http import RetryableStatus
 from ge.ingest.kalshi import markets_for_event
 from ge.pricer_v0.scope import load_team_codes
-from ge.pricer_v0.teams import ScheduleGame, load_team_map
+from ge.pricer_v0.teams import ScheduleGame, TeamMapError, load_team_map
+from ge.shadow.cadence import Cadence, close_due, settle_due
 from ge.shadow.close import closing_price
 from ge.shadow.reader import read_table
 from ge.shadow.schedule import (
@@ -182,6 +186,46 @@ def _attempts(vdir: Path) -> dict[tuple[str, str], list[Attempt]]:
     return dict(out)
 
 
+def _job_runs(vdir: Path) -> pl.DataFrame:
+    return read_table(vdir, "job_runs")
+
+
+def _tick_errors(vdir: Path) -> list[Attempt]:
+    """SHD-12: ticks that failed with an unexpected error before reaching any snapshot."""
+    jr = _job_runs(vdir)
+    if jr.is_empty():
+        return []
+    jr = jr.filter((pl.col("job") == "tick") & (pl.col("outcome") == "error"))
+    return [Attempt(r["run_ts"], "error", r["detail"] or "") for r in jr.iter_rows(named=True)]
+
+
+def _last_run(vdir: Path, job: str) -> dt.datetime | None:
+    jr = _job_runs(vdir)
+    if jr.is_empty():
+        return None
+    ts = jr.filter(pl.col("job") == job)["run_ts"].max()
+    assert ts is None or isinstance(ts, dt.datetime)
+    return ts
+
+
+def record_run(deps: TickDeps, job: str, run_ts: dt.datetime, outcome: str, detail: str) -> None:
+    """SHD-03 / SHD-12: one job_runs row (job tick, close or settle; outcome ok or error)."""
+    deps.store.append(
+        "job_runs",
+        [
+            {
+                "job": job,
+                "run_ts": run_ts,
+                "outcome": outcome,
+                "detail": detail[:500],
+                "pricing_mode": PRICING_MODE_CAPTURE,
+            }
+        ],
+        season=deps.season,
+        week=SEASON_WEEK,
+    )
+
+
 def capture_start(vdir: Path, now: dt.datetime) -> dt.datetime:
     """The shadow version's capture start: its first manifest line's written_at (or now,
     before anything is written). Windows that closed earlier are not planned."""
@@ -205,7 +249,15 @@ def run_tick(deps: TickDeps, only_games: set[str] | None = None) -> TickReport:
     if only_games is not None:
         kicks = [g for g in kicks if g.game_id in only_games]
     cfg = ShadowWindows.from_params(load_params())
-    plan = plan_tick(now, kicks, _latest_status(vdir), _attempts(vdir), start, cfg)
+    plan = plan_tick(
+        now,
+        kicks,
+        _latest_status(vdir),
+        _attempts(vdir),
+        start,
+        cfg,
+        tick_errors=_tick_errors(vdir),
+    )
     if plan.status_rows:
         _append(deps, "snapshot_status", plan.status_rows, report)
         report.status_rows += len(plan.status_rows)
@@ -249,6 +301,19 @@ def run_tick(deps: TickDeps, only_games: set[str] | None = None) -> TickReport:
                 report,
             )
             continue
+        except TeamMapError:
+            raise  # PRV-02: a configuration error stops the run
+        except Exception as exc:  # SHD-12: an unexpected error is missed_error, not not_run
+            detail = f"{type(exc).__name__}: {exc}"[:500]
+            log.exception("snapshot %s %s failed", g.game_id, w.snapshot_type)
+            report.errors.append(f"{g.game_id} {w.snapshot_type}: {detail}")
+            _append(
+                deps,
+                "attempts",
+                [{**base, "attempt_ts": t_try, "outcome": "error", "detail": detail}],
+                report,
+            )
+            continue
         if snap.outcome == "no_markets":
             report.no_markets += 1
             _append(
@@ -289,11 +354,12 @@ def run_tick(deps: TickDeps, only_games: set[str] | None = None) -> TickReport:
 
 
 def run_close(deps: TickDeps) -> int:
-    """SHD-05: for every ok/ok_late T-24h and T-90m snapshot whose game has kicked off (newest
-    stored kickoff) and has no closes rows yet, fetch each market's trades and write one closes
-    row per market. Returns rows written."""
+    """SHD-05 / SHD-03: for every ok/ok_late T-24h and T-90m snapshot whose game kicked off
+    (newest stored kickoff) in the last 48 h and has no closes rows yet, fetch each market's
+    trades and write one closes row per market. Returns rows written."""
     now = deps.clock()
     vdir = _vdir(deps)
+    lookback = Cadence.from_params(load_params()).close_lookback
     kicks = {g.game_id: g for g in _games(newest_schedules(deps, now, allow_pull=False))[0]}
     done: set[tuple[str, str, dt.datetime]] = set()
     closes = read_table(vdir, "closes")
@@ -309,6 +375,7 @@ def run_close(deps: TickDeps) -> int:
             or rec.status not in ("ok", "ok_late")
             or g is None
             or now < g.kickoff_utc
+            or now - g.kickoff_utc > lookback
             or (gid, stype, rec.taken_ts) in done
         ):
             continue
@@ -406,6 +473,53 @@ def run_settle(deps: TickDeps) -> int:
     return len(rows)
 
 
+@dataclass
+class ScheduledReport:
+    """One scheduled run: the tick, then close and settle if due (None = not due)."""
+
+    tick: TickReport
+    close_rows: int | None = None
+    settle_rows: int | None = None
+
+
+def run_job(deps: TickDeps, job: str) -> int:
+    """SHD-05 close or SHD-13 settle, recorded as a job_runs row (run_ts = start)."""
+    run_ts = deps.clock()
+    fn = run_close if job == "close" else run_settle
+    try:
+        n = fn(deps)
+    except Exception as exc:
+        record_run(deps, job, run_ts, "error", f"{type(exc).__name__}: {exc}")
+        raise
+    record_run(deps, job, run_ts, "ok", f"{n} rows")
+    return n
+
+
+def run_scheduled(deps: TickDeps, only_games: set[str] | None = None) -> ScheduledReport:
+    """SHD-03: one scheduled tick, then close once per clock hour and settle once a day at
+    09:00 ET (a missed 09:00 check runs at the next tick). A tick that raises is recorded as a
+    job_runs error row (SHD-12 missed_error) and the error is re-raised."""
+    vdir = _vdir(deps)
+    t0 = deps.clock()
+    try:
+        tick = run_tick(deps, only_games)
+    except Exception as exc:
+        try:
+            record_run(deps, "tick", t0, "error", f"{type(exc).__name__}: {exc}")
+        except Exception:
+            log.exception("could not record the failed tick")
+        raise
+    rep = ScheduledReport(tick)
+    if only_games is not None:
+        return rep
+    now = deps.clock()
+    if close_due(now, _last_run(vdir, "close")):
+        rep.close_rows = run_job(deps, "close")
+    if settle_due(deps.clock(), _last_run(vdir, "settle"), Cadence.from_params(load_params())):
+        rep.settle_rows = run_job(deps, "settle")
+    return rep
+
+
 # --- live wiring ---------------------------------------------------------------------------
 
 
@@ -444,15 +558,19 @@ def _pull_schedules(season: int) -> pl.DataFrame:
 
 
 def roster_mapper(season: int, as_of: dt.datetime) -> Mapper:
-    """PRV-02 at as_of. No rosters_weekly pull for the season is a data gap: those markets
-    are unpriced as no_roster_pull and the run continues (PRV-02, sync 2026-11-21)."""
-    from ge.pricer_v0.player_map import map_player, roster_as_of
+    """PRV-02 at as_of: "A team with no roster pull stored at as_of is unmapped as
+    no_roster_pull." No rosters_weekly pull for the season is that data gap for every team;
+    those markets are unpriced and the run continues."""
+    from ge.pricer_v0 import player_map as pmap
 
     team_map = load_team_map()
     try:
-        roster = roster_as_of(season, as_of)
+        roster = pmap.roster_as_of(season, as_of)
     except FileNotFoundError:
-        return lambda name, team, week: MapResult(False, "no_roster_pull", None, None, None, None)
+        return lambda name, team, week: MapResult(
+            False, pmap.NO_ROSTER_PULL, None, None, None, None
+        )
+    map_player = pmap.map_player
 
     def m(name: str, team: str, week: int) -> MapResult:
         pm = map_player(name, team, week, roster, team_map)

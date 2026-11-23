@@ -94,6 +94,12 @@ def test_not_due_when_already_ok(cfg: ShadowWindows) -> None:
             "missed_no_markets",  # the last attempt in the window decides
         ),
         ([Attempt(K - 30 * H, "api_error", "outside the window")], "missed_not_run"),
+        # SHD-12 (sync 5): a tick ran but failed with an unexpected error: missed_error.
+        ([Attempt(K - 24 * H, "error", "RuntimeError: boom")], "missed_error"),
+        (
+            [Attempt(K - 24 * H, "error", "x"), Attempt(K - 23 * H - M, "api_error", "HTTP 503")],
+            "missed_api_error",
+        ),
     ],
 )
 def test_miss_rows_when_window_closes(
@@ -106,6 +112,37 @@ def test_miss_rows_when_window_closes(
     assert (row["game_id"], row["snapshot_type"], row["status"]) == (G.game_id, "T-24h", expected)
     assert row["target_ts"] == K - 24 * H and row["taken_ts"] is None
     assert row["season"] == 2026 and row["week"] == 12 and row["kickoff_utc"] == K
+
+
+@pytest.mark.parametrize(
+    ("tick_errors", "attempts", "expected"),
+    [
+        # SHD-12: "A window with no tick run is missed_not_run; one where a tick ran but failed
+        # with an unexpected error is missed_error".
+        ([K - 24 * H + 5 * M], [], "missed_error"),
+        ([K - 30 * H], [], "missed_not_run"),  # the failed tick was outside the window
+        ([K - 23 * H - M], [Attempt(K - 24 * H, "api_error", "HTTP 503")], "missed_error"),
+        ([K - 24 * H], [Attempt(K - 23 * H - M, "no_markets", "")], "missed_no_markets"),
+    ],
+)
+def test_failed_tick_inside_the_window_is_missed_error(
+    cfg: ShadowWindows,
+    tick_errors: list[dt.datetime],
+    attempts: list[Attempt],
+    expected: str,
+) -> None:
+    now = K - 23 * H + M
+    plan = plan_tick(
+        now,
+        [G],
+        {},
+        {(G.game_id, SnapshotType.T24H): attempts},
+        START,
+        cfg,
+        tick_errors=[Attempt(t, "error", "RuntimeError: boom") for t in tick_errors],
+    )
+    [row] = plan.status_rows
+    assert row["status"] == expected
 
 
 def test_miss_rows_are_written_once(cfg: ShadowWindows) -> None:
