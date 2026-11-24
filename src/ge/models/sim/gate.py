@@ -204,9 +204,14 @@ class SeasonGate:
 def season_gate(
     tag: str, season: int, *, runs_root: Path = RUNS_ROOT, data_root: Path = DATA_ROOT
 ) -> SeasonGate:
-    """PRJ-02: one season's gate on run `tag`."""
+    """PRJ-02: one season's gate on run `tag`. A C0 diagnosis run (decision 2026-11-23, Q-C6)
+    is refused: by its tag before any read, or by its variant / fit_window columns."""
     refuse_holdout(season, "PRJ-02 calibration gate")  # before any read (BT-07b)
+    if Path(tag).parts[:1] == ("diagnosis",):
+        raise ValueError(f"PRJ-02 gate: {tag} is a C0 diagnosis run, never a gate input")
     sim = pl.read_parquet(runs_root / tag / f"season={season}.parquet")
+    if {"variant", "fit_window"} & set(sim.columns):
+        raise ValueError(f"PRJ-02 gate: {tag} holds C0 diagnosis columns, never a gate input")
     sched = _season_schedule(season, data_root)
     ok, skipped = simulated_games(sim, sched["game_id"].to_list())
     pbp = read_latest(data_root, "pbp", season)

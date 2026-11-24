@@ -92,6 +92,10 @@ class DiagnosticSettings(_Group):  # diagnostic counters approved 2026-10-30
     early_fg_seconds_upper: IntListSetting  # approved 2026-11-19 (option B)
 
 
+class C0Settings(_Group):  # C0 diagnosis (decision row 2026-11-23, Q-C4)
+    tilt_probe_k: IntSetting
+
+
 class SimSettings(_Strict):
     runs: RunSettings
     league: LeagueSettings
@@ -105,6 +109,7 @@ class SimSettings(_Strict):
     early_fg: EarlyFgSettings
     late_timeouts: LateTimeoutsSettings
     diagnostics: DiagnosticSettings
+    c0: C0Settings
 
 
 @lru_cache(maxsize=4)

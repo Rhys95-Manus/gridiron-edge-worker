@@ -62,3 +62,7 @@ diagnostics:
   early_deep_air_min: {spec_id: PRJ-02, value: 10, status: initial, source: 'diagnostic counters approved 2026-10-30: a 1st/2nd-down pass attempt with air yards >= 10 counts as deep, below as short'}
   fg_distance_lower: {spec_id: PRJ-02, value: [30, 40, 50], status: initial, source: 'diagnostic counters approved 2026-10-30: field-goal kick-distance bins < 30, 30-39, 40-49, 50+ (lower edges)'}
   early_fg_seconds_upper: {spec_id: PRJ-02, value: [5, 10, 20], status: initial, source: 'diagnostic counters approved 2026-11-19 (option B): eligible early-down snaps by seconds left in the half 0-5, 6-10, 11-20, 21 to early_fg.max_seconds (inclusive upper edges), x offense timeout left'}
+
+# C0 diagnosis (decision row 2026-11-23): diagnosis only, never read by a gate or production run.
+c0:
+  tilt_probe_k: {spec_id: PRJ-02, value: 2, status: initial, source: 'ruling Q-C4 approved by Rhys 2026-11-23: one fixed diagnostic probe multiplies every PRJ-02 rating-tilt shift by k = 2 (not fitted), labelled diagnosis-only in the C0 report'}

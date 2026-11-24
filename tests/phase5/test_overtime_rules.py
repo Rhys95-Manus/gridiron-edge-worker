@@ -13,7 +13,7 @@ import pytest
 
 from ge.models.sim.overtime import OvertimeRuleMissing, load_overtime, overtime_rule
 
-ARCHIVED = (2021, 2022, 2023, 2024)
+ARCHIVED = (2019, 2020, 2021, 2022, 2023, 2024)  # 2019-2020: C0 diagnosis (decision 2026-11-23)
 SIM_SEASONS = (*ARCHIVED, 2026)
 
 
@@ -21,7 +21,25 @@ def _in_season(d: dt.date, season: int) -> bool:
     return dt.date(season, 9, 1) <= d <= dt.date(season + 1, 2, 28)
 
 
-@pytest.mark.parametrize("season", [2016, 2020, 2025, 2027])
+@pytest.mark.parametrize("season", [2019, 2020])
+@pytest.mark.parametrize("postseason", [False, True])
+def test_training_season_format_matches_2021(season: int, postseason: bool) -> None:
+    """Decision 2026-11-23 (Q-C5): the 2019 and 2020 captures carry the 2021 Rule 16 text, so
+    every format field equals the 2021 entry of the same game type."""
+    fields = (
+        "period_minutes", "max_periods", "ties_allowed", "timeouts_per_team",
+        "timeouts_reset_periods", "opening_touchdown_ends_game", "opening_safety_ends_game",
+    )  # fmt: skip
+    rule, ref = (
+        overtime_rule(season, postseason=postseason),
+        overtime_rule(2021, postseason=postseason),
+    )
+    for f in fields:
+        assert getattr(rule, f) == getattr(ref, f), f
+    assert rule.quote == ref.quote
+
+
+@pytest.mark.parametrize("season", [2016, 2018, 2025, 2027])
 def test_season_without_entry_raises(season: int) -> None:
     with pytest.raises(OvertimeRuleMissing, match="PRJ-02"):
         overtime_rule(season, postseason=False)

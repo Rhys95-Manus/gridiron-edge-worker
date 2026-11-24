@@ -20,7 +20,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from ge.config import current_params, load_params, use_season
+from ge.config import current_params, load_params, params_for, use_params, use_season
 from ge.fit.sim_inputs import surface_class
 from ge.fit.weather import OUTCOME_FACTORS
 from ge.ingest.raw import DATA_ROOT, partitions
@@ -30,13 +30,14 @@ from ge.metrics.player import ply_14_availability
 from ge.metrics.plays import DEPTH_BANDS, RUN_CELLS
 from ge.metrics.registry import raw, shrunk
 from ge.metrics.roles import _live_candidates, role_key
-from ge.models.ratings import GameRatings, rate_context
+from ge.models.ratings import GameRatings, load_window_consts, rate_context, ratings_params
 from ge.models.sim import arrays as A
 from ge.models.sim.arrays import GameArrays, compile_logit
 from ge.models.sim.league import LeagueTables, game_kickoffs, kickoff_rows
 from ge.models.sim.overtime import overtime_rule
 from ge.models.sim.rules import game_rule, kickoff_era
 from ge.models.sim.settings import load_sim
+from ge.store.holdout import refuse_holdout
 from ge.store.snapshot import snapshot
 
 POSITION_CODES = {"QB": A.POS_QB, "RB": A.POS_RB, "FB": A.POS_RB, "WR": A.POS_WR, "TE": A.POS_TE}
@@ -64,6 +65,81 @@ RULE_KEYS = {
 
 
 @dataclass(frozen=True)
+class DiagnosisParts:
+    """PRJ-02 C0 diagnosis (decision 2026-11-23, Q-C6): the separable parts of the team fields
+    that share one array slot, per side (home, away), so ablation variants can be recomposed
+    from one build. Only a --diagnosis-window build carries them.
+
+    T_CMP_SHIFT = cmp_tilt + cmp_w; T_YAC_SHIFT = clip(yac_tilt, +-yac_cap);
+    T_INT_SHIFT = int_tilt; T_YPC_SHIFT = clip(ypc_tilt + mtc01, +-ypc_cap);
+    T_FUM_SHIFT = fum_tilt; T_SACK_LOGIT = sack_eta + sack_ol, where sack_eta is the MTC-03
+    logit (league logit sack_league plus the team part) and sack_ol the OL-absence part."""
+
+    cmp_tilt: tuple[float, float]
+    cmp_w: tuple[float, float]
+    yac_tilt: tuple[float, float]
+    int_tilt: tuple[float, float]
+    ypc_tilt: tuple[float, float]
+    mtc01: tuple[float, float]
+    fum_tilt: tuple[float, float]
+    sack_league: tuple[float, float]
+    sack_eta: tuple[float, float]
+    sack_ol: tuple[float, float]
+    yac_cap: float
+    ypc_cap: float
+
+
+def check_diagnosis_season(season: int, window_season: int) -> None:
+    """PRJ-02 C0 (decision 2026-11-23, Q2): a season may be simulated with a window other than
+    its own only for diagnosis, and only if it is one of that window's training seasons (BT-01:
+    first training season through the season before the window's test season) and never a test
+    season. The holdout raises first (BT-07b)."""
+    refuse_holdout(season, "PRJ-02 C0 diagnosis")
+    bt = load_params().backtest
+    first_test = int(bt.bt_01_first_test_season.value)
+    last_test = int(bt.bt_01_last_test_season.value)
+    first_train = int(bt.bt_01_first_training_season.value)
+    if not first_test <= window_season <= last_test:
+        raise ValueError(f"PRJ-02 C0: S{window_season} is not a test-season window")
+    if not first_train <= season < min(window_season, first_test):
+        raise ValueError(
+            f"PRJ-02 C0: season {season} is not a training season of S{window_season}; "
+            "test seasons are never simulated with another window"
+        )
+
+
+def _window_kickoffs(snap: Any, league: Any) -> LeagueTables:
+    """PRJ-02 K1 for a training-season game under a diagnosis window (decision 2026-11-23,
+    Q-C1): only the window's kickoff rows of the game's kickoff era, weighted at the window's
+    target week index; the snapshot's in-season rows are skipped (the window already holds the
+    game's season). Disclosed in the C0 report."""
+    era = kickoff_era(snap.season)
+    same = {s for s in sorted({int(s) for s in league.kickoff_season}) if kickoff_era(s) == era}
+    current = pl.DataFrame(
+        {
+            c: []
+            for c in (
+                "season",
+                "week_index",
+                "late",
+                "changed",
+                "next_yardline",
+                "return_td",
+                "kicking_td",
+            )
+        }
+    )
+    return game_kickoffs(
+        league,
+        current,
+        seasons=same,
+        game_index=int(league.kickoff_target_index),
+        h_l=_fit_value("fit:PRJ-02/h_l", "PRJ-02"),
+        min_events=int(load_sim().league.min_category_events.value),
+    )
+
+
+@dataclass(frozen=True)
 class GameInfo:
     game_id: str
     season: int
@@ -79,6 +155,7 @@ class GameInfo:
     weather: dict[str, float] | None
     notes: tuple[str, ...]
     league: LeagueTables  # the window's tables with this game's kickoff table (K1)
+    parts: DiagnosisParts | None = None  # C0: only on a --diagnosis-window build
 
 
 # ---------------------------------------------------------------- small readers
@@ -237,6 +314,12 @@ def _mtc01(ctx: MetricContext, off: str, dfn: str, lam: float) -> float:
 def _sack_logit(ctx: MetricContext, off: str, dfn: str) -> float:
     """MTC-03 (E4): logit(L) + lambda[(logit off - logit L) + (logit def - logit L)] +
     ln(OL factor) x OFF-17 starters listed Out."""
+    _, eta, ol = _sack_parts(ctx, off, dfn)
+    return float(eta + ol)
+
+
+def _sack_parts(ctx: MetricContext, off: str, dfn: str) -> tuple[float, float, Any]:
+    """MTC-03 (E4) in its parts: (logit L, the matchup logit eta, the OL-absence term)."""
     p = load_params().matchup
     o = shrunk(ctx, "OFF-15", "sack_rate").filter(pl.col("team") == off)
     d = shrunk(ctx, "DEF-05", "sack_rate").filter(pl.col("team") == dfn)
@@ -255,7 +338,7 @@ def _sack_logit(ctx: MetricContext, off: str, dfn: str) -> float:
         (pl.col("team") == off) & (pl.col("stat") == "starter") & (pl.col("note") == "Out")
     )
     factor = float(current_params().params.matchup.mtc_03_ol_absence_factor.value)
-    return float(eta + np.log(factor) * st.height)
+    return lo(lg), eta, np.log(factor) * st.height
 
 
 # ---------------------------------------------------------------- players
@@ -310,26 +393,49 @@ def build_game(
     *,
     as_of: dt.datetime | None = None,
     root: Path = DATA_ROOT,
+    window_season: int | None = None,
 ) -> tuple[GameArrays, GameInfo]:
-    """PRJ-02 inputs for one game at decision time (default kickoff - 24 h, BT-01)."""
+    """PRJ-02 inputs for one game at decision time (default kickoff - 24 h, BT-01).
+
+    window_season (C0 diagnosis only, decision 2026-11-23): build a training-season game with
+    the fit of the window whose test season this is (params, PRJ-01a constants and calibration,
+    and `league` must be that window's tables); in-sample, disclosed. The season is checked
+    from the game id before any read; GameInfo then carries the DiagnosisParts."""
+    if window_season is not None:
+        check_diagnosis_season(int(game_id[:4]), window_season)
     snap = snapshot(game_id, as_of, root=root)
     ctx = build_context(snap)
-    with use_season(snap.season):
-        return _build(ctx, league)
+    if window_season is None:
+        with use_season(snap.season):
+            return _build(ctx, league)
+    check_diagnosis_season(snap.season, window_season)
+    with use_params(params_for(window_season)):
+        return _build(ctx, league, window_season=window_season)
 
 
-def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameInfo]:
+def _build(
+    ctx: MetricContext, league: LeagueTables, window_season: int | None = None
+) -> tuple[GameArrays, GameInfo]:
     snap = ctx.snap
     tg = snap.collect("target_game").row(0, named=True)
     home, away = str(tg["home_team"]), str(tg["away_team"])
     postseason = str(tg["game_type"]) != "REG"
     neutral = str(tg.get("location") or "") == "Neutral"
     season = snap.season
-    game_league = _game_league(snap, league)  # K1: raises early when the era is too thin
+    if window_season is None:
+        game_league = _game_league(snap, league)  # K1: raises early when the era is too thin
+    else:
+        game_league = _window_kickoffs(snap, league)  # C0, Q-C1
     p = current_params().params
     m = p.matchup
     notes: list[str] = []
-    ratings = rate_context(ctx)
+    ratings = (
+        rate_context(ctx)
+        if window_season is None
+        else rate_context(
+            ctx, params=ratings_params(window_season), consts=load_window_consts(window_season)
+        )
+    )
     rt = ratings.table.values
 
     def rating(team: str, kind: str) -> float:
@@ -383,6 +489,7 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
     f_cells = shrunk(ctx, "OFF-12", "share")
     sides = (home, away)
     team = np.zeros((2, A.NT))
+    part_rows: list[tuple[Any, ...]] = []  # C0 DiagnosisParts, per side
     for s, off in enumerate(sides):
         dfn = sides[1 - s]
         t = team[s]
@@ -392,17 +499,34 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
         t[A.T_PROE_N] = _team_value(f_proe, off)
         t[A.T_PROE_LEAD] = _team_value(f_c4p, off, "leading")
         t[A.T_PROE_TRAIL] = _team_value(f_c4p, off, "trailing")
-        t[A.T_SACK_LOGIT] = _sack_logit(ctx, off, dfn)
+        sack_lg, sack_eta, sack_ol = _sack_parts(ctx, off, dfn)
+        t[A.T_SACK_LOGIT] = float(sack_eta + sack_ol)
         net_pass = rating(off, "off_pass") + rating(dfn, "def_pass")
         net_run = rating(off, "off_run") + rating(dfn, "def_run")
-        t[A.T_CMP_SHIFT] = slopes["completion"] * net_pass + cmp_w
-        t[A.T_YAC_SHIFT] = float(np.clip(slopes["yac"] * net_pass, -cap * yac_mean, cap * yac_mean))
+        cmp_t = slopes["completion"] * net_pass
+        t[A.T_CMP_SHIFT] = cmp_t + cmp_w
+        yac_t = slopes["yac"] * net_pass
+        t[A.T_YAC_SHIFT] = float(np.clip(yac_t, -cap * yac_mean, cap * yac_mean))
         t[A.T_INT_SHIFT] = slopes["interception"] * net_pass
-        ypc = slopes["yards_per_carry"] * net_run + _mtc01(
-            ctx, off, dfn, float(m.mtc_01_lambda.value)
-        )
+        ypc_t = slopes["yards_per_carry"] * net_run
+        mtc = _mtc01(ctx, off, dfn, float(m.mtc_01_lambda.value))
+        ypc = ypc_t + mtc
         t[A.T_YPC_SHIFT] = float(np.clip(ypc, -cap * ypc_mean, cap * ypc_mean))
         t[A.T_FUM_SHIFT] = slopes["fumble_lost"] * net_run
+        part_rows.append(
+            (
+                cmp_t,
+                cmp_w,
+                yac_t,
+                slopes["interception"] * net_pass,
+                ypc_t,
+                mtc,
+                slopes["fumble_lost"] * net_run,
+                sack_lg,
+                sack_eta,
+                sack_ol,
+            )
+        )
         t[A.T_GO_OVER] = _team_value(f_go, off)
         t[A.T_TWO_PT] = _team_value(f_2pt, off)
         t[A.T_DEEP_SHIFT] = deep_w
@@ -472,8 +596,28 @@ def _build(ctx: MetricContext, league: LeagueTables) -> tuple[GameArrays, GameIn
         weather=weather,
         notes=tuple(notes),
         league=game_league,
+        parts=None if window_season is None else _parts(part_rows, cap * yac_mean, cap * ypc_mean),
     )
     return arrays, info
+
+
+def _parts(rows: list[tuple[Any, ...]], yac_cap: float, ypc_cap: float) -> DiagnosisParts:
+    """C0: per-side parts in DiagnosisParts field order, values kept exactly as built."""
+    h, a = rows
+    return DiagnosisParts(
+        cmp_tilt=(h[0], a[0]),
+        cmp_w=(h[1], a[1]),
+        yac_tilt=(h[2], a[2]),
+        int_tilt=(h[3], a[3]),
+        ypc_tilt=(h[4], a[4]),
+        mtc01=(h[5], a[5]),
+        fum_tilt=(h[6], a[6]),
+        sack_league=(h[7], a[7]),
+        sack_eta=(h[8], a[8]),
+        sack_ol=(h[9], a[9]),
+        yac_cap=yac_cap,
+        ypc_cap=ypc_cap,
+    )
 
 
 def _game_league(snap: Any, league: LeagueTables) -> LeagueTables:

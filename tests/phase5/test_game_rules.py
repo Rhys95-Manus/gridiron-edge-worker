@@ -63,7 +63,15 @@ def test_field_of_play_is_not_sourced_for_2026() -> None:
         game_rule("field_of_play_yards", 2026)
 
 
-@pytest.mark.parametrize("season", [2020, 2025])
+@pytest.mark.parametrize("season", [2019, 2020])
+def test_training_seasons_for_c0_diagnosis_have_every_rule(season: int) -> None:
+    """Decision 2026-11-23 (Q-C5): 2019 and 2020 are sourced from the archive captures already
+    recorded in the file; every value read from them equals the 2021 value."""
+    for key in EXPECTED_KEYS:
+        assert game_rule(key, season) == game_rule(key, 2021), key
+
+
+@pytest.mark.parametrize("season", [2018, 2025])
 def test_unsourced_season_raises(season: int) -> None:
     with pytest.raises(GameRuleMissing, match="PRJ-02"):
         game_rule("touchdown_points", season)

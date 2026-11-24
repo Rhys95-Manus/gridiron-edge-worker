@@ -368,18 +368,41 @@ def sim_season(
     season: Annotated[int, typer.Option(help="Season to simulate (never 2025).")],
     model_version: Annotated[str, typer.Option(help="Tag; with the game id it seeds the runs.")],
     runs: Annotated[int, typer.Option(help="Runs per game.")] = 20_000,
+    diagnosis_window: Annotated[
+        str | None,
+        typer.Option(
+            help="C0 diagnosis only: simulate a training season with this window, "
+            "e.g. S2021 (never 2021-2025; never a gate input)."
+        ),
+    ] = None,
+    chunk: Annotated[
+        int | None, typer.Option(help="C0: chunk index (with --diagnosis-window).")
+    ] = None,
+    chunk_size: Annotated[int | None, typer.Option(help="C0: games per chunk.")] = None,
 ) -> None:
     """PRJ-02: simulate every game of a season from decision-time inputs (unanchored model
-    mode) and write one summary row per game to data/sim_runs/<model-version>/."""
+    mode) and write one summary row per game to data/sim_runs/<model-version>/. With
+    --diagnosis-window (C0, decision 2026-11-23): one chunk of a training season, every ablation
+    variant, written to data/sim_runs/diagnosis/<model-version>/."""
     import datetime as dt
 
     from ge.config import ATTRIBUTION
+    from ge.models.sim import diagnosis
     from ge.models.sim.backtest import run_season
 
     def log(m: str) -> None:
         print(dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), m, flush=True)
 
-    path = run_season(season, n_runs=runs, model_version=model_version, log=log)
+    if diagnosis_window is None:
+        if chunk is not None or chunk_size is not None:
+            raise typer.BadParameter("--chunk and --chunk-size need --diagnosis-window (C0 only)")
+        path = run_season(season, n_runs=runs, model_version=model_version, log=log)
+    else:
+        if chunk is None or chunk_size is None:
+            raise typer.BadParameter("--diagnosis-window needs --chunk and --chunk-size (Q-C7)")
+        path = diagnosis.run_diagnosis(season, window=diagnosis_window, n_runs=runs,
+                                       model_version=model_version, chunk=chunk,
+                                       chunk_size=chunk_size, log=log)  # fmt: skip
     print(f"wrote {path}")
     print(ATTRIBUTION)
 
