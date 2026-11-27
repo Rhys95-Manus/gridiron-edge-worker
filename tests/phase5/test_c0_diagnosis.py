@@ -386,6 +386,10 @@ def test_gate_refuses_a_run_file_with_diagnosis_columns(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------- CLI: behind --diagnosis-window
 
+# Same plain output on every terminal: CI prints the error box in colour at 80 columns, which
+# splits the option name (Rhys 2026-11-27, "Yes, fix and push").
+PLAIN = {"NO_COLOR": "1", "COLUMNS": "200", "TERM": "dumb"}
+
 
 def test_cli_chunk_flags_need_a_diagnosis_window(monkeypatch: pytest.MonkeyPatch) -> None:
     from typer.testing import CliRunner
@@ -394,7 +398,7 @@ def test_cli_chunk_flags_need_a_diagnosis_window(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(backtest, "run_season", _boom)
     monkeypatch.setattr(diagnosis, "run_diagnosis", _boom)
-    r = CliRunner().invoke(app, ["sim-season", "--season", "2019", "--model-version", "t",
+    r = CliRunner(env=PLAIN).invoke(app, ["sim-season", "--season", "2019", "--model-version", "t",
                                  "--chunk", "0", "--chunk-size", "70"])  # fmt: skip
     assert r.exit_code != 0
     assert "--diagnosis-window" in str(r.exception) + r.output
@@ -414,9 +418,9 @@ def test_cli_diagnosis_window_runs_the_diagnosis_runner(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(backtest, "run_season", _boom)
     monkeypatch.setattr(diagnosis, "run_diagnosis", fake)
-    r = CliRunner().invoke(app, ["sim-season", "--season", "2019", "--model-version", "phase5-c0",
-                                 "--diagnosis-window", "S2021", "--chunk", "2",
-                                 "--chunk-size", "70"])  # fmt: skip
+    args = ["sim-season", "--season", "2019", "--model-version", "phase5-c0",
+            "--diagnosis-window", "S2021", "--chunk", "2", "--chunk-size", "70"]  # fmt: skip
+    r = CliRunner(env=PLAIN).invoke(app, args)
     assert r.exit_code == 0, r.output
     assert seen["season"] == 2019 and seen["window"] == "S2021"
     assert seen["chunk"] == 2 and seen["chunk_size"] == 70 and seen["model_version"] == "phase5-c0"
