@@ -90,14 +90,45 @@ def test_only_his_team_and_the_target_week_are_read() -> None:
     assert check(other_season).reason is None
 
 
-def test_unknown_status_is_not_guessed() -> None:
-    with pytest.raises(NotImplementedError, match="PRV-08"):
-        check(inj(("TMA", "P1", "Probable")))
+def test_unknown_status_on_his_own_row_is_injury_status_unclear() -> None:
+    # Sync #7: unpriced, no crash; the raw text seen is stored (ruling 2026-11-27).
+    a = check(inj(("TMA", "P1", "Probable"), ("TMA", "P2", "Out")))
+    assert a == Availability(
+        status_seen="Probable",
+        final_report_in=True,
+        flag=None,
+        reason=PricerUnpriced.INJURY_STATUS_UNCLEAR,
+    )
 
 
-def test_conflicting_rows_are_not_guessed() -> None:
-    with pytest.raises(NotImplementedError, match="PRV-08"):
-        check(inj(("TMA", "P1", "Out"), ("TMA", "P1", "Questionable")))
+def test_conflicting_rows_are_injury_status_unclear() -> None:
+    a = check(inj(("TMA", "P1", "Out"), ("TMA", "P1", "Questionable")))
+    assert a.reason is PricerUnpriced.INJURY_STATUS_UNCLEAR and a.flag is None
+    # distinct statuses, sorted, joined with '|'; a blank row reads 'none'
+    assert a.status_seen == "Out|Questionable"
+    b = check(inj(("TMA", "P1", "Doubtful"), ("TMA", "P1", None)))
+    assert b.reason is PricerUnpriced.INJURY_STATUS_UNCLEAR
+    assert b.status_seen == "Doubtful|none"
+
+
+def test_unknown_and_known_status_on_his_rows_is_unclear() -> None:
+    a = check(inj(("TMA", "P1", "Out"), ("TMA", "P1", "Probable")))
+    assert a.reason is PricerUnpriced.INJURY_STATUS_UNCLEAR
+    assert a.status_seen == "Out|Probable"
+
+
+def test_unknown_status_on_a_teammates_row_is_ignored_for_the_final_report() -> None:
+    a = check(inj(("TMA", "P1", None), ("TMA", "P2", "Probable")))
+    assert a == Availability(
+        status_seen="none",
+        final_report_in=False,
+        flag=AvailabilityFlag.NO_FINAL_REPORT,
+        reason=None,
+    )
+    b = check(inj(("TMA", "P2", "Probable"), ("TMA", "P3", "Questionable")))
+    assert b == Availability(status_seen="not_listed", final_report_in=True, flag=None, reason=None)
+    c = check(inj(("TMA", "P1", "Questionable"), ("TMA", "P2", "Probable")))
+    assert c.reason is None and c.flag is AvailabilityFlag.QUESTIONABLE
 
 
 def test_duplicate_identical_rows_are_one_status() -> None:
@@ -124,6 +155,37 @@ def test_first_reason_follows_the_spec_order() -> None:
     assert (
         first_reason(None, None, None, None, PricerUnpriced.NO_FITTED_PARAMS) == "no_fitted_params"
     )
+    assert (
+        first_reason(
+            None,
+            None,
+            PricerUnpriced.INJURY_STATUS_UNCLEAR,
+            PricerUnpriced.DUPLICATE_FF_ROWS,
+            None,
+        )
+        == "injury_status_unclear"
+    )
+    assert (
+        first_reason(
+            None, None, None, PricerUnpriced.DUPLICATE_FF_ROWS, PricerUnpriced.NO_FITTED_PARAMS
+        )
+        == "duplicate_ff_rows"
+    )
+
+
+def test_reason_codes_are_listed_in_the_spec_order() -> None:
+    # Sync #7: PRV-08 (out, doubtful, injury_status_unclear), PRV-03 (duplicate_ff_rows,
+    # too_few_stint_games, no_centring_mean, mu_not_positive), then no_fitted_params.
+    assert [r.value for r in PricerUnpriced] == [
+        "out",
+        "doubtful",
+        "injury_status_unclear",
+        "duplicate_ff_rows",
+        "too_few_stint_games",
+        "no_centring_mean",
+        "mu_not_positive",
+        "no_fitted_params",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -131,6 +193,8 @@ def test_first_reason_follows_the_spec_order() -> None:
     [
         (None, None, PricerUnpriced.TOO_FEW_STINT_GAMES, None, None),
         (None, None, None, PricerUnpriced.OUT, None),
+        (None, None, PricerUnpriced.DUPLICATE_FF_ROWS, None, None),
+        (None, None, None, PricerUnpriced.INJURY_STATUS_UNCLEAR, None),
         (None, None, None, None, PricerUnpriced.MU_NOT_POSITIVE),
     ],
 )

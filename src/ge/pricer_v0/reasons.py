@@ -1,9 +1,9 @@
 """PRV-03 pricer v0 reason codes after PRV-01 and PRV-02, and the order they are checked in.
 
-PRV-03 (spec sync #6, 2026-11-27): "Pricer v0's checks run in this order, and the first failure
-is the reason: PRV-01, PRV-02, PRV-08 (out, doubtful), PRV-03 (too_few_stint_games,
-no_centring_mean, mu_not_positive), then a missing fitted distribution parameter
-(no_fitted_params)."
+PRV-03 (spec sync #7, 2026-11-27): "Pricer v0's checks run in this order, and the first failure
+is the reason: PRV-01, PRV-02, PRV-08 (out, doubtful, injury_status_unclear), PRV-03
+(duplicate_ff_rows, too_few_stint_games, no_centring_mean, mu_not_positive), then a missing
+fitted distribution parameter (no_fitted_params)."
 """
 
 from __future__ import annotations
@@ -16,14 +16,17 @@ class PricerUnpriced(StrEnum):
 
     OUT = "out"
     DOUBTFUL = "doubtful"
+    INJURY_STATUS_UNCLEAR = "injury_status_unclear"
+    DUPLICATE_FF_ROWS = "duplicate_ff_rows"
     TOO_FEW_STINT_GAMES = "too_few_stint_games"
     NO_CENTRING_MEAN = "no_centring_mean"
     MU_NOT_POSITIVE = "mu_not_positive"
     NO_FITTED_PARAMS = "no_fitted_params"
 
 
-_PRV08 = (PricerUnpriced.OUT, PricerUnpriced.DOUBTFUL)
+_PRV08 = (PricerUnpriced.OUT, PricerUnpriced.DOUBTFUL, PricerUnpriced.INJURY_STATUS_UNCLEAR)
 _PRV03 = (
+    PricerUnpriced.DUPLICATE_FF_ROWS,
     PricerUnpriced.TOO_FEW_STINT_GAMES,
     PricerUnpriced.NO_CENTRING_MEAN,
     PricerUnpriced.MU_NOT_POSITIVE,

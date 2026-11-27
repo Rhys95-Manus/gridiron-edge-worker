@@ -34,6 +34,7 @@ FIT = Prv03Fit(
     window="test",
     usage_half_life=H_USAGE,
     k={"receptions": K, "receiving_yards": K, "rushing_yards": K},
+    efficiency_half_life=H_EFF,
 )
 
 
@@ -83,6 +84,7 @@ def run(
     centring_means: Centring = MEANS,
     team: str = "TMA",
     gms: pl.DataFrame | None = None,
+    fit: Prv03Fit = FIT,
 ) -> Any:
     return project(
         frame,
@@ -92,8 +94,7 @@ def run(
         team=team,
         stat=stat,
         centring_means=centring_means,
-        fit=FIT,
-        efficiency_half_life=H_EFF,
+        fit=fit,
     )
 
 
@@ -248,6 +249,76 @@ def test_mu_not_positive() -> None:
     assert p.mu is not None and p.mu <= 0
 
 
+def test_rows_from_a_group_with_no_centring_mean_are_dropped_from_g() -> None:
+    # Sync #7: his latest group (WR) has a mean; his older TE rows have none and leave G,
+    # but they still count for E and for the 3-game minimum.
+    m = 1.0
+    means = Centring(means={("WR", "receiving_yards"): m}, label="x")
+    rows = [
+        ffrow(gid(1), position="TE", rec_yards_gained=90.0, rec_yards_gained_exp=10.0),
+        ffrow(gid(2), position="TE", rec_yards_gained=0.0, rec_yards_gained_exp=10.0),
+        ffrow(gid(3), position="WR", rec_yards_gained=36.0, rec_yards_gained_exp=30.0),
+        ffrow(gid(4), position="WR", rec_yards_gained=26.0, rec_yards_gained_exp=30.0),
+    ]
+    p = run(ff(rows), stat="receiving_yards", centring_means=means)
+    assert p.reason is None and p.n_games == 4 and p.group == "WR"
+    assert p.e == pytest.approx(
+        wmean({0.0: 30.0, 1.0: 30.0, 2.0: 10.0, 3.0: 10.0}, H_USAGE), abs=1e-12
+    )
+    kept = {0.0: (26.0 - 30.0) - m, 1.0: (36.0 - 30.0) - m}
+    w = {g: 0.5 ** (g / H_EFF) for g in kept}
+    v_w = math.fsum(w[g] * kept[g] for g in kept) / math.fsum(w.values())
+    n_eff = math.fsum(w.values()) ** 2 / math.fsum(x * x for x in w.values())
+    assert p.g_n_eff == pytest.approx(n_eff, abs=1e-12)
+    assert p.g == pytest.approx(n_eff * v_w / (n_eff + K), abs=1e-12)
+    assert p.mu == pytest.approx(p.e + m + p.g, abs=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("other", "note"),
+    [
+        ({}, "same team, qualifying"),
+        ({"posteam": "TMB"}, "other team"),
+        ({"rec_attempt": 0.0}, "not qualifying"),
+    ],
+)
+def test_two_ff_rows_for_one_game_is_duplicate_ff_rows(other: dict[str, Any], note: str) -> None:
+    rows = [ffrow(gid(w)) for w in (1, 2, 3, 4)]
+    rows.append(ffrow(gid(2), **other))
+    p = run(ff(rows))
+    assert p.reason is PricerUnpriced.DUPLICATE_FF_ROWS, note
+    assert p.mu is None
+
+
+def test_duplicate_ff_rows_comes_before_too_few_stint_games() -> None:
+    rows = [ffrow(gid(4)), ffrow(gid(4))]
+    assert run(ff(rows)).reason is PricerUnpriced.DUPLICATE_FF_ROWS
+
+
+def test_duplicates_outside_the_target_season_or_for_other_players_do_not_count() -> None:
+    rows = [ffrow(gid(w)) for w in (2, 3, 4)]
+    rows += [ffrow(gid(16, SEASON - 1)), ffrow(gid(16, SEASON - 1))]
+    rows += [ffrow(gid(3), player="P2"), ffrow(gid(3), player="P2")]
+    assert run(ff(rows)).reason is None
+
+
+def test_missing_efficiency_half_life_is_no_fitted_params() -> None:
+    # Sync #7: G's efficiency half-life must be fitted, else no_fitted_params. Without G there
+    # is no mu, so the earlier PRV-03 reasons are checked first and mu_not_positive cannot be.
+    no_eff = Prv03Fit(window="test", usage_half_life=H_USAGE, k=FIT.k, efficiency_half_life=None)
+    rows = [ffrow(gid(w)) for w in (2, 3, 4)]
+    p = run(ff(rows), fit=no_eff)
+    assert p.reason is PricerUnpriced.NO_FITTED_PARAMS
+    assert p.mu is None and p.g is None
+    assert p.e == pytest.approx(3.0, abs=1e-12)
+    assert run(ff(rows[:2]), fit=no_eff).reason is PricerUnpriced.TOO_FEW_STINT_GAMES
+    none_means = Centring(means={}, label="x")
+    assert (
+        run(ff(rows), fit=no_eff, centring_means=none_means).reason
+        is PricerUnpriced.NO_CENTRING_MEAN
+    )
+
+
 def test_carries_mean_uses_the_same_games_and_usage_weights() -> None:
     rows = [
         ffrow(
@@ -306,6 +377,7 @@ def test_live_fit_reads_v4_live_k_and_usage_half_life() -> None:
     fit = load_prv03_fit(SEASON + 2)
     assert fit.window == "live"
     assert fit.usage_half_life == raw["conventions.g3_usage_half_life_games"]["value"]
+    assert fit.efficiency_half_life == raw["conventions.g3_efficiency_half_life_games"]["value"]
     for stat in SERIES_STAT.values():
         assert fit.k[stat] == raw[k_key(stat)]["value"]
 
@@ -338,6 +410,17 @@ def test_missing_fitted_value_stops_never_falls_back(tmp_path: Path, key: str) -
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     with pytest.raises(PricerStop):
         load_prv03_fit(2023, root=root)
+
+
+def test_missing_efficiency_half_life_loads_as_none_not_a_stop(tmp_path: Path) -> None:
+    root = _copy_v4(tmp_path)
+    path = root / "v4" / "S2023.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del data["values"]["conventions.g3_efficiency_half_life_games"]
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    fit = load_prv03_fit(2023, root=root)
+    assert fit.efficiency_half_life is None
+    assert fit.usage_half_life > 0
 
 
 def test_season_before_the_walk_forward_stops() -> None:

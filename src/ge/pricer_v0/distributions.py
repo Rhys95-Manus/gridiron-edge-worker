@@ -15,6 +15,11 @@ Every distribution parameter is an explicit input (fitting is session 7). Spec s
 - Empirical ratio: bins edged by training μ deciles; p = share of the bin's ratios with
   round(μ·r) ≥ X, exactly.
 
+Spec sync #7 (2026-11-27): a μ exactly on an interior bin edge goes in the upper bin; hurdle
+gamma p = 1 for X ≤ 0.5; a per-reception mean ≤ 0 in the compound model is mu_not_positive;
+compound models draw all counts first, then one rng.integers call for every pool index, then
+the per-simulation sums.
+
 PRV-07: p = P(Y ≥ X) = 1 - F(X - 1) for discrete models, 1 - F(X - 0.5) for continuous ones.
 Monte Carlo uses n_draws = 10,000 from numpy default_rng of the first 16 hex digits of
 SHA-256('PRV-07|<game_id>|<model_version>|<gsis_id>|<stat>'), one draw set per player and stat
@@ -161,15 +166,14 @@ class HurdleGamma:
 
     def p_over(self, mu: float, strikes: Sequence[int]) -> tuple[float, ...]:
         """PRV-05/PRV-07 continuous: 1 - F(X - 0.5) with F(y) = π + (1 - π) G(y) for y > 0,
-        θ = μ / ((1 - π) alpha)."""
+        θ = μ / ((1 - π) alpha). Sync #7: for X ≤ 0.5 (X - 0.5 ≤ 0), p = 1."""
         _require_mu(mu, "PRV-05")
         y = _continuous_points(strikes)
-        if (y <= 0).any():
-            raise NotImplementedError(
-                "PRV-05: hurdle gamma F(y) for y <= 0 is not defined (only P(Y <= 0) = π is)"
-            )
         theta = mu / ((1 - self.zero_mass) * self.alpha)
-        sf = (1 - self.zero_mass) * sps.gamma.sf(y, self.alpha, scale=theta)
+        positive = np.where(y > 0, y, 1.0)  # placeholder where p = 1, so sf is never fed y <= 0
+        sf = np.where(
+            y > 0, (1 - self.zero_mass) * sps.gamma.sf(positive, self.alpha, scale=theta), 1.0
+        )
         return _checked(sf, strikes)
 
 
@@ -209,14 +213,10 @@ class EmpiricalRatio:
             raise ValueError("PRV-05: one non-empty ratio set per bin")
 
     def bin_of(self, mu: float) -> int:
-        """PRV-05/06: a μ below the lowest edge or above the highest goes in the end bin. A μ
-        exactly on an interior edge is not settled by the spec."""
-        interior = self.edges[1:-1]
-        if mu in interior:
-            raise NotImplementedError(
-                f"PRV-05: μ = {mu} is on an interior bin edge; the spec doesn't say which bin"
-            )
-        return int(np.searchsorted(np.asarray(interior, dtype=float), mu, side="left"))
+        """PRV-05/06: a μ below the lowest edge or above the highest goes in the end bin. Sync
+        #7: a μ exactly on an interior bin edge goes in the upper bin."""
+        interior = np.asarray(self.edges[1:-1], dtype=float)
+        return int(np.searchsorted(interior, mu, side="right"))
 
     def p_over(self, mu: float, strikes: Sequence[int]) -> tuple[float, ...]:
         """PRV-05/06, PRV-07: p = share of the bin's ratios with round(μ·r) ≥ X, exactly
@@ -253,15 +253,13 @@ class CompoundReceivingYards:
         self, mu: float, mu_rec: float, strikes: Sequence[int], rng: np.random.Generator, n: int
     ) -> tuple[float, ...] | PricerUnpriced:
         """PRV-05 compound, PRV-07: Yards = (Σ_{i≤N} Y_i) * μ / (μ_rec * mean(Y)); μ_rec ≤ 0
-        is mu_not_positive. The spec doesn't cover mean(Y) ≤ 0, so it raises."""
+        or (sync #7) a per-reception mean ≤ 0 is mu_not_positive."""
         _require_mu(mu, "PRV-05")
         if not mu_rec > 0:
             return PricerUnpriced.MU_NOT_POSITIVE
         pool, mean = _pool_mean(self.per_reception_yards, "PRV-05")
         if not mean > 0:
-            raise NotImplementedError(
-                f"PRV-05: league mean per-reception yards is {mean}; the spec doesn't say"
-            )
+            return PricerUnpriced.MU_NOT_POSITIVE
         counts = self.receptions.sample(rng, mu_rec, n)
         sums = _compound_sums(rng, counts, pool)
         return _share_at_least(round_half_up(sums * (mu / (mu_rec * mean))), strikes)

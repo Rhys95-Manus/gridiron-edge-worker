@@ -7,7 +7,9 @@ player's row, matched by gsis_id, in his nflverse team's injury report for the t
 week, as visible at as_of under BT-01. Stored values: Out, Doubtful, Questionable, none (listed
 with no game designation), not_listed. A team's final report is in when its visible
 target-week rows include at least one Out, Doubtful or Questionable designation (PLY-14 ruling
-2026-10-04). Pricer v0 does not read roster status.
+2026-10-04). Pricer v0 does not read roster status. Spec sync #7 (2026-11-27): an unknown or
+conflicting status on the player's own rows is injury_status_unclear (unpriced, no crash);
+unknown statuses on other players' rows are ignored for the final-report test.
 
 The caller passes the injury rows visible at as_of (the snapshot's injuries, BT-01); this module
 only reads them.
@@ -56,29 +58,27 @@ def availability(
 ) -> Availability:
     """PRV-08: `injuries` are the injury report rows visible at as_of (INJURY_COLUMNS); only
     the rows of `team` for `season`/`week` are read. A null or blank report_status is "listed
-    with no game designation". A status outside Out/Doubtful/Questionable, or two rows for the
-    player with different statuses, raises NotImplementedError: the spec doesn't say."""
+    with no game designation". Sync #7: "An unknown or conflicting report_status on the
+    player's own rows leaves him unpriced as injury_status_unclear. Unknown statuses on other
+    players' rows are ignored for the final-report test." For injury_status_unclear the stored
+    status is the raw text seen: the distinct statuses on his rows, sorted and joined with '|',
+    a blank one read as 'none' (ruling 2026-11-27)."""
     week_rows = injuries.filter(
         (pl.col("season") == season) & (pl.col("week") == week) & (pl.col("team") == team)
     )
-    seen: list[str] = []
-    for status in week_rows["report_status"].to_list():
-        text = (status or "").strip()
-        if text and text not in DESIGNATIONS:
-            raise NotImplementedError(
-                f"{SPEC_ID}: report_status {text!r} is not Out, Doubtful or Questionable"
-            )
-        seen.append(text)
-    final_report_in = any(s in DESIGNATIONS for s in seen)
+    final_report_in = any(
+        (s or "").strip() in DESIGNATIONS for s in week_rows["report_status"].to_list()
+    )
     mine = {
-        (s or "").strip()
+        (s or "").strip() or NO_DESIGNATION
         for s in week_rows.filter(pl.col("gsis_id") == gsis_id)["report_status"].to_list()
     }
-    if len(mine) > 1:
-        raise NotImplementedError(
-            f"{SPEC_ID}: {gsis_id} has rows with different statuses {sorted(mine)}"
+    known = (*DESIGNATIONS, NO_DESIGNATION)
+    if len(mine) > 1 or any(s not in known for s in mine):
+        return Availability(
+            "|".join(sorted(mine)), final_report_in, None, PricerUnpriced.INJURY_STATUS_UNCLEAR
         )
-    status_seen = (mine.pop() or NO_DESIGNATION) if mine else NOT_LISTED
+    status_seen = mine.pop() if mine else NOT_LISTED
     if status_seen == OUT:
         return Availability(status_seen, final_report_in, None, PricerUnpriced.OUT)
     if status_seen == DOUBTFUL:

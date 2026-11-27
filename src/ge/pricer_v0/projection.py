@@ -16,8 +16,14 @@ must be fitted (no fallback); reason codes too_few_stint_games, no_centring_mean
 mu_not_positive, in that order.
 
 G is PLY-35's shrunk centred gap: G1 shrink toward 0 of the G3-weighted mean centred gap per
-game with PLY-35's efficiency half-life and n_eff. Where pricer v0 reads that efficiency
-half-life is not settled by the spec (session 6 question), so it is an explicit input here.
+game with PLY-35's efficiency half-life and n_eff. Spec sync #7 (2026-11-27): "G's weights use
+conventions.g3_efficiency_half_life_games from the same params_fitted/v4 window file; it must be
+fitted, else no_fitted_params. Stint rows from a position group with no centring mean are
+dropped from G. Two or more ff_opportunity rows for the same player and game leave the player
+unpriced as duplicate_ff_rows." Without G there is no μ, so a missing efficiency half-life is
+reported after duplicate_ff_rows, too_few_stint_games and no_centring_mean, in place of the μ
+check. The duplicate check reads all of the player's visible target-season rows before the
+target game, any team, qualifying or not (ruling 2026-11-27).
 
 Inputs are DataFrames the caller reads from the point-in-time snapshot: `ff` = ff_opportunity
 rows visible at as_of (any seasons), `games` = the target season's visible team games with the
@@ -46,6 +52,7 @@ SPEC_ID = "PRV-03"
 # config/params_fitted/v4/live.yaml. Walk-forward season S reads config/params_fitted/v4/S<S>.yaml."
 FIT_VERSION = "v4"
 USAGE_HALF_LIFE_KEY = "conventions.g3_usage_half_life_games"
+EFFICIENCY_HALF_LIFE_KEY = "conventions.g3_efficiency_half_life_games"
 # Kalshi series (PRV-01) -> PLY-35 stat name (ge.metrics.expected.STATS).
 SERIES_STAT = {
     "KXNFLREC": "receptions",
@@ -66,17 +73,20 @@ class PricerStop(RuntimeError):
 
 @dataclass(frozen=True)
 class Prv03Fit:
-    """PRV-03's fitted inputs from one v4 window file."""
+    """PRV-03's fitted inputs from one v4 window file. efficiency_half_life is None when the
+    file has no fitted value (sync #7: no_fitted_params, not a stop)."""
 
     window: str
     usage_half_life: float
     k: Mapping[str, float]
+    efficiency_half_life: float | None
 
 
 def load_prv03_fit(season: int, root: Path = FITTED_ROOT) -> Prv03Fit:
-    """PRV-03: k per stat and the usage half-life from params_fitted/v4/<window>.yaml, where the
-    window is BT-07a's for `season` (S<S> walk-forward, live after the holdout). A missing
-    file or value raises PricerStop."""
+    """PRV-03: k per stat, the usage half-life and G's efficiency half-life from
+    params_fitted/v4/<window>.yaml, where the window is BT-07a's for `season` (S<S> walk-forward,
+    live after the holdout). A missing file, k or usage half-life raises PricerStop; a missing
+    efficiency half-life loads as None (sync #7: the player is unpriced as no_fitted_params)."""
     window = window_for(season)
     if window is None:
         raise PricerStop(f"{SPEC_ID}: season {season} has no params_fitted window")
@@ -93,10 +103,12 @@ def load_prv03_fit(season: int, root: Path = FITTED_ROOT) -> Prv03Fit:
             raise PricerStop(f"{SPEC_ID}: {key} is not fitted in {FIT_VERSION}/{window}")
         return float(fitted.values[key].value)
 
+    eff = fitted.values.get(EFFICIENCY_HALF_LIFE_KEY)
     return Prv03Fit(
         window=window,
         usage_half_life=need(USAGE_HALF_LIFE_KEY),
         k={stat: need(k_key(stat)) for stat in PRV_STATS},
+        efficiency_half_life=None if eff is None else float(eff.value),
     )
 
 
@@ -178,7 +190,6 @@ def project(
     stat: str,
     centring_means: Centring,
     fit: Prv03Fit,
-    efficiency_half_life: float,
 ) -> Projection:
     """PRV-03 for one player and stat at as_of. `team` is the nflverse team PRV-02 mapped him
     to; `games` holds that season's visible team games (team, game_id, week, g)."""
@@ -186,11 +197,11 @@ def project(
         raise ValueError(f"{SPEC_ID}: stat {stat!r} is not one of {PRV_STATS}")
     actual_cols, expected_cols = STATS[stat]
     season = int(target_game_id.split("_", 1)[0])
-    mine = _season_rows(ff, season).filter(
-        (pl.col("player_id") == gsis_id)
-        & (pl.col("posteam") == team)
-        & (pl.col("game_id") != target_game_id)
+    season_rows = _season_rows(ff, season).filter(
+        (pl.col("player_id") == gsis_id) & (pl.col("game_id") != target_game_id)
     )
+    duplicated = season_rows["game_id"].n_unique() != season_rows.height
+    mine = season_rows.filter(pl.col("posteam") == team)
     rows, _ = qualifying(mine)
     team_games = games.filter(pl.col("team") == team).select("game_id", "g")
     rows = (
@@ -198,8 +209,6 @@ def project(
         .with_columns(position_group(pl.col("position")))
         .sort("g", "game_id")
     )
-    if rows["game_id"].n_unique() != rows.height:
-        raise ValueError(f"{SPEC_ID}: {gsis_id} has more than one ff_opportunity row for a game")
     n = rows.height
     group = str(rows["group"][0]) if n else None
 
@@ -219,6 +228,8 @@ def project(
             **base,
         )
 
+    if duplicated:
+        return result(PricerUnpriced.DUPLICATE_FF_ROWS)
     if n < load_params().pricer_v0.prv_03_min_prior_games_in_stint.value:
         return result(PricerUnpriced.TOO_FEW_STINT_GAMES)
 
@@ -234,20 +245,22 @@ def project(
     if (group, stat) not in centring_means.means:
         return result(PricerUnpriced.NO_CENTRING_MEAN, e=e, carries_mean=carries)
     m = centring_means.means[(group, stat)]
+    if fit.efficiency_half_life is None:
+        return result(PricerUnpriced.NO_FITTED_PARAMS, e=e, m=m, carries_mean=carries)
+    efficiency_half_life = fit.efficiency_half_life
 
     # G: PLY-35's centred gap (each game centred on its own row's group mean), G3-weighted with
-    # the efficiency half-life, G1-shrunk toward 0 with n_eff and the fitted k.
-    centred = []
-    for r in records:
-        key = (str(r["group"]), stat)
-        if key not in centring_means.means:
-            raise NotImplementedError(
-                f"{SPEC_ID}: an earlier game of {gsis_id} is in group {key[0]}, which has no "
-                "centring mean; the spec doesn't say how G treats it"
-            )
-        raw = _total(r, actual_cols) - _total(r, expected_cols)
-        centred.append(raw - centring_means.means[key])
-    w_eff = [0.5 ** (float(r["g"]) / efficiency_half_life) for r in records]
+    # the efficiency half-life, G1-shrunk toward 0 with n_eff and the fitted k. Rows whose group
+    # has no centring mean are dropped from G (sync #7); the most recent row's group has one, so
+    # at least one row is left.
+    kept = [r for r in records if (str(r["group"]), stat) in centring_means.means]
+    centred = [
+        _total(r, actual_cols)
+        - _total(r, expected_cols)
+        - centring_means.means[(str(r["group"]), stat)]
+        for r in kept
+    ]
+    w_eff = [0.5 ** (float(r["g"]) / efficiency_half_life) for r in kept]
     sum_e = math.fsum(w_eff)
     value_w = math.fsum(w * c for w, c in zip(w_eff, centred, strict=True)) / sum_e
     n_eff = sum_e**2 / math.fsum(w * w for w in w_eff)

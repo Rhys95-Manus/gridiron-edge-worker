@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -139,9 +140,15 @@ def test_hurdle_gamma_is_continuous_with_zero_mass() -> None:
     assert HurdleGamma(alpha=1.0, zero_mass=pi).p_over(mu, xs) == pytest.approx(want, abs=1e-12)
 
 
-def test_hurdle_gamma_below_the_zero_mass_is_not_defined() -> None:
-    with pytest.raises(NotImplementedError, match="PRV-05"):
-        HurdleGamma(alpha=1.0, zero_mass=0.2).p_over(40.0, (0,))
+def test_hurdle_gamma_p_is_one_for_x_at_most_half() -> None:
+    # Sync #7: for X <= 0.5, p = 1.
+    mu, pi = 40.0, 0.2
+    theta = mu / (1 - pi)
+    got = HurdleGamma(alpha=1.0, zero_mass=pi).p_over(mu, (-5, 0, 1, 10))
+    assert got[:2] == (1.0, 1.0)
+    assert got[2:] == pytest.approx(
+        tuple((1 - pi) * math.exp(-(x - 0.5) / theta) for x in (1, 10)), abs=1e-12
+    )
 
 
 def test_shifted_gamma_is_continuous() -> None:
@@ -173,9 +180,15 @@ def test_empirical_ratio_end_bins_take_mu_outside_the_edges() -> None:
     assert EMP.p_over(40.0, (40,)) == (1.0,)
 
 
-def test_empirical_ratio_mu_on_an_interior_edge_is_not_guessed() -> None:
-    with pytest.raises(NotImplementedError, match="PRV-05"):
-        EMP.p_over(20.0, (5,))
+def test_empirical_ratio_mu_on_an_interior_edge_goes_in_the_upper_bin() -> None:
+    # Sync #7. mu = 20 -> bin 1: mu * r = 4, 20, 20, 30, 60
+    assert EMP.bin_of(20.0) == 1
+    assert EMP.p_over(20.0, (4, 5, 21, 60, 61)) == (1.0, 0.8, 0.4, 0.2, 0.0)
+    # mu = 30 -> bin 2 (ratios 1.0)
+    assert EMP.bin_of(30.0) == 2
+    assert EMP.p_over(30.0, (30, 31)) == (1.0, 0.0)
+    # the outer edges stay in the end bins
+    assert EMP.bin_of(10.0) == 0 and EMP.bin_of(40.0) == 2
 
 
 # ---- compound models (Monte Carlo) ----
@@ -230,6 +243,66 @@ def test_compound_receiving_mu_rec_not_positive() -> None:
     fam = CompoundReceivingYards(receptions=Poisson(), per_reception_yards=(10.0,))
     got = fam.p_over(40.0, 0.0, (10,), generator("g", "0", "P1", "receiving_yards"), N_DRAWS)
     assert got is PricerUnpriced.MU_NOT_POSITIVE
+
+
+@pytest.mark.parametrize("pool", [(-3.0, 1.0), (0.0,), (-2.0, 2.0)])
+def test_compound_receiving_per_reception_mean_not_positive(pool: tuple[float, ...]) -> None:
+    # Sync #7: a per-reception mean <= 0 is mu_not_positive.
+    fam = CompoundReceivingYards(receptions=Poisson(), per_reception_yards=pool)
+    got = fam.p_over(40.0, 4.0, (10,), generator("g", "0", "P1", "receiving_yards"), N_DRAWS)
+    assert got is PricerUnpriced.MU_NOT_POSITIVE
+
+
+def _spec_order_shares(
+    rng: np.random.Generator,
+    counts_draw: Callable[[np.random.Generator], np.ndarray],
+    pool: tuple[float, ...],
+    scale: float,
+    strikes: tuple[int, ...],
+) -> tuple[float, ...]:
+    """Sync #7 draw order, written out: all counts first, then one rng.integers call for every
+    pool index, then the per-simulation sums."""
+    counts = counts_draw(rng)
+    idx = rng.integers(0, len(pool), size=int(counts.sum()))
+    vals = np.asarray(pool)[idx]
+    sums, start = [], 0
+    for c in counts.tolist():
+        sums.append(math.fsum(vals[start : start + c].tolist()))
+        start += c
+    y = np.floor(np.asarray(sums) * scale + 0.5)
+    return tuple(float((y >= x).sum()) / y.size for x in strikes)
+
+
+def test_compound_receiving_follows_the_spec_draw_order() -> None:
+    pool = (-2.0, 4.0, 9.0, 17.0, 31.0)
+    mu, mu_rec, r = 52.0, 4.3, 2.5
+    xs = (10, 20, 35, 50, 65, 80)
+    fam = CompoundReceivingYards(receptions=NegativeBinomial(r), per_reception_yards=pool)
+    got = fam.p_over(mu, mu_rec, xs, generator("g", "0", "P1", "receiving_yards"), N_DRAWS)
+    want = _spec_order_shares(
+        generator("g", "0", "P1", "receiving_yards"),
+        lambda g: g.negative_binomial(r, r / (r + mu_rec), N_DRAWS),
+        pool,
+        mu / (mu_rec * (math.fsum(pool) / len(pool))),
+        xs,
+    )
+    assert got == want
+
+
+def test_compound_rushing_follows_the_spec_draw_order() -> None:
+    pool = (-4.0, 0.0, 2.0, 3.0, 6.0, 41.0)
+    mu, carries, r = 61.0, 14.2, 6.0
+    xs = (20, 40, 55, 70, 90)
+    fam = CompoundRushingYards(carries_size=r, per_carry_yards=pool)
+    got = fam.p_over(mu, carries, xs, generator("g", "0", "P1", "rushing_yards"), N_DRAWS)
+    want = _spec_order_shares(
+        generator("g", "0", "P1", "rushing_yards"),
+        lambda g: g.negative_binomial(r, r / (r + carries), N_DRAWS),
+        pool,
+        mu / (carries * (math.fsum(pool) / len(pool))),
+        xs,
+    )
+    assert got == want
 
 
 def test_compound_rushing_constant_yards_matches_nb_carries() -> None:
