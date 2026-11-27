@@ -357,7 +357,8 @@ pricer_v0:
   prv_03_min_prior_games_in_stint: {spec_id: PRV-03, value: 3, status: initial, source: 'A player needs at least 3 prior games in the stint to be priced.'}
   prv_min_player_games_per_position_group: {spec_id: [PRV-04, PRV-05, PRV-06], value: 500, status: initial, source: 'Each fitted family needs at least 500 player-games per position group in its training window.'}
   prv_07_continuity_offset: {spec_id: PRV-07, value: 0.5, status: initial, source: 'p = P(Y ≥ X) for discrete models and 1 − F(X − 0.5) for continuous ones.'}
-  prv_07_monte_carlo_draws: {spec_id: PRV-07, value: 10000, status: initial, source: 'Monte Carlo models use n_draws = 10,000, seeded from game_id and model_version, with yards rounded to whole numbers before comparing.'}
+  prv_07_monte_carlo_draws: {spec_id: PRV-07, value: 10000, status: initial, source: 'Monte Carlo models use n_draws = 10,000, seeded from game_id, model_version, gsis_id and stat, with yards rounded to whole numbers before comparing.'}
+  prv_07_round_half_up_offset: {spec_id: PRV-07, value: 0.5, status: initial, source: '''Rounded to whole numbers'' means round half up: floor(y + 0.5), negatives included.'}
   prv_09_receptions_min_strike: {spec_id: PRV-09, value: 1, status: initial, source: 'Receptions X = 1 to 14.'}
   prv_09_receptions_max_strike: {spec_id: PRV-09, value: 14, status: initial, source: 'Receptions X = 1 to 14.'}
   prv_09_rec_yards_strike_1: {spec_id: PRV-09, value: 10, status: initial, source: 'Receiving yards X = 10, 15, 20, 25, 30, 40, 50, 55, 60, 65, 70, then every 10 to 190.'}

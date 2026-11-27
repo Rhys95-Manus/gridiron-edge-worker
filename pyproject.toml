@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pypdf>=6.19.0",
     "pyyaml>=6.0",
+    "scipy==1.18.1",
     "tenacity>=9.1.4",
     "timezonefinder>=9.0.0",
     "typer>=0.12",
@@ -90,4 +91,9 @@ strict = true
 [[tool.mypy.overrides]]
 # nflreadpy ships no type information (no py.typed marker).
 module = ["nflreadpy"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# scipy (PRV-04 to PRV-07, decision log 2026-11-27) ships no type information.
+module = ["scipy"]
 ignore_missing_imports = true

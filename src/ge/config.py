@@ -437,6 +437,7 @@ class PricerV0(_Group):
     prv_min_player_games_per_position_group: Param
     prv_07_continuity_offset: Param
     prv_07_monte_carlo_draws: Param
+    prv_07_round_half_up_offset: Param
     prv_09_receptions_min_strike: Param
     prv_09_receptions_max_strike: Param
     prv_09_rec_yards_strike_1: Param
