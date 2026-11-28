@@ -394,6 +394,7 @@ pricer_v0:
   prv_10_last_scored_season: {spec_id: PRV-10, value: 2024, status: initial, source: 'Walk-forward: season S (2022, 2023, 2024) is scored with distribution parameters fitted on 2021 to S − 1 and PLY-35 k from that season''s params_fitted/v4 window file.'}
   prv_10_first_fit_season: {spec_id: PRV-10, value: 2021, status: initial, source: 'Walk-forward: season S (2022, 2023, 2024) is scored with distribution parameters fitted on 2021 to S − 1 and PLY-35 k from that season''s params_fitted/v4 window file.'}
   prv_10_live_last_fit_season: {spec_id: PRV-10, value: 2024, status: initial, source: 'The live model uses distribution parameters fitted on 2021–2024 and k from live.yaml, frozen for the season.'}
+  prv_11_probability_bins: {spec_id: PRV-11, value: 10, status: initial, source: 'Calibration uses 10 equal-width probability bins.'}
   prv_11_min_scored_pairs: {spec_id: PRV-11, value: 1000, status: initial, source: 'At least 1,000 scored pairs and at least 50 per bin used.'}
   prv_11_min_pairs_per_bin: {spec_id: PRV-11, value: 50, status: initial, source: 'At least 1,000 scored pairs and at least 50 per bin used.'}
   prv_11_min_recalibration_slope: {spec_id: PRV-11, value: 0.85, status: initial, source: 'Logistic recalibration slope between 0.85 and 1.15.'}

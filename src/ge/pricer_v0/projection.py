@@ -20,10 +20,10 @@ game with PLY-35's efficiency half-life and n_eff. Spec sync #7 (2026-11-27): "G
 conventions.g3_efficiency_half_life_games from the same params_fitted/v4 window file; it must be
 fitted, else no_fitted_params. Stint rows from a position group with no centring mean are
 dropped from G. Two or more ff_opportunity rows for the same player and game leave the player
-unpriced as duplicate_ff_rows." Without G there is no μ, so a missing efficiency half-life is
-reported after duplicate_ff_rows, too_few_stint_games and no_centring_mean, in place of the μ
-check. The duplicate check reads all of the player's visible target-season rows before the
-target game, any team, qualifying or not (ruling 2026-11-27).
+unpriced as duplicate_ff_rows." Spec sync #8 (2026-11-27): "The duplicate_ff_rows check reads
+all of the player's ff_opportunity rows visible at as_of in the target season before the target
+game, for any team and whether or not the game qualifies. A missing efficiency half-life is
+checked after no_centring_mean; mu_not_positive is not evaluated for that player."
 
 Inputs are DataFrames the caller reads from the point-in-time snapshot: `ff` = ff_opportunity
 rows visible at as_of (any seasons), `games` = the target season's visible team games with the

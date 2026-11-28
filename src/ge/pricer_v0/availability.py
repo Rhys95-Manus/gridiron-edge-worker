@@ -60,9 +60,9 @@ def availability(
     the rows of `team` for `season`/`week` are read. A null or blank report_status is "listed
     with no game designation". Sync #7: "An unknown or conflicting report_status on the
     player's own rows leaves him unpriced as injury_status_unclear. Unknown statuses on other
-    players' rows are ignored for the final-report test." For injury_status_unclear the stored
-    status is the raw text seen: the distinct statuses on his rows, sorted and joined with '|',
-    a blank one read as 'none' (ruling 2026-11-27)."""
+    players' rows are ignored for the final-report test." Sync #8: "For injury_status_unclear,
+    the status seen that is stored is the raw report_status text: the distinct statuses on the
+    player's rows, sorted and joined with '|', a blank one read as none" (PRV-08)."""
     week_rows = injuries.filter(
         (pl.col("season") == season) & (pl.col("week") == week) & (pl.col("team") == team)
     )

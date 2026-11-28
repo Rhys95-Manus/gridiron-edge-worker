@@ -473,6 +473,7 @@ class PricerV0(_Group):
     prv_10_last_scored_season: Param
     prv_10_first_fit_season: Param
     prv_10_live_last_fit_season: Param
+    prv_11_probability_bins: Param
     prv_11_min_scored_pairs: Param
     prv_11_min_pairs_per_bin: Param
     prv_11_min_recalibration_slope: Param

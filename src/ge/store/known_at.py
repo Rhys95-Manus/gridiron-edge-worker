@@ -223,9 +223,23 @@ def visible_weekly(
     """BT-01: rows of an undated weekly report whose team-week report time is <= as_of.
     Weeks with no game for that team (byes) have no report time and are left out."""
     keys = tw.select(
-        "season", "week", pl.col("team").alias(team_col), pl.col("known_at").alias("_known_at")
+        pl.col("season").alias("_season"),
+        pl.col("week").alias("_week"),
+        pl.col("team").alias(team_col),
+        pl.col("known_at").alias("_known_at"),
     )
-    j = df.join(keys, on=["season", "week", team_col], how="inner", maintain_order="left")
+    # A stored report may hold season/week as floats (one season's injuries file does): match
+    # on the schedule's integer type, never dropping a fractional part silently.
+    cast = df.with_columns(
+        pl.col("season").cast(keys["_season"].dtype).alias("_season"),
+        pl.col("week").cast(keys["_week"].dtype).alias("_week"),
+    )
+    lost = cast.filter(
+        (pl.col("_season") != pl.col("season")) | (pl.col("_week") != pl.col("week"))
+    )
+    if lost.height:
+        raise ValueError(f"BT-01: {lost.height} weekly report rows have a non-whole season or week")
+    j = cast.join(keys, on=["_season", "_week", team_col], how="inner", maintain_order="left")
     return j.filter(pl.col("_known_at") <= as_of).select(df.columns)
 
 

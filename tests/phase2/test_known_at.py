@@ -190,6 +190,30 @@ def test_weekly_reports_become_visible_at_noon_the_day_before() -> None:
     assert max(weeks_before) == 1
 
 
+def test_weekly_report_with_float_season_and_week_joins_like_int() -> None:
+    """A stored weekly report whose season/week columns are Float64 (seen in one season's
+    injuries file) is matched to the schedule's integer keys; its own columns are returned
+    unchanged."""
+    depth = load_parquet_fixture("depth_weekly_2023")
+    tw = team_weeks(_sched(), BT).filter(pl.col("season") == 2023)
+    as_of = tw["known_at"].max()
+    as_int = visible_weekly(depth, tw, as_of, "club_code")
+    floats = depth.with_columns(pl.col("season", "week").cast(pl.Float64))
+    as_float = visible_weekly(floats, tw, as_of, "club_code")
+    assert as_float.schema == floats.schema
+    assert as_float.with_columns(pl.col("season", "week").cast(as_int["season"].dtype)).equals(
+        as_int
+    )
+
+
+def test_weekly_report_with_a_fractional_week_stops() -> None:
+    depth = load_parquet_fixture("depth_weekly_2023").head(3)
+    tw = team_weeks(_sched(), BT).filter(pl.col("season") == 2023)
+    bad = depth.with_columns(pl.col("week").cast(pl.Float64) + 0.5)
+    with pytest.raises(ValueError, match="BT-01"):
+        visible_weekly(bad, tw, tw["known_at"].max(), "club_code")
+
+
 def test_latest_weekly_chart_per_team() -> None:
     depth = load_parquet_fixture("depth_weekly_2023")
     tw = team_weeks(_sched(), BT).filter(pl.col("season") == 2023)

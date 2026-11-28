@@ -14,12 +14,26 @@ PRV-06: "Per-carry yards are drawn with replacement from the position group's tr
 play-by-play plays with rush_attempt = 1 (designed runs, scrambles and kneels, as official rushing
 yards count them)."
 
-Rulings 2026-11-27 (session 7a, spec wording proposed in session7a-report.md): two-point tries
-(two_point_attempt = 1) are left out of both pools; a play whose receiver or rusher has no
-ff_opportunity row for that game is dropped and counted; the rusher's group comes from that
-game's ff_opportunity row and the per-carry value is yards_gained, as in PRV-05; a window's
-seasons include their postseason games. Code choice (proposed in the report): each pool is in
-(game_id, play_id) order, since the Monte Carlo index draws depend on pool order.
+Spec sync #8 (2026-11-27), PRV-06: "Yard pools for PRV-05 and PRV-06: two-point tries
+(two_point_attempt = 1) are left out of both yard pools. A play whose receiver or rusher has no
+ff_opportunity row for that game is dropped from the pool and counted in the fit report. The
+rusher's position group comes from that game's ff_opportunity row, and the per-carry value is
+yards_gained, as in PRV-05. A training window's seasons include their postseason games. Each
+yard pool is ordered by game_id, then play_id. A player-game with ff_opportunity rows in two
+different position groups stops the pool build. Pools read the latest pull of each window
+season."
+
+Spec sync #8, PRV-10: "Each family's distribution parameters are fitted by maximum likelihood on
+the training window's player-games, each with its point-in-time μ at as_of = kickoff - 24 h
+under BT-01. Each season's μ, in training and in scoring, uses that season's
+params_fitted/v4/S<season>.yaml; the live model uses live.yaml. Training and calibration use
+every player-game in which the player played (an offensive snap or an opportunity) and that has
+at least 3 earlier qualifying games in the stint; a played game with no ff_opportunity row
+counts the stat as 0, and players left unpriced are not used."
+
+Rulings 2026-11-27 (session 7b): "unpriced" includes PRV-08 (Out, Doubtful,
+injury_status_unclear at as_of); actuals are the ff_opportunity actual columns and "played" is
+MetricContext.played on the end-of-season view, both from the latest pull of 2021-2024.
 
 Data: nflverse; charting: FTN Data via nflverse; expected points: ffopportunity (ffverse) via
 nflverse; data license not stated by the source.
@@ -29,7 +43,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,8 +51,10 @@ import polars as pl
 
 from ge.config import load_params
 from ge.ingest.raw import DATA_ROOT
-from ge.metrics.expected import position_group
-from ge.pricer_v0.projection import PRV_STATS, Centring, Prv03Fit, project
+from ge.metrics.expected import STATS, position_group
+from ge.pricer_v0.availability import availability
+from ge.pricer_v0.projection import PRV_STATS, Centring, Prv03Fit, centring, project
+from ge.store import known_at as ka
 from ge.store.holdout import Window
 from ge.store.vintage import choose_version
 
@@ -242,3 +258,228 @@ def game_mu(
                     }
                 )
     return pl.DataFrame(rows, schema=MU_SCHEMA)
+
+
+# ---- PRV-10 labels: every played player-game, actuals from ff_opportunity ----
+
+LABEL_STATS = PRV_STATS
+LABELS_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
+    "game_id": pl.Utf8,
+    "team": pl.Utf8,
+    "gsis_id": pl.Utf8,
+    "has_ff_row": pl.Boolean,
+    "receptions": pl.Float64,
+    "receiving_yards": pl.Float64,
+    "rushing_yards": pl.Float64,
+    "carries": pl.Float64,
+}
+# PRV-06 compound model: the carries count is ff_opportunity's rush_attempt.
+_CARRIES_COLUMN = "rush_attempt"
+
+
+def _season_prefix(season: int) -> str:
+    return f"{season}_"
+
+
+def labels_from(played: pl.DataFrame, ff: pl.DataFrame, season: int) -> pl.DataFrame:
+    """PRV-10: one row per played (gsis_id, team, game_id) of `season` (MetricContext.played:
+    an offensive snap or an opportunity) with the PRV stats' actual values from that game's
+    ff_opportunity row; "a played game with no ff_opportunity row counts the stat as 0", and a
+    null actual counts as 0 (as in PRV-03). ff rows with no player_id are ignored; two rows for
+    one played player-game raise ValueError. Sorted by game_id, team, gsis_id."""
+    prefix = _season_prefix(season)
+    plays = played.filter(pl.col("game_id").str.starts_with(prefix)).select(
+        "game_id", "team", "gsis_id"
+    )
+    rows = ff.filter(pl.col("game_id").str.starts_with(prefix) & pl.col("player_id").is_not_null())
+    dup = (
+        rows.group_by("game_id", "player_id")
+        .len()
+        .filter(pl.col("len") > 1)
+        .join(plays, left_on=["game_id", "player_id"], right_on=["game_id", "gsis_id"])
+    )
+    if dup.height:
+        raise ValueError(
+            f"PRV-10: {dup.height} played player-games have two or more ff_opportunity rows"
+        )
+    actual = {stat: STATS[stat][0] for stat in LABEL_STATS}
+    values = rows.select(
+        "game_id",
+        pl.col("player_id").alias("gsis_id"),
+        pl.lit(True).alias("has_ff_row"),
+        *[
+            pl.sum_horizontal(pl.col(c).fill_null(0.0) for c in cols).cast(pl.Float64).alias(s)
+            for s, cols in actual.items()
+        ],
+        pl.col(_CARRIES_COLUMN).fill_null(0.0).cast(pl.Float64).alias("carries"),
+    )
+    out = plays.join(values, on=["game_id", "gsis_id"], how="left").with_columns(
+        pl.col("has_ff_row").fill_null(False),
+        *[pl.col(c).fill_null(0.0) for c in (*LABEL_STATS, "carries")],
+    )
+    return (
+        out.select(list(LABELS_SCHEMA))
+        .cast(pl.Schema(LABELS_SCHEMA))
+        .sort("game_id", "team", "gsis_id")
+    )
+
+
+def season_labels(season: int, root: Path = DATA_ROOT) -> pl.DataFrame:
+    """PRV-10 labels for one season from the latest pull: MetricContext.played on the
+    end-of-season view (ge.fit.history.season_view) and that view's ff_opportunity. Reads go
+    through the live pricer window, so 2025 (BT-07b) is refused before any file is opened."""
+    from ge.fit.history import Reader, season_view
+    from ge.metrics.coaching import load_registry
+    from ge.metrics.context import MetricContext
+    from ge.store.snapshot import FF
+
+    window = pricer_window("live")
+    window.check_read(season)
+    reader = Reader(root, window, dt.datetime.max.replace(tzinfo=dt.UTC))
+    view = season_view(reader, season)
+    ctx = MetricContext(view, season, None, load_registry())
+    return labels_from(ctx.played, view.collect(FF), season)
+
+
+# ---- PRV-10 point-in-time mu for a season ----
+
+SCHEDULE_COLUMNS = ("game_id", "kickoff_utc", "home_team", "away_team", "week")
+
+
+def read_schedule(season: int, root: Path = DATA_ROOT) -> pl.DataFrame:
+    """The season's games (regular and postseason) from the latest schedules pull, with
+    kickoff_utc, in kickoff order. The live pricer window is checked first (BT-07b)."""
+    pricer_window("live").check_read(season)
+    v = choose_version(root, "schedules", season, dt.datetime.max.replace(tzinfo=dt.UTC))
+    if v is None:
+        raise FileNotFoundError(f"PRV-10: no schedules pull for season {season} under {root}")
+    sched = ka.with_kickoff(pl.read_parquet(v.path))
+    return sched.select(SCHEDULE_COLUMNS).sort("kickoff_utc", "game_id")
+
+
+@dataclass(frozen=True)
+class GameInputs:
+    """What PRV-03 and PRV-08 read for one game at as_of: the visible ff_opportunity rows, the
+    target season's visible team games (MetricContext.games), the visible injury reports and
+    the target game's week."""
+
+    ff: pl.DataFrame
+    games: pl.DataFrame
+    injuries: pl.DataFrame
+    week: int
+
+
+OpenGame = Callable[[str, dt.datetime], GameInputs]
+
+
+def open_game(game_id: str, as_of: dt.datetime) -> GameInputs:
+    """BT-01 snapshot of one game at as_of (rule 5), as PRV-03 and PRV-08 read it."""
+    from ge.metrics.context import build_context
+    from ge.store.snapshot import FF, snapshot
+
+    snap = snapshot(game_id, as_of)
+    ctx = build_context(snap)
+    return GameInputs(
+        ff=snap.collect(FF), games=ctx.games, injuries=snap.collect("injuries"), week=snap.week
+    )
+
+
+AVAILABILITY_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
+    "team": pl.Utf8,
+    "gsis_id": pl.Utf8,
+    "status_seen": pl.Utf8,
+    "availability_flag": pl.Utf8,
+    "availability_reason": pl.Utf8,
+}
+
+
+def with_availability(
+    mu: pl.DataFrame, injuries: pl.DataFrame, *, season: int, week: int
+) -> pl.DataFrame:
+    """PRV-08 for every (team, gsis_id) in `mu`: the status seen, the flag and the unpriced
+    reason, from the injury rows visible at as_of for the target season and week."""
+    players = mu.select("team", "gsis_id").unique().sort("team", "gsis_id")
+    rows = []
+    for team, gsis_id in players.iter_rows():
+        a = availability(injuries, season=season, week=week, team=team, gsis_id=gsis_id)
+        rows.append(
+            {
+                "team": team,
+                "gsis_id": gsis_id,
+                "status_seen": a.status_seen,
+                "availability_flag": None if a.flag is None else a.flag.value,
+                "availability_reason": None if a.reason is None else a.reason.value,
+            }
+        )
+    avail = pl.DataFrame(rows, schema=AVAILABILITY_SCHEMA)
+    return mu.join(avail, on=["team", "gsis_id"], how="left", maintain_order="left")
+
+
+SEASON_MU_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
+    **MU_SCHEMA,
+    **{k: v for k, v in AVAILABILITY_SCHEMA.items() if k not in ("team", "gsis_id")},
+}
+
+
+def season_mu(
+    season: int,
+    schedule: pl.DataFrame,
+    *,
+    fit: Prv03Fit,
+    open_game: OpenGame = open_game,
+    on_game: Callable[[int, str], None] | None = None,
+) -> pl.DataFrame:
+    """PRV-10: point-in-time μ for every game of `season` in kickoff order, each at as_of =
+    kickoff - 24 h (BT-01 decision time), with `fit` (the season's own v4 S<season> file) and
+    PRV-08 at the same as_of. Rows follow game_mu's order within each game
+    (SEASON_MU_SCHEMA)."""
+    bt = load_params().backtest
+    games = schedule.select(SCHEDULE_COLUMNS).sort("kickoff_utc", "game_id")
+    wrong = games.filter(~pl.col("game_id").str.starts_with(_season_prefix(season)))
+    if wrong.height:
+        raise ValueError(
+            f"PRV-10: schedule for season {season} holds other seasons' games: "
+            f"{wrong['game_id'].to_list()[:3]}"
+        )
+    parts = []
+    for i, (gid, kickoff, home, away, week) in enumerate(games.iter_rows()):
+        as_of = ka.default_as_of(kickoff, "decision", bt)
+        inp = open_game(gid, as_of)
+        mu = game_mu(
+            inp.ff,
+            inp.games,
+            target_game_id=gid,
+            teams=(home, away),
+            fit=fit,
+            centring_means=centring(inp.ff, inp.games, season),
+            as_of=as_of,
+        )
+        parts.append(with_availability(mu, inp.injuries, season=season, week=int(week)))
+        if on_game is not None:
+            on_game(i, gid)
+    if not parts:
+        return pl.DataFrame(schema=SEASON_MU_SCHEMA)
+    return pl.concat(parts).select(list(SEASON_MU_SCHEMA)).cast(pl.Schema(SEASON_MU_SCHEMA))
+
+
+# ---- PRV-10 training / calibration rows ----
+
+
+def training_rows(mu: pl.DataFrame, labels: pl.DataFrame, stat: str) -> pl.DataFrame:
+    """PRV-10: the player-games used for `stat`: priced at as_of (no PRV-03 reason and no PRV-08
+    reason, ruling 2026-11-27) and played for the same team that game. `actual` is the stat's
+    label; `carries` the game's rush_attempt. Sorted by game_id, team, gsis_id."""
+    if stat not in PRV_STATS:
+        raise ValueError(f"PRV-10: stat {stat!r} is not one of {PRV_STATS}")
+    priced = mu.filter(
+        (pl.col("stat") == stat)
+        & pl.col("reason").is_null()
+        & pl.col("availability_reason").is_null()
+    )
+    return priced.join(
+        labels.select(
+            "game_id", "team", "gsis_id", "has_ff_row", pl.col(stat).alias("actual"), "carries"
+        ),
+        on=["game_id", "team", "gsis_id"],
+        how="inner",
+    ).sort("game_id", "team", "gsis_id")
